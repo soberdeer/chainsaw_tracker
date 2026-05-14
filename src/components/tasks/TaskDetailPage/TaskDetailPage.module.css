@@ -1,0 +1,131 @@
+.detailPage {
+  max-width: 73.75rem;
+  margin: 0 auto;
+  padding: var(--mantine-spacing-xl);
+  background: var(--app-panel);
+  color: var(--app-text);
+  border-radius: var(--mantine-radius-md);
+}
+
+.titleInput input {
+  min-height: 3.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 2rem;
+  font-weight: 800;
+  padding-left: 0;
+}
+
+.statusDot,
+.statusRing {
+  border-radius: var(--mantine-radius-xl);
+}
+
+.statusDot {
+  width: 0.625rem;
+  height: 0.625rem;
+}
+
+.statusRing {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  border: 0.1875rem solid #777;
+}
+
+.dependencyPicker {
+  background: var(--app-panel);
+  border-color: var(--app-border);
+  color: var(--app-text);
+  border-radius: var(--mantine-radius-md);
+}
+
+.dependencyResult,
+.relationshipRow {
+  width: 100%;
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: var(--mantine-radius-md);
+  background: transparent;
+  color: var(--app-text);
+  display: grid;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  padding: 0 var(--mantine-spacing-sm);
+}
+
+.dependencyResult {
+  grid-template-columns: 1.5rem minmax(0, 1fr);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.dependencyResult:hover {
+  background: var(--app-hover);
+}
+
+.relationshipRow {
+  grid-template-columns: minmax(0, 1fr) 7.5rem 7rem;
+}
+
+.relationshipPanel {
+  background: var(--app-panel);
+  padding: var(--mantine-spacing-lg);
+}
+
+.subtaskTable {
+  overflow: hidden;
+  background: var(--app-panel);
+}
+
+.subtaskHead,
+.subtaskRow {
+  display: grid;
+  grid-template-columns: minmax(16.25rem, 1fr) 8.75rem 9.375rem 8.75rem;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  min-height: 3.375rem;
+  padding: 0 1.125rem;
+  border-top: 1px solid var(--app-border);
+}
+
+.subtaskHead {
+  color: var(--app-muted);
+  font-weight: 800;
+}
+
+.subtaskRow {
+  width: 100%;
+  border-right: 0;
+  border-bottom: 0;
+  border-left: 0;
+  background: transparent;
+  color: var(--app-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.subtaskRow:hover {
+  background: var(--app-hover);
+}
+
+.addTask {
+  min-height: 2.875rem;
+  border: 0;
+  background: transparent;
+  color: #8b8b8b;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--mantine-spacing-md);
+  padding-left: 3rem;
+  font: inherit;
+  font-size: var(--mantine-font-size-lg);
+  cursor: pointer;
+}
+
+.mutedIcon {
+  color: var(--app-muted);
+}

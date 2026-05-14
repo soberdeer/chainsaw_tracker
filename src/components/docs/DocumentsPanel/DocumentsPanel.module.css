@@ -1,0 +1,28 @@
+.docCard {
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-sm);
+  background: var(--app-panel);
+  color: var(--app-text);
+  cursor: pointer;
+}
+
+.menuDropdown {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.grow {
+  flex: 1;
+}
+
+.embedPreview {
+  min-height: 7.5rem;
+  border: 1px dashed #ced4da;
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-md);
+  display: grid;
+  align-items: center;
+  background: #f8f9fa;
+}

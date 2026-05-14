@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { Alert, Box, Button, Paper, Stack, Text, TextInput, Title } from '@mantine/core';
-import { createWorkspace } from '../../lib/api';
-import type { Workspace } from '../../lib/types';
-import { getErrorMessage } from '../../lib/taskUi';
+import { createWorkspace } from '../../../lib/api';
+import type { Workspace } from '../../../lib/types';
+import { getErrorMessage } from '../../../lib/taskUi';
+import classes from './EmptySetup.module.css';
 
 export function EmptySetup({ onCreated }: { onCreated: (workspace: Workspace) => void }) {
   const [name, setName] = useState('Chainsaw');
@@ -11,7 +12,7 @@ export function EmptySetup({ onCreated }: { onCreated: (workspace: Workspace) =>
   const [error, setError] = useState<string | null>(null);
 
   return (
-    <Box className="center setup-screen">
+    <Box className={`${classes.center} ${classes.setupScreen}`}>
       <Paper withBorder p="xl" maw="32.5rem">
         <Stack>
           <Title order={2}>Create workspace</Title>

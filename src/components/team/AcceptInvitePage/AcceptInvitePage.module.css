@@ -1,0 +1,16 @@
+.center {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.setupScreen {
+  padding: var(--mantine-spacing-xl);
+}
+
+.inviteCard {
+  max-width: 32rem;
+  width: 100%;
+  padding: var(--mantine-spacing-xl);
+  background: var(--app-panel);
+}

@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { useEffect } from 'react';
-import { ActionIcon, Badge, Box, Button, FileButton, Group, Menu, Paper, SimpleGrid, Stack, Text, Textarea, TextInput, ThemeIcon, Title } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, FileButton, Group, Menu, Paper, SimpleGrid, Stack, Text, TextInput, ThemeIcon, Title } from '@mantine/core';
 import { IconDots, IconFileText, IconPaperclip, IconPhoto, IconPlus } from '@tabler/icons-react';
-import { createEmbedDoc, createMarkdownDoc, deleteDocument, duplicateDocument, updateDocument, uploadDocument } from '../../lib/api';
-import type { DocumentItem } from '../../lib/types';
-import { getErrorMessage } from '../../lib/taskUi';
+import { createEmbedDoc, createMarkdownDoc, deleteDocument, duplicateDocument, updateDocument, uploadDocument } from '../../../lib/api';
+import type { DocumentItem } from '../../../lib/types';
+import { getErrorMessage } from '../../../lib/taskUi';
+import classes from './DocumentsPanel.module.css';
 
 export function DocumentsPanel({
   documents,
@@ -57,7 +57,7 @@ export function DocumentsPanel({
       </Group>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
         {documents.map((doc) => (
-          <Paper key={doc.id} withBorder className="doc-card" onClick={() => onOpen(doc)}>
+          <Paper key={doc.id} withBorder className={classes.docCard} onClick={() => onOpen(doc)}>
             <Group justify="space-between" mb="xs">
               <Group gap="xs">
                 <ThemeIcon variant="light" color={doc.kind === 'IMAGE' ? 'pink' : doc.kind === 'EMBED' ? 'violet' : 'blue'}>
@@ -71,7 +71,7 @@ export function DocumentsPanel({
                   <Menu.Target>
                     <ActionIcon variant="subtle" aria-label="Doc settings" onClick={(event) => event.stopPropagation()}><IconDots size="1rem" /></ActionIcon>
                   </Menu.Target>
-                  <Menu.Dropdown className="clickup-menu" onClick={(event) => event.stopPropagation()}>
+                  <Menu.Dropdown className={classes.menuDropdown} onClick={(event) => event.stopPropagation()}>
                     <Menu.Label>Doc settings</Menu.Label>
                     <Menu.Item onClick={() => {
                       const title = window.prompt('Doc name', doc.title);
@@ -89,7 +89,7 @@ export function DocumentsPanel({
               </Group>
             </Group>
             {doc.kind === 'EMBED' ? (
-              <Box className="embed-preview">
+              <Box className={classes.embedPreview}>
                 <Text size="sm" c="dimmed">{doc.embedUrl}</Text>
               </Box>
             ) : (
@@ -105,74 +105,11 @@ export function DocumentsPanel({
             value={embedUrl}
             onChange={(event) => setEmbedUrl(event.currentTarget.value)}
             placeholder="Miro, Google Drive PDF, Figma preview..."
-            className="grow"
+            className={classes.grow}
           />
           <Button variant="light" disabled={!embedUrl.trim()} onClick={createEmbed}>Add embed</Button>
         </Group>
       </Paper>
     </Stack>
-  );
-}
-
-export function DocumentPage({
-  document,
-  onBack,
-  onSaved,
-  onError
-}: {
-  document: DocumentItem;
-  onBack: () => void;
-  onSaved: (document: DocumentItem) => void;
-  onError: (message: string) => void;
-}) {
-  const [title, setTitle] = useState(document.title);
-  const [markdown, setMarkdown] = useState(document.markdown || '');
-  const [embedUrl, setEmbedUrl] = useState(document.embedUrl || '');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    setTitle(document.title);
-    setMarkdown(document.markdown || '');
-    setEmbedUrl(document.embedUrl || '');
-  }, [document]);
-
-  const save = async () => {
-    try {
-      setSaving(true);
-      onSaved(await updateDocument(document.id, {
-        title,
-        ...(document.kind === 'MARKDOWN' || document.kind === 'SPREADSHEET' ? { markdown } : {}),
-        ...(document.kind === 'EMBED' ? { embedUrl } : {})
-      }));
-    } catch (error) {
-      onError(getErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Paper className="task-detail-page" withBorder>
-      <Group justify="space-between" mb="lg">
-        <Box>
-          <Text size="xs" c="dimmed">{document.kind}</Text>
-          <TextInput value={title} onChange={(event) => setTitle(event.currentTarget.value)} className="task-title-input" />
-        </Box>
-        <Group>
-          <Button loading={saving} onClick={save}>Save</Button>
-          <Button variant="light" onClick={onBack}>Back</Button>
-        </Group>
-      </Group>
-      {document.kind === 'EMBED' && document.embedUrl ? (
-        <Stack>
-          <TextInput label="Embed link" value={embedUrl} onChange={(event) => setEmbedUrl(event.currentTarget.value)} />
-          <Box className="embed-preview"><Text>{embedUrl}</Text></Box>
-        </Stack>
-      ) : document.kind === 'IMAGE' && document.fileUrl ? (
-        <img src={document.fileUrl} alt={document.title} className="doc-image-preview" />
-      ) : (
-        <Textarea value={markdown} onChange={(event) => setMarkdown(event.currentTarget.value)} minRows={18} autosize />
-      )}
-    </Paper>
   );
 }

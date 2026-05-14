@@ -1,6 +1,6 @@
-import { WorkspaceShell } from './components/workspace/WorkspaceShell';
+import { WorkspaceShell } from './components/workspace/WorkspaceShell/WorkspaceShell';
 import { Route, Routes } from 'react-router-dom';
-import { AcceptInvitePage } from './components/team/AcceptInvitePage';
+import { AcceptInvitePage } from './components/team/AcceptInvitePage/AcceptInvitePage';
 
 export default function App() {
   return (

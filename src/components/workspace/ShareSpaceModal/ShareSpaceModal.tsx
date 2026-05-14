@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import { Avatar, Badge, Button, Group, Modal, Select, Stack, Switch, Text, TextInput } from '@mantine/core';
 import { IconLock, IconMailPlus } from '@tabler/icons-react';
-import { inviteMember } from '../../lib/api';
-import type { Space, Workspace } from '../../lib/types';
-import { getErrorMessage } from '../../lib/taskUi';
+import { inviteMember } from '../../../lib/api';
+import type { Space, Workspace } from '../../../lib/types';
+import { getErrorMessage } from '../../../lib/taskUi';
+import classes from './ShareSpaceModal.module.css';
 
 export function ShareSpaceModal({
   opened,
@@ -36,11 +37,11 @@ export function ShareSpaceModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Share this Space" size="42rem" centered classNames={{ content: 'clickup-modal' }}>
+    <Modal opened={opened} onClose={onClose} title="Share this Space" size="42rem" centered classNames={{ content: classes.modalContent }}>
       <Stack gap="lg">
         <Text c="dimmed">Sharing Space with all views <Text span c="white" fw={700}>{space.name}</Text> {space.locked && <IconLock size="1rem" />}</Text>
         <Group align="end">
-          <TextInput className="grow" label="Invite by name or email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} />
+          <TextInput className={classes.grow} label="Invite by name or email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} />
           <Select label="Role" value={role} onChange={(value) => setRole(value || 'MEMBER')} data={['ADMIN', 'MEMBER', 'VIEWER']} />
           <Button leftSection={<IconMailPlus size="1rem" />} loading={sending} onClick={invite}>Invite</Button>
         </Group>
@@ -54,7 +55,7 @@ export function ShareSpaceModal({
         <Stack gap="sm">
           <Text c="dimmed" fw={700}>People</Text>
           {workspace.memberships.map((membership) => (
-            <Group key={membership.id} justify="space-between" className="share-person-row">
+            <Group key={membership.id} justify="space-between" className={classes.personRow}>
               <Group>
                 <Avatar>{membership.user.name.slice(0, 1)}</Avatar>
                 <Text fw={650}>{membership.user.name}</Text>

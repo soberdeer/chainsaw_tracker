@@ -1,100 +1,11 @@
 import { useEffect, useState } from 'react';
-import { ActionIcon, Avatar, Badge, Button, Group, Modal, MultiSelect, Paper, Popover, ScrollArea, Select, SimpleGrid, Stack, Tabs, Text, Textarea, TextInput, Title } from '@mantine/core';
+import { ActionIcon, Avatar, Badge, Button, Group, MultiSelect, Paper, Popover, ScrollArea, Select, SimpleGrid, Stack, Tabs, Text, Textarea, TextInput, Title } from '@mantine/core';
 import { IconCalendarDue, IconExternalLink, IconFlag, IconGitPullRequest, IconPlus, IconRefresh, IconSearch, IconTags, IconUsers, IconX } from '@tabler/icons-react';
-import { addTaskDependency, createTask, getGitHubRepositories, getMilestones, getTask, getTaskActivity, linkTaskPullRequest, refreshTaskGitHub, removeTaskDependency, searchAll, unlinkTaskPullRequest, updateTask } from '../../lib/api';
-import type { ActivityLog, GitHubRepository, Milestone, SearchResult, Task, TaskPriority, TaskStatus, Workspace } from '../../lib/types';
-import { displayStatus, formatDueDate, getErrorMessage, priorityColor, toDateInput } from '../../lib/taskUi';
-
-function SubtaskModal({
-  opened,
-  parentTask,
-  statuses,
-  onClose,
-  onCreated,
-  onError
-}: {
-  opened: boolean;
-  parentTask: Task;
-  statuses: TaskStatus[];
-  onClose: () => void;
-  onCreated: (task: Task) => void;
-  onError: (message: string) => void;
-}) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [statusId, setStatusId] = useState(statuses[0]?.id || '');
-  const [priority, setPriority] = useState<TaskPriority>('NORMAL');
-  const [startDate, setStartDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
-  const [githubUrl, setGithubUrl] = useState('');
-  const [saving, setSaving] = useState(false);
-
-  useEffect(() => {
-    if (opened) {
-      setTitle('');
-      setDescription('');
-      setStatusId(parentTask.statusId || statuses[0]?.id || '');
-      setPriority(parentTask.priority || 'NORMAL');
-      setStartDate('');
-      setDueDate('');
-      setGithubUrl('');
-    }
-  }, [opened, parentTask.id, parentTask.priority, parentTask.statusId, statuses]);
-
-  const create = async () => {
-    if (!parentTask.taskListId || !title.trim()) return;
-    try {
-      setSaving(true);
-      await createTask({
-        taskListId: parentTask.taskListId,
-        parentId: parentTask.id,
-        title: title.trim(),
-        description,
-        statusId: statusId || undefined,
-        priority,
-        startDate: startDate || undefined,
-        dueDate: dueDate || undefined,
-        githubUrl: githubUrl || undefined
-      });
-      onCreated(await getTask(parentTask.id));
-      onClose();
-    } catch (error) {
-      onError(getErrorMessage(error));
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <Modal opened={opened} onClose={onClose} size="xl" title="Add subtask" centered classNames={{ content: 'clickup-modal' }}>
-      <Stack>
-        <TextInput label="Name" value={title} onChange={(event) => setTitle(event.currentTarget.value)} autoFocus />
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <Select
-            label="Status"
-            value={statusId}
-            onChange={(value) => setStatusId(value || '')}
-            data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
-          />
-          <Select
-            label="Priority"
-            value={priority}
-            onChange={(value) => setPriority((value || 'NORMAL') as TaskPriority)}
-            data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-          />
-          <TextInput label="Start date" type="date" value={startDate} onChange={(event) => setStartDate(event.currentTarget.value)} />
-          <TextInput label="Due date" type="date" value={dueDate} onChange={(event) => setDueDate(event.currentTarget.value)} />
-        </SimpleGrid>
-        <TextInput label="GitHub URL" value={githubUrl} onChange={(event) => setGithubUrl(event.currentTarget.value)} placeholder="https://github.com/..." />
-        <Textarea label="Description" minRows={7} autosize value={description} onChange={(event) => setDescription(event.currentTarget.value)} />
-        <Group justify="flex-end">
-          <Button variant="light" onClick={onClose}>Cancel</Button>
-          <Button loading={saving} disabled={!title.trim()} onClick={create}>Create subtask</Button>
-        </Group>
-      </Stack>
-    </Modal>
-  );
-}
+import { addTaskDependency, getGitHubRepositories, getMilestones, getTask, getTaskActivity, linkTaskPullRequest, refreshTaskGitHub, removeTaskDependency, searchAll, unlinkTaskPullRequest, updateTask } from '../../../lib/api';
+import type { ActivityLog, GitHubRepository, Milestone, SearchResult, Task, TaskPriority, TaskStatus, Workspace } from '../../../lib/types';
+import { displayStatus, formatDueDate, getErrorMessage, priorityColor, toDateInput } from '../../../lib/taskUi';
+import { SubtaskModal } from './SubtaskModal/SubtaskModal';
+import classes from './TaskDetailPage.module.css';
 
 export function TaskDetailPage({
   task,
@@ -209,7 +120,7 @@ export function TaskDetailPage({
   };
 
   return (
-    <Paper className="task-detail-page" withBorder>
+    <Paper className={classes.detailPage} withBorder>
       <SubtaskModal
         opened={subtaskModalOpen}
         parentTask={task}
@@ -219,7 +130,7 @@ export function TaskDetailPage({
         onError={onError}
       />
       <Group justify="space-between" mb="lg">
-        <TextInput value={title} onChange={(event) => setTitle(event.currentTarget.value)} className="task-title-input" />
+        <TextInput value={title} onChange={(event) => setTitle(event.currentTarget.value)} className={classes.titleInput} />
         <Group>
           <Button loading={saving} onClick={save}>Save</Button>
           <Button variant="light" onClick={onBack}>Back</Button>
@@ -229,7 +140,7 @@ export function TaskDetailPage({
       <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
         <Select
           label="Status"
-          leftSection={<span className="status-dot" style={{ background: status.color }} />}
+          leftSection={<span className={classes.statusDot} style={{ background: status.color }} />}
           value={statusId}
           onChange={(value) => {
             setStatusId(value || '');
@@ -372,7 +283,7 @@ export function TaskDetailPage({
                 <Popover.Target>
                   <Button variant="subtle" leftSection={<IconPlus size="1rem" />} onClick={() => setDependencyOpen((open) => !open)}>Add dependency</Button>
                 </Popover.Target>
-                <Popover.Dropdown className="dependency-picker">
+                <Popover.Dropdown className={classes.dependencyPicker}>
                   <Stack gap="sm">
                     <TextInput
                       value={dependencyQuery}
@@ -387,7 +298,7 @@ export function TaskDetailPage({
                         {dependencyResults.map((result) => (
                           <button
                             key={result.id}
-                            className="dependency-result"
+                            className={classes.dependencyResult}
                             type="button"
                             onClick={async () => {
                               try {
@@ -399,7 +310,7 @@ export function TaskDetailPage({
                               }
                             }}
                           >
-                            <span className="cu-status-ring" />
+                            <span className={classes.statusRing} />
                             <span>{result.title}</span>
                           </button>
                         ))}
@@ -409,14 +320,14 @@ export function TaskDetailPage({
                 </Popover.Dropdown>
               </Popover>
             </Stack>
-            <Paper withBorder className="relationship-panel">
+            <Paper withBorder className={classes.relationshipPanel}>
               <Group justify="space-between" mb="md">
                 <Title order={3}>Waiting on</Title>
-                <IconSearch size="1.125rem" className="muted-icon" />
+                <IconSearch size="1.125rem" className={classes.mutedIcon} />
               </Group>
               <Stack gap="xs">
                 {(task.dependencies || []).map((dependency) => (
-                  <div key={dependency.id} className="relationship-row">
+                  <div key={dependency.id} className={classes.relationshipRow}>
                     <Text fw={700}>{dependency.dependsOn?.title || dependency.dependsOnId}</Text>
                     <Text c="dimmed">{formatDueDate(dependency.dependsOn?.dueDate) || '-'}</Text>
                     <Badge color={priorityColor[dependency.dependsOn?.priority || 'NORMAL']}>{dependency.dependsOn?.priority || 'NORMAL'}</Badge>
@@ -428,14 +339,14 @@ export function TaskDetailPage({
           </SimpleGrid>
         </Tabs.Panel>
         {showGitHubTab && <Tabs.Panel value="github" pt="md">
-          <Paper withBorder className="relationship-panel">
+          <Paper withBorder className={classes.relationshipPanel}>
             <Group justify="space-between" mb="md">
               <Title order={3}>GitHub</Title>
               <Badge variant="light">{task.developmentStatus || 'NOT_STARTED'}</Badge>
             </Group>
             <Stack>
               {(task.githubBranches || []).map((branch) => (
-                <Group key={branch.id} justify="space-between" className="relationship-row">
+                <Group key={branch.id} justify="space-between" className={classes.relationshipRow}>
                   <Group gap="xs"><IconGitPullRequest size="1rem" /><Text fw={700}>{branch.name}</Text></Group>
                   {branch.url && <Button size="xs" variant="subtle" component="a" href={branch.url} target="_blank" leftSection={<IconExternalLink size="0.875rem" />}>Open</Button>}
                 </Group>
@@ -532,7 +443,7 @@ export function TaskDetailPage({
           </Paper>
         </Tabs.Panel>}
         <Tabs.Panel value="subtasks" pt="md">
-          <Paper withBorder className="subtask-table">
+          <Paper withBorder className={classes.subtaskTable}>
             <Group justify="space-between" p="md">
               <Group>
                 <Title order={4}>Subtasks</Title>
@@ -540,16 +451,16 @@ export function TaskDetailPage({
               </Group>
               <Button size="xs" variant="light" leftSection={<IconPlus size="0.875rem" />} onClick={() => setSubtaskModalOpen(true)}>Add subtask</Button>
             </Group>
-            <div className="subtask-head">
+            <div className={classes.subtaskHead}>
               <Text>Name</Text>
               <Text>Assignee</Text>
               <Text>Priority</Text>
               <Text>Due date</Text>
             </div>
             {(task.subtasks || []).map((subtask) => (
-              <button key={subtask.id} type="button" className="subtask-row" onClick={() => onOpenSubtask(subtask)}>
+              <button key={subtask.id} type="button" className={classes.subtaskRow} onClick={() => onOpenSubtask(subtask)}>
                 <Group gap="sm" wrap="nowrap">
-                  <span className="cu-status-ring" style={{ borderColor: displayStatus(undefined, subtask.status).color }} />
+                  <span className={classes.statusRing} style={{ borderColor: displayStatus(undefined, subtask.status).color }} />
                   <Text fw={700}>{subtask.title}</Text>
                 </Group>
                 <span>{subtask.assignee ? <Avatar size="1.75rem">{subtask.assignee.name.slice(0, 1)}</Avatar> : <Text c="dimmed">-</Text>}</span>
@@ -558,7 +469,7 @@ export function TaskDetailPage({
               </button>
             ))}
             {!task.subtasks?.length && (
-              <button className="cu-add-task" type="button" onClick={() => setSubtaskModalOpen(true)}><IconPlus size="1.125rem" />Add Task</button>
+              <button className={classes.addTask} type="button" onClick={() => setSubtaskModalOpen(true)}><IconPlus size="1.125rem" />Add Task</button>
             )}
           </Paper>
         </Tabs.Panel>

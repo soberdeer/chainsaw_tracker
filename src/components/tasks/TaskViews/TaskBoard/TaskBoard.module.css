@@ -1,0 +1,13 @@
+.kanbanColumn {
+  min-height: 30rem;
+  background: var(--app-panel);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-sm);
+}
+
+.statusDot {
+  width: 0.625rem;
+  height: 0.625rem;
+  border-radius: var(--mantine-radius-xl);
+}

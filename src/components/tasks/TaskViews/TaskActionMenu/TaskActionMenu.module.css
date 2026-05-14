@@ -1,0 +1,10 @@
+.menuButton {
+  margin-left: 1.7rem;
+}
+
+.menuDropdown {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+}

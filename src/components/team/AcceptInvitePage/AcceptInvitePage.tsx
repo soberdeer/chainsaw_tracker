@@ -2,8 +2,9 @@ import { useState } from 'react';
 import { Alert, Box, Button, Loader, Paper, Stack, Text, Title } from '@mantine/core';
 import { IconMailCheck } from '@tabler/icons-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { acceptInvite } from '../../lib/api';
-import { getErrorMessage } from '../../lib/taskUi';
+import { acceptInvite } from '../../../lib/api';
+import { getErrorMessage } from '../../../lib/taskUi';
+import classes from './AcceptInvitePage.module.css';
 
 export function AcceptInvitePage() {
   const { token } = useParams();
@@ -27,8 +28,8 @@ export function AcceptInvitePage() {
   };
 
   return (
-    <Box className="center setup-screen">
-      <Paper withBorder className="invite-card">
+    <Box className={`${classes.center} ${classes.setupScreen}`}>
+      <Paper withBorder className={classes.inviteCard}>
         <Stack gap="md" align="flex-start">
           <IconMailCheck size="2rem" />
           <Title order={2}>Accept workspace invite</Title>

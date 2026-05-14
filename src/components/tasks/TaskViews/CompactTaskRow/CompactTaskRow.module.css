@@ -1,0 +1,71 @@
+.taskRow {
+  min-height: 3.625rem;
+  color: var(--app-text);
+  cursor: pointer;
+  align-items: center;
+  flex-wrap: nowrap;
+  display: grid;
+  grid-template-columns: minmax(21.25rem, 1fr) 9.375rem 10.625rem 10rem 4.5rem 3rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.taskRow:hover {
+  background: var(--app-hover);
+}
+
+.nameCell {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  padding-left: 0.375rem;
+}
+
+.statusRing {
+  width: 1.25rem;
+  height: 1.25rem;
+  flex: 0 0 1.25rem;
+  border: 0.1875rem solid #777;
+  border-radius: var(--mantine-radius-xl);
+}
+
+.taskTitle {
+  color: var(--app-text);
+  font-size: 1rem;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tagBadge {
+  color: #d8ccff;
+  border-radius: var(--mantine-radius-xl);
+  text-transform: lowercase;
+  font-size: 0.725rem;
+}
+
+.assigneeCell,
+.dueCell,
+.priorityCell {
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-xs);
+}
+
+.dueCell {
+  color: #69db8d;
+}
+
+.lateDue {
+  color: #ff8787;
+}
+
+.priorityCell {
+  color: #bcbcbc;
+}
+
+.mutedIcon {
+  color: var(--app-muted);
+}

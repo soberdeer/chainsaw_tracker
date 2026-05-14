@@ -1,0 +1,6 @@
+.modalContent {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-lg);
+}

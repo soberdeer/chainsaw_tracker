@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react';
 import { ActionIcon, Button, Group, Loader, Modal, ScrollArea, Stack, Text, TextInput, ThemeIcon } from '@mantine/core';
 import { IconCheck, IconFileText, IconFolder, IconFolderOpen, IconList, IconPlus } from '@tabler/icons-react';
-import { createFolder, createSpace, createTask, searchAll } from '../../lib/api';
-import type { Folder, SearchResult, Space, TaskList, TaskStatus, Workspace } from '../../lib/types';
-import { docPath, folderPath, getErrorMessage } from '../../lib/taskUi';
+import { createFolder, createSpace, createTask, searchAll } from '../../../lib/api';
+import type { Folder, SearchResult, Space, TaskList, TaskStatus, Workspace } from '../../../lib/types';
+import { docPath, folderPath, getErrorMessage } from '../../../lib/taskUi';
+import classes from './GlobalSearchModal.module.css';
 
 export function GlobalSearchModal({
   opened,
@@ -107,20 +108,20 @@ export function GlobalSearchModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} size="80rem" yOffset="6vh" withCloseButton={false} classNames={{ content: 'search-modal-content', body: 'search-modal-body' }}>
+    <Modal opened={opened} onClose={onClose} size="80rem" yOffset="6vh" withCloseButton={false} classNames={{ content: classes.modalContent, body: classes.modalBody }}>
       <Stack gap={0}>
-        <Group className="search-modal-header" wrap="nowrap">
+        <Group className={classes.modalHeader} wrap="nowrap">
           <TextInput
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
             placeholder="Search, run a command..."
             variant="unstyled"
             autoFocus
-            className="global-search-input"
+            className={classes.searchInput}
           />
           <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">×</ActionIcon>
         </Group>
-        <Group className="search-tabs" gap="xs">
+        <Group className={classes.tabs} gap="xs">
           {['All', 'Tasks', 'Docs', 'Spaces'].map((item) => <Button key={item} variant="subtle" size="compact-md">{item}</Button>)}
           {loading && <Loader size="xs" />}
         </Group>
@@ -128,16 +129,16 @@ export function GlobalSearchModal({
           <Stack gap={4} p="md">
             <Text size="sm" c="dimmed" fw={700}>Results</Text>
             {results.map((result) => (
-              <button key={`${result.type}:${result.id}`} type="button" className="search-result-row" onClick={() => runSearchAction(result)}>
+              <button key={`${result.type}:${result.id}`} type="button" className={classes.resultRow} onClick={() => runSearchAction(result)}>
                 <ThemeIcon variant="subtle" color={result.type === 'action' ? 'teal' : 'gray'}>{iconFor(result.type)}</ThemeIcon>
-                <span className="search-result-title">{result.title}</span>
-                {result.subtitle && <span className="search-result-subtitle">{result.subtitle}</span>}
+                <span className={classes.resultTitle}>{result.title}</span>
+                {result.subtitle && <span className={classes.resultSubtitle}>{result.subtitle}</span>}
               </button>
             ))}
             {!results.length && !loading && <Text c="dimmed">Nothing found</Text>}
           </Stack>
         </ScrollArea>
-        <Group className="search-modal-footer">
+        <Group className={classes.modalFooter}>
           <Text size="sm" c="dimmed">Press / to open search, Enter to open a result</Text>
         </Group>
       </Stack>

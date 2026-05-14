@@ -2,8 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActionIcon, Alert, AppShell, Badge, Box, Button, Group, Loader, Menu, ScrollArea, Select, Stack, Tabs, Text, TextInput, ThemeIcon, Title, useMantineColorScheme } from '@mantine/core';
 import { IconCheck, IconChevronDown, IconColumns, IconDots, IconFileText, IconFilter, IconFolder, IconFolderOpen, IconLayoutKanban, IconList, IconLock, IconPlus, IconSearch, IconSettings, IconSubtask, IconUsers } from '@tabler/icons-react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { createFolder, createMarkdownDoc, createSpace, createTask, createTaskList, getMilestones, getTask, getTasks, getWorkspaces, reorderTasks, updateSpace, updateTask } from '../../lib/api';
-import type { DocumentItem, Milestone, Task, Workspace } from '../../lib/types';
+import { createFolder, createMarkdownDoc, createSpace, createTask, createTaskList, getMilestones, getTask, getTasks, getWorkspaces, reorderTasks, updateSpace, updateTask } from '../../../lib/api';
+import type { DocumentItem, Milestone, Task, Workspace } from '../../../lib/types';
 import {
   docPath,
   firstTaskFolder,
@@ -13,14 +13,16 @@ import {
   parseAppPath,
   taskPath,
   workspaceHasWork
-} from '../../lib/taskUi';
-import { DocumentPage, DocumentsPanel } from '../docs/DocumentsPanel';
-import { EmptySetup } from '../setup/EmptySetup';
-import { GlobalSearchModal } from '../search/GlobalSearchModal';
-import { TaskDetailPage } from '../tasks/TaskDetailPage';
-import { GroupedTaskList, TaskBoard } from '../tasks/TaskViews';
-import { TeamPanel } from '../team/TeamPanel';
-import { ShareSpaceModal } from './ShareSpaceModal';
+} from '../../../lib/taskUi';
+import { DocumentPage } from '../../docs/DocumentPage/DocumentPage';
+import { DocumentsPanel } from '../../docs/DocumentsPanel/DocumentsPanel';
+import { EmptySetup } from '../../setup/EmptySetup/EmptySetup';
+import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
+import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
+import { GroupedTaskList, TaskBoard } from '../../tasks/TaskViews';
+import { TeamPanel } from '../../team/TeamPanel/TeamPanel';
+import { ShareSpaceModal } from '../ShareSpaceModal/ShareSpaceModal';
+import classes from './WorkspaceShell.module.css';
 
 export function WorkspaceShell() {
   const navigate = useNavigate();
@@ -216,7 +218,7 @@ export function WorkspaceShell() {
     navigate(docPath(activeSpace.id, document.id));
   };
 
-  if (loading) return <Box className="center"><Loader /></Box>;
+  if (loading) return <Box className={classes.center}><Loader /></Box>;
 
   if (!workspace) {
     return (
@@ -237,7 +239,7 @@ export function WorkspaceShell() {
 
   if (!activeSpace) {
     return (
-      <Box className="center setup-screen">
+      <Box className={`${classes.center} ${classes.setupScreen}`}>
         <Stack>
           <Title order={2}>{workspace.name}</Title>
           <Text c="dimmed">Workspace created. Add the first space to start working.</Text>
@@ -276,7 +278,7 @@ export function WorkspaceShell() {
         onClose={() => setShareSpaceOpen(false)}
         onError={setActionError}
       />
-      <AppShell.Navbar p="md" className="workspace-sidebar">
+      <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
         <Group mb="lg" gap="sm" justify="space-between">
           <Group gap="sm">
             <ThemeIcon size="lg" radius="md" color="dark"><IconCheck size="1.25rem" /></ThemeIcon>
@@ -301,14 +303,14 @@ export function WorkspaceShell() {
           </ActionIcon>
         </Group>
         <Text size="lg" fw={700} mb="md">Spaces</Text>
-        <ScrollArea className="spaces-tree">
+        <ScrollArea className={classes.spacesTree}>
           {workspace.spaces.map((space) => {
             const isActiveSpace = space.id === activeSpace.id;
             return (
-              <Box key={space.id} className="space-tree-block">
+              <Box key={space.id} className={classes.spaceTreeBlock}>
                 <button
                   type="button"
-                  className={isActiveSpace ? 'space-tree-row active' : 'space-tree-row'}
+                  className={isActiveSpace ? `${classes.spaceTreeRow} ${classes.active}` : classes.spaceTreeRow}
                   onClick={() => {
                     setSpaceId(space.id);
                     const folder = firstTaskFolder(space);
@@ -317,15 +319,15 @@ export function WorkspaceShell() {
                     if (folder) navigate(folderPath(space.id, folder.id));
                   }}
                 >
-                  <span className="space-initial" style={{ background: space.color }}>{space.initials || space.name.slice(0, 1)}</span>
-                  <span className="space-name">{space.name}</span>
-                  {space.locked && <IconLock size="1rem" className="muted-icon" />}
+                  <span className={classes.spaceInitial} style={{ background: space.color }}>{space.initials || space.name.slice(0, 1)}</span>
+                  <span className={classes.spaceName}>{space.name}</span>
+                  {space.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
                   {isActiveSpace && (
                     <Menu width="22rem" position="right-start">
                       <Menu.Target>
-                        <IconDots size="1.125rem" className="row-action" onClick={(event) => event.stopPropagation()} />
+                        <IconDots size="1.125rem" className={classes.rowAction} onClick={(event) => event.stopPropagation()} />
                       </Menu.Target>
-                      <Menu.Dropdown className="clickup-menu" onClick={(event) => event.stopPropagation()}>
+                      <Menu.Dropdown className={classes.menuDropdown} onClick={(event) => event.stopPropagation()}>
                         <Menu.Item onClick={() => setShareSpaceOpen(true)}>Sharing & Permissions</Menu.Item>
                         <Menu.Item onClick={() => {
                           const name = window.prompt('Space name', space.name);
@@ -369,7 +371,7 @@ export function WorkspaceShell() {
                   {isActiveSpace && (
                     <IconPlus
                       size="1.125rem"
-                      className="row-action"
+                      className={classes.rowAction}
                       onClick={async (event) => {
                         event.stopPropagation();
                         const name = window.prompt('Folder name');
@@ -384,7 +386,7 @@ export function WorkspaceShell() {
                 </button>
 
                 {isActiveSpace && (
-                  <Box className="folder-tree">
+                  <Box className={classes.folderTree}>
                     {space.folders.map((folder) => {
                       const isDocs = folder.kind === 'DOCS';
                       const isActiveFolder = folder.id === activeFolder?.id;
@@ -392,7 +394,7 @@ export function WorkspaceShell() {
                         <Box key={folder.id}>
                           <button
                             type="button"
-                            className={isActiveFolder ? 'folder-tree-row active' : 'folder-tree-row'}
+                            className={isActiveFolder ? `${classes.folderTreeRow} ${classes.active}` : classes.folderTreeRow}
                             onClick={() => {
                               setFolderId(folder.id);
                               setTaskListId(firstTaskList(folder)?.id);
@@ -401,12 +403,12 @@ export function WorkspaceShell() {
                           >
                             {isDocs ? <IconFolderOpen size="1.25rem" color="#4c6ef5" /> : <IconFolder size="1.25rem" />}
                             <span>{folder.name}</span>
-                            {folder.locked && <IconLock size="0.9375rem" className="muted-icon" />}
-                            {!isDocs && <IconDots size="1rem" className="row-action" />}
+                            {folder.locked && <IconLock size="0.9375rem" className={classes.mutedIcon} />}
+                            {!isDocs && <IconDots size="1rem" className={classes.rowAction} />}
                             {!isDocs && (
                               <IconPlus
                                 size="1rem"
-                                className="row-action"
+                                className={classes.rowAction}
                                 onClick={async (event) => {
                                   event.stopPropagation();
                                   const name = window.prompt('Task list name');
@@ -423,16 +425,16 @@ export function WorkspaceShell() {
                             <button
                               key={taskList.id}
                               type="button"
-                              className={taskList.id === activeTaskList?.id ? 'task-list-nav active' : 'task-list-nav'}
+                              className={taskList.id === activeTaskList?.id ? `${classes.taskListNav} ${classes.active}` : classes.taskListNav}
                               onClick={() => {
                                 setFolderId(folder.id);
                                 setTaskListId(taskList.id);
                                 navigate(folderPath(space.id, folder.id));
                               }}
                             >
-                              <span className="task-list-icon">{taskList.icon || '☣'}</span>
+                              <span className={classes.taskListIcon}>{taskList.icon || '☣'}</span>
                               <span>{taskList.name}</span>
-                              <Badge className="task-count">{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
+                              <Badge className={classes.taskCount}>{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
                             </button>
                           ))}
                         </Box>
@@ -444,7 +446,7 @@ export function WorkspaceShell() {
             );
           })}
           <button
-            className="new-space-row"
+            className={classes.newSpaceRow}
             type="button"
             onClick={async () => {
               const name = window.prompt('Space name');
@@ -460,25 +462,25 @@ export function WorkspaceShell() {
         </ScrollArea>
       </AppShell.Navbar>
 
-      <AppShell.Main className="main-shell">
+      <AppShell.Main className={classes.mainShell}>
         <Stack gap={0}>
           {actionError && (
             <Alert color="red" title="Action failed" withCloseButton onClose={() => setActionError(null)} m="md">
               {actionError}
             </Alert>
           )}
-          <Group className="top-bar" justify="space-between">
+          <Group className={classes.topBar} justify="space-between">
             <Group gap="xs" wrap="nowrap">
-              <span className="breadcrumb-chip" style={{ background: activeSpace.color }}>{activeSpace.initials || activeSpace.name.slice(0, 1)}</span>
+              <span className={classes.breadcrumbChip} style={{ background: activeSpace.color }}>{activeSpace.initials || activeSpace.name.slice(0, 1)}</span>
               <Button component={Link} to={folderPath(activeSpace.id, activeFolder?.id || '')} variant="subtle" size="compact-md">{activeSpace.name}</Button>
-              {activeSpace.locked && <IconLock size="1rem" className="muted-icon" />}
+              {activeSpace.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
               <Text c="dimmed">/</Text>
-              <IconFolder size="1.25rem" className="muted-icon" />
+              <IconFolder size="1.25rem" className={classes.mutedIcon} />
               {activeFolder ? <Button component={Link} to={folderPath(activeSpace.id, activeFolder.id)} variant="subtle" size="compact-md">{activeFolder.name}</Button> : <Text fw={700}>Docs</Text>}
-              {activeFolder?.locked && <IconLock size="1rem" className="muted-icon" />}
+              {activeFolder?.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
               <Text c="dimmed">/</Text>
               <Text fw={800}>{selectedTask?.title || activeTaskList?.name || 'DOC'}</Text>
-              <IconChevronDown size="1rem" className="muted-icon" />
+              <IconChevronDown size="1rem" className={classes.mutedIcon} />
               <ActionIcon variant="subtle" color="gray" aria-label="Favorite"><IconCheck size="1.125rem" /></ActionIcon>
             </Group>
             <Group gap="md">
@@ -515,8 +517,8 @@ export function WorkspaceShell() {
               />
             </Box>
           ) : (
-            <Tabs defaultValue="tasks" keepMounted={false} className="content-tabs">
-              <Tabs.List className="view-tabs">
+            <Tabs defaultValue="tasks" keepMounted={false} className={classes.contentTabs}>
+              <Tabs.List className={classes.viewTabs}>
                 <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>Board</Tabs.Tab>
                 <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>List</Tabs.Tab>
                 <Tabs.Tab value="docs" leftSection={<IconFileText size="1rem" />}>Docs</Tabs.Tab>
@@ -525,14 +527,14 @@ export function WorkspaceShell() {
 
               <Tabs.Panel value="tasks">
                 <Stack gap={0}>
-                  <Group className="task-toolbar" justify="space-between">
+                  <Group className={classes.taskToolbar} justify="space-between">
                     <Group gap="xs">
-                      <Button className="pill-control active" variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Group: Status</Button>
-                      <Button className="pill-control" variant="subtle" leftSection={<IconSubtask size="1.125rem" />}>Subtasks</Button>
-                      <Button className="pill-control" variant="subtle" leftSection={<IconColumns size="1.125rem" />}>Columns</Button>
+                      <Button className={`${classes.pillControl} ${classes.pillActive}`} variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Group: Status</Button>
+                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconSubtask size="1.125rem" />}>Subtasks</Button>
+                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconColumns size="1.125rem" />}>Columns</Button>
                     </Group>
                     <Group gap="xs">
-                      <Button className="pill-control" variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Filter</Button>
+                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Filter</Button>
                       <TextInput value={taskSearch} onChange={(event) => setTaskSearch(event.currentTarget.value)} placeholder="Search tasks" leftSection={<IconSearch size="1rem" />} w="16rem" />
                       <Select
                         value={statusFilter}
@@ -566,16 +568,16 @@ export function WorkspaceShell() {
                         data={milestones.map((milestone) => ({ value: milestone.id, label: milestone.title }))}
                         w="11rem"
                       />
-                      <ActionIcon className="pill-icon" variant="subtle" aria-label="Search" onClick={() => setSearchOpen(true)}><IconSearch size="1.25rem" /></ActionIcon>
-                      <Button className="pill-control" variant="subtle" leftSection={<IconSettings size="1.125rem" />}>Customize</Button>
+                      <ActionIcon className={classes.pillIcon} variant="subtle" aria-label="Search" onClick={() => setSearchOpen(true)}><IconSearch size="1.25rem" /></ActionIcon>
+                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconSettings size="1.125rem" />}>Customize</Button>
                       <Button color="teal" rightSection={<IconChevronDown size="1rem" />} onClick={() => statuses[0] && addTask(statuses[0].id)}>Add Task</Button>
                     </Group>
                   </Group>
                   {tasksError && <Alert color="red" title="Could not load tasks">{tasksError}</Alert>}
-                  {tasksLoading && !tasks.length ? <Box className="center" p="xl"><Loader /></Box> : tasks.length === 0 ? (
+                  {tasksLoading && !tasks.length ? <Box className={classes.center} p="xl"><Loader /></Box> : tasks.length === 0 ? (
                     <Box p="xl"><Text c="dimmed">No tasks match these filters.</Text></Box>
                   ) : view === 'board' ? (
-                    <TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onMoveTask={moveTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} />
+                    <TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} />
                   ) : (
                     <GroupedTaskList tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onMoveTask={moveTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} />
                   )}
@@ -584,7 +586,7 @@ export function WorkspaceShell() {
               </Tabs.Panel>
               <Tabs.Panel value="docs" p="lg"><DocumentsPanel documents={activeSpace.documents} spaceId={activeSpace.id} onOpen={openDoc} onChanged={reload} onError={setActionError} /></Tabs.Panel>
               <Tabs.Panel value="team" p="lg"><TeamPanel workspace={workspace} onChanged={reload} onError={setActionError} /></Tabs.Panel>
-              <Tabs.Panel value="board" p="lg"><TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onMoveTask={moveTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} /></Tabs.Panel>
+              <Tabs.Panel value="board" p="lg"><TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} /></Tabs.Panel>
             </Tabs>
           )}
         </Stack>

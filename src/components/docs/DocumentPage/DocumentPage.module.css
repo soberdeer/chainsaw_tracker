@@ -1,0 +1,35 @@
+.detailPage {
+  max-width: 73.75rem;
+  margin: 0 auto;
+  padding: var(--mantine-spacing-xl);
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+}
+
+.titleInput input {
+  min-height: 3.25rem;
+  border: 0;
+  background: transparent;
+  color: var(--app-text);
+  font-size: 2rem;
+  font-weight: 800;
+  padding-left: 0;
+}
+
+.embedPreview {
+  min-height: 7.5rem;
+  border: 1px dashed #ced4da;
+  border-radius: var(--mantine-radius-md);
+  padding: var(--mantine-spacing-md);
+  display: grid;
+  align-items: center;
+  background: #f8f9fa;
+}
+
+.imagePreview {
+  max-width: 100%;
+  border-radius: var(--mantine-radius-md);
+  border: 1px solid var(--app-border);
+}

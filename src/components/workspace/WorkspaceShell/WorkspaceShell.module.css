@@ -1,0 +1,188 @@
+.center {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+}
+
+.setupScreen {
+  padding: var(--mantine-spacing-xl);
+}
+
+.workspaceSidebar {
+  background: var(--app-panel);
+  border-right: 1px solid var(--app-border);
+  color: var(--app-text);
+}
+
+.spacesTree {
+  height: calc(100vh - 7.5rem);
+}
+
+.spaceTreeBlock {
+  position: relative;
+}
+
+.spaceTreeRow,
+.folderTreeRow,
+.taskListNav,
+.newSpaceRow {
+  width: 100%;
+  min-height: 2.625rem;
+  border: 0;
+  background: transparent;
+  color: var(--app-muted);
+  display: grid;
+  align-items: center;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto auto;
+  gap: var(--mantine-spacing-xs);
+  padding: 0.25rem var(--mantine-spacing-xs);
+  border-radius: var(--mantine-radius-md);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.spaceTreeRow:hover,
+.folderTreeRow:hover,
+.taskListNav:hover,
+.newSpaceRow:hover {
+  background: var(--app-hover);
+}
+
+.active {
+  color: var(--app-text);
+}
+
+.spaceInitial {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--mantine-radius-md);
+  color: #111;
+  display: inline-grid;
+  place-items: center;
+  font-weight: 800;
+}
+
+.spaceName,
+.folderTreeRow span,
+.taskListNav span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.folderTree {
+  margin-left: 1.25rem;
+  padding-left: var(--mantine-spacing-sm);
+  border-left: 1px solid var(--app-border);
+}
+
+.folderTreeRow {
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto auto auto;
+  min-height: 2.375rem;
+}
+
+.taskListNav {
+  margin-left: 1.375rem;
+  width: calc(100% - 1.375rem);
+  grid-template-columns: 1.75rem minmax(0, 1fr) auto;
+  background: var(--app-panel-2);
+  font-size: var(--mantine-font-size-lg);
+}
+
+.taskListIcon {
+  color: #00c853;
+  font-size: 1.375rem;
+  line-height: 1;
+}
+
+.taskCount {
+  background: transparent;
+  color: var(--app-text);
+  font-size: var(--mantine-font-size-lg);
+}
+
+.rowAction {
+  color: var(--app-muted);
+}
+
+.newSpaceRow {
+  grid-template-columns: 2.5rem minmax(0, 1fr);
+  margin-top: var(--mantine-spacing-xs);
+  color: var(--app-muted);
+  font-size: var(--mantine-font-size-lg);
+}
+
+.mutedIcon {
+  color: var(--app-muted);
+}
+
+.mainShell {
+  min-height: 100vh;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+
+.topBar {
+  min-height: 3.625rem;
+  padding: 0 var(--mantine-spacing-md);
+  border-bottom: 1px solid var(--app-border);
+  background: var(--app-bg);
+}
+
+.breadcrumbChip {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: var(--mantine-radius-sm);
+  display: inline-grid;
+  place-items: center;
+  color: #111;
+  font-weight: 800;
+}
+
+.contentTabs {
+  background: var(--app-bg);
+}
+
+.viewTabs {
+  padding: 0 var(--mantine-spacing-md);
+  min-height: 3.5rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.viewTabs [role='tab'] {
+  color: var(--app-muted);
+  font-weight: 700;
+}
+
+.viewTabs [data-active] {
+  color: var(--app-text);
+}
+
+.taskToolbar {
+  min-height: 4rem;
+  padding: var(--mantine-spacing-xs) var(--mantine-spacing-sm);
+  border-bottom: 1px solid var(--app-border);
+}
+
+.pillControl,
+.pillIcon {
+  color: var(--app-muted);
+  border: 1px solid var(--app-border);
+  background: var(--app-panel);
+  border-radius: var(--mantine-radius-xl);
+}
+
+.pillActive {
+  color: #69d6b7;
+  background: #10251f;
+  border-color: #1e5d4c;
+}
+
+.menuDropdown {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+}

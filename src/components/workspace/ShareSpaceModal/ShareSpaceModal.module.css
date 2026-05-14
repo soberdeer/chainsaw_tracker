@@ -1,0 +1,27 @@
+.modalContent {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-lg);
+}
+
+.grow {
+  flex: 1;
+}
+
+.personRow {
+  width: 100%;
+  min-height: 3.25rem;
+  border: 0;
+  border-radius: var(--mantine-radius-md);
+  background: transparent;
+  color: var(--app-text);
+  display: grid;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  padding: 0 var(--mantine-spacing-sm);
+}
+
+.personRow:hover {
+  background: var(--app-hover);
+}

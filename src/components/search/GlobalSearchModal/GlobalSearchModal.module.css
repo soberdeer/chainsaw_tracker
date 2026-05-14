@@ -1,0 +1,72 @@
+.modalContent {
+  background: var(--app-panel);
+  color: var(--app-text);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-lg);
+}
+
+.modalBody {
+  padding: 0;
+}
+
+.modalHeader {
+  min-height: 4.875rem;
+  padding: var(--mantine-spacing-xs) 1.25rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.searchInput {
+  flex: 1;
+}
+
+.searchInput input {
+  color: var(--app-text);
+  font-size: 1.75rem;
+  font-weight: 700;
+}
+
+.tabs {
+  min-height: 3.25rem;
+  padding: var(--mantine-spacing-xs) 1.125rem;
+  border-bottom: 1px solid var(--app-border);
+}
+
+.resultRow {
+  width: 100%;
+  min-height: 3.375rem;
+  border: 0;
+  border-radius: var(--mantine-radius-md);
+  background: transparent;
+  color: var(--app-text);
+  display: grid;
+  grid-template-columns: 2.375rem minmax(13.75rem, max-content) minmax(0, 1fr);
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  padding: 0 var(--mantine-spacing-sm);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.resultRow:hover {
+  background: var(--app-hover);
+}
+
+.resultTitle {
+  font-size: var(--mantine-font-size-lg);
+  font-weight: 700;
+}
+
+.resultSubtitle {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--app-muted);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.modalFooter {
+  min-height: 2.625rem;
+  padding: 0 1.125rem;
+  border-top: 1px solid var(--app-border);
+}

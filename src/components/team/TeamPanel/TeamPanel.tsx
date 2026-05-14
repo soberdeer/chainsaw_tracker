@@ -1,9 +1,10 @@
 import { useState } from 'react';
-import { Avatar, Badge, Button, Checkbox, Group, Modal, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import { Avatar, Button, Checkbox, Group, Modal, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
 import { IconMailPlus } from '@tabler/icons-react';
-import { inviteMember, updateMembership, updateWorkspacePermissions } from '../../lib/api';
-import type { PermissionSet, Workspace, WorkspaceRole } from '../../lib/types';
-import { getErrorMessage } from '../../lib/taskUi';
+import { inviteMember, updateMembership, updateWorkspacePermissions } from '../../../lib/api';
+import type { PermissionSet, Workspace, WorkspaceRole } from '../../../lib/types';
+import { getErrorMessage } from '../../../lib/taskUi';
+import classes from './TeamPanel.module.css';
 
 const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
 const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = ['manageWorkspace', 'manageSpaces', 'manageDocs', 'manageTasks', 'inviteMembers'];
@@ -46,7 +47,7 @@ export function TeamPanel({
 
   return (
     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
-      <Modal opened={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite by email" centered classNames={{ content: 'clickup-modal' }}>
+      <Modal opened={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite by email" centered classNames={{ content: classes.modalContent }}>
         <Stack>
           <TextInput label="Email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} autoFocus />
           <Select label="Role" value={role} onChange={(value) => setRole((value || 'MEMBER') as WorkspaceRole)} data={roles} />
