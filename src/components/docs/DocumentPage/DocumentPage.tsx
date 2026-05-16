@@ -1,21 +1,16 @@
 import { Box, Button, Group, Paper, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { updateDocument } from '../../../lib/api';
-import { getErrorMessage } from '../../../lib/taskUi';
-import type { DocumentItem } from '../../../lib/types';
+import { updateDocument, getErrorMessage, type DocumentItem } from '@/lib';
 import classes from './DocumentPage.module.css';
 
-export function DocumentPage({
-  document,
-  onBack,
-  onSaved,
-  onError,
-}: {
+export interface DocumentPageProps {
   document: DocumentItem;
   onBack: () => void;
   onSaved: (document: DocumentItem) => void;
   onError: (message: string) => void;
-}) {
+}
+
+export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPageProps) {
   const [title, setTitle] = useState(document.title);
   const [markdown, setMarkdown] = useState(document.markdown || '');
   const [embedUrl, setEmbedUrl] = useState(document.embedUrl || '');

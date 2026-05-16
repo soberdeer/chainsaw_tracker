@@ -20,7 +20,9 @@ import type {
 } from './types.js';
 
 function fromMillis(value?: string | null) {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const date = new Date(Number(value));
   return Number.isNaN(date.getTime()) ? undefined : date.toISOString();
 }
@@ -30,17 +32,31 @@ function priorityFromClickUp(value: unknown): TaskPriority {
     typeof value === 'object' && value && 'id' in value
       ? Number((value as { id?: unknown }).id)
       : Number(value);
-  if (id === 1) return 'URGENT';
-  if (id === 2) return 'HIGH';
-  if (id === 4) return 'LOW';
+  if (id === 1) {
+    return 'URGENT';
+  }
+  if (id === 2) {
+    return 'HIGH';
+  }
+  if (id === 4) {
+    return 'LOW';
+  }
   return 'NORMAL';
 }
 
 export function priorityToClickUp(priority?: string) {
-  if (priority === 'URGENT') return 1;
-  if (priority === 'HIGH') return 2;
-  if (priority === 'LOW') return 4;
-  if (priority === 'NORMAL') return 3;
+  if (priority === 'URGENT') {
+    return 1;
+  }
+  if (priority === 'HIGH') {
+    return 2;
+  }
+  if (priority === 'LOW') {
+    return 4;
+  }
+  if (priority === 'NORMAL') {
+    return 3;
+  }
   return undefined;
 }
 
@@ -115,7 +131,9 @@ export function mapFolder(
 }
 
 export function mapFolderlessListFolder(space: ClickUpSpace, lists: ClickUpList[]): Folder | null {
-  if (!lists.length) return null;
+  if (!lists.length) {
+    return null;
+  }
   return {
     id: `${space.id}:folderless`,
     spaceId: space.id,

@@ -1,10 +1,19 @@
 import { Badge, Box, Button, Group, Stack, Text, Tooltip } from '@mantine/core';
 import { IconPlus } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { displayStatus } from '../../../../lib/taskUi';
-import type { Task, TaskStatus } from '../../../../lib/types';
+import { displayStatus, type Task, type TaskStatus } from '@/lib';
 import { KanbanCard } from '../KanbanCard/KanbanCard';
 import classes from './TaskBoard.module.css';
+
+export interface TaskBoardProps {
+  tasks: Task[];
+  statuses: TaskStatus[];
+  onAddTask: (statusId: string) => void;
+  onOpenTask: (task: Task) => void;
+  onReorderTasks: (taskId: string, statusId: string, orderedTaskIds: string[]) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}
 
 export function TaskBoard({
   tasks,
@@ -14,15 +23,7 @@ export function TaskBoard({
   onReorderTasks,
   onChanged,
   onError,
-}: {
-  tasks: Task[];
-  statuses: TaskStatus[];
-  onAddTask: (statusId: string) => void;
-  onOpenTask: (task: Task) => void;
-  onReorderTasks: (taskId: string, statusId: string, orderedTaskIds: string[]) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
+}: TaskBoardProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const orderedStatuses = useMemo(
     () => [...statuses].sort((a, b) => b.position - a.position),
@@ -55,7 +56,9 @@ export function TaskBoard({
               onDrop={(event) => {
                 event.preventDefault();
                 const taskId = draggedTaskId || event.dataTransfer.getData('text/task-id');
-                if (taskId) reorderIntoColumn(taskId);
+                if (taskId) {
+                  reorderIntoColumn(taskId);
+                }
                 setDraggedTaskId(null);
               }}
             >
@@ -79,8 +82,9 @@ export function TaskBoard({
                     onDragStart={(taskId) => setDraggedTaskId(taskId)}
                     onDropOnTask={(targetTaskId) => {
                       const taskId = draggedTaskId;
-                      if (taskId && taskId !== targetTaskId)
+                      if (taskId && taskId !== targetTaskId) {
                         reorderIntoColumn(taskId, targetTaskId);
+                      }
                       setDraggedTaskId(null);
                     }}
                     onChanged={onChanged}

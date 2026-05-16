@@ -5,7 +5,9 @@ const timeoutMs = Number(process.env.CLICKUP_TIMEOUT_MS || 15000);
 
 function token() {
   const value = process.env.CLICKUP_TOKEN;
-  if (!value) throw new ClickUpConfigError();
+  if (!value) {
+    throw new ClickUpConfigError();
+  }
   return value;
 }
 
@@ -15,7 +17,9 @@ function buildUrl(
 ) {
   const url = new URL(`${baseUrl}${path}`);
   Object.entries(query || {}).forEach(([key, value]) => {
-    if (value === undefined || value === null || value === '') return;
+    if (value === undefined || value === null || value === '') {
+      return;
+    }
     if (Array.isArray(value)) {
       value.forEach((item) => url.searchParams.append(key, String(item)));
     } else {
@@ -60,7 +64,9 @@ export async function clickUpRequest<T>(
     }
     return payload as T;
   } catch (error) {
-    if (error instanceof ClickUpApiError || error instanceof ClickUpConfigError) throw error;
+    if (error instanceof ClickUpApiError || error instanceof ClickUpConfigError) {
+      throw error;
+    }
     if ((error as Error).name === 'AbortError') {
       throw new ClickUpApiError(504, 'ClickUp API request timed out');
     }

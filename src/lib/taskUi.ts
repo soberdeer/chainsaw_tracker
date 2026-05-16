@@ -66,13 +66,21 @@ export function docPath(spaceId: string, docId: string) {
 
 export function parseAppPath(pathname: string) {
   const taskMatch = pathname.match(/^\/space\/([^/]+)\/folder\/([^/]+)\/task\/([^/]+)/);
-  if (taskMatch) return { spaceId: taskMatch[1], folderId: taskMatch[2], taskId: taskMatch[3] };
+  if (taskMatch) {
+    return { spaceId: taskMatch[1], folderId: taskMatch[2], taskId: taskMatch[3] };
+  }
   const docMatch = pathname.match(/^\/space\/([^/]+)\/doc\/([^/]+)/);
-  if (docMatch) return { spaceId: docMatch[1], docId: docMatch[2] };
+  if (docMatch) {
+    return { spaceId: docMatch[1], docId: docMatch[2] };
+  }
   const folderMatch = pathname.match(/^\/space\/([^/]+)\/folder\/([^/]+)/);
-  if (folderMatch) return { spaceId: folderMatch[1], folderId: folderMatch[2] };
+  if (folderMatch) {
+    return { spaceId: folderMatch[1], folderId: folderMatch[2] };
+  }
   const spaceMatch = pathname.match(/^\/space\/([^/]+)/);
-  if (spaceMatch) return { spaceId: spaceMatch[1] };
+  if (spaceMatch) {
+    return { spaceId: spaceMatch[1] };
+  }
   return {};
 }
 
@@ -87,11 +95,15 @@ export function workspaceHasWork(workspace: Workspace) {
 }
 
 export function formatDueDate(value?: string) {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
   const date = new Date(value);
   const now = new Date('2026-05-11T00:00:00');
   const days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
-  if (days < 0 && days > -14) return `${Math.abs(days)} days ago`;
+  if (days < 0 && days > -14) {
+    return `${Math.abs(days)} days ago`;
+  }
   return new Intl.DateTimeFormat('en-GB', {
     day: 'numeric',
     month: 'numeric',
@@ -100,7 +112,9 @@ export function formatDueDate(value?: string) {
 }
 
 export function toDateInput(value?: string) {
-  if (!value) return '';
+  if (!value) {
+    return '';
+  }
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? '' : date.toISOString().slice(0, 10);
 }

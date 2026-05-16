@@ -10,10 +10,27 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { createTask, getTask } from '../../../../lib/api';
-import { displayStatus, getErrorMessage } from '../../../../lib/taskUi';
-import type { Task, TaskPriority, TaskStatus, User } from '../../../../lib/types';
+import {
+  createTask,
+  getTask,
+  displayStatus,
+  getErrorMessage,
+  type Task,
+  type TaskPriority,
+  type TaskStatus,
+  type User,
+} from '@/lib';
 import classes from './SubtaskModal.module.css';
+
+export interface SubtaskModalProps {
+  opened: boolean;
+  parentTask: Task;
+  statuses: TaskStatus[];
+  users: User[];
+  onClose: () => void;
+  onCreated: (task: Task) => void;
+  onError: (message: string) => void;
+}
 
 export function SubtaskModal({
   opened,
@@ -23,15 +40,7 @@ export function SubtaskModal({
   onClose,
   onCreated,
   onError,
-}: {
-  opened: boolean;
-  parentTask: Task;
-  statuses: TaskStatus[];
-  users: User[];
-  onClose: () => void;
-  onCreated: (task: Task) => void;
-  onError: (message: string) => void;
-}) {
+}: SubtaskModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [statusId, setStatusId] = useState(statuses[0]?.id || '');
@@ -51,10 +60,19 @@ export function SubtaskModal({
       setStartDate('');
       setDueDate('');
     }
-  }, [opened, parentTask.id, parentTask.priority, parentTask.statusId, statuses]);
+  }, [
+    opened,
+    parentTask.id,
+    parentTask.priority,
+    parentTask.statusId,
+    parentTask.assignees,
+    statuses,
+  ]);
 
   const create = async () => {
-    if (!parentTask.taskListId || !title.trim()) return;
+    if (!parentTask.taskListId || !title.trim()) {
+      return;
+    }
     try {
       setSaving(true);
       await createTask({

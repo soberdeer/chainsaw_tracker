@@ -20,12 +20,16 @@ const statusColors: Record<string, string> = {
 };
 
 function fixMojibake(value: string) {
-  if (!/[ÐÑ]/.test(value)) return value;
+  if (!/[ÐÑ]/.test(value)) {
+    return value;
+  }
 
   try {
     const fixed = Buffer.from(value, 'latin1').toString('utf8');
 
-    if (fixed.includes('�')) return value;
+    if (fixed.includes('�')) {
+      return value;
+    }
     return fixed;
   } catch {
     return value;
@@ -38,7 +42,9 @@ function text(value: unknown) {
 
 function parseJsonArray(value: unknown) {
   const raw = text(value);
-  if (!raw) return [];
+  if (!raw) {
+    return [];
+  }
 
   try {
     const parsed = JSON.parse(raw);
@@ -50,7 +56,9 @@ function parseJsonArray(value: unknown) {
 
 function parseFolderName(value: unknown) {
   const raw = text(value);
-  if (!raw) return 'General';
+  if (!raw) {
+    return 'General';
+  }
 
   const parsed = parseJsonArray(raw);
   return parsed.length ? text(parsed[parsed.length - 1]) : raw;
@@ -58,7 +66,9 @@ function parseFolderName(value: unknown) {
 
 function parseDate(value: unknown) {
   const raw = text(value);
-  if (!raw) return undefined;
+  if (!raw) {
+    return undefined;
+  }
 
   const numeric = Number(raw);
 
@@ -74,9 +84,15 @@ function parseDate(value: unknown) {
 function parsePriority(value: unknown): TaskPriority {
   const raw = text(value).toLowerCase();
 
-  if (raw.includes('urgent')) return 'URGENT';
-  if (raw.includes('high')) return 'HIGH';
-  if (raw.includes('low')) return 'LOW';
+  if (raw.includes('urgent')) {
+    return 'URGENT';
+  }
+  if (raw.includes('high')) {
+    return 'HIGH';
+  }
+  if (raw.includes('low')) {
+    return 'LOW';
+  }
 
   return 'NORMAL';
 }
@@ -442,7 +458,9 @@ export async function importClickUpCsv(filePath: string, workspaceId: string) {
       for (const tagValue of tags) {
         const tagName = text((tagValue as Record<string, unknown>).name || tagValue);
 
-        if (!tagName) continue;
+        if (!tagName) {
+          continue;
+        }
 
         const tag = await prisma.tag.upsert({
           where: {

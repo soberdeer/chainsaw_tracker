@@ -19,7 +19,9 @@ export const documentsRouter = Router();
 
 documentsRouter.get('/', async (req, res) => {
   const spaceId = z.string().optional().parse(req.query.spaceId);
-  if (spaceId) await requireSpacePermission(req, spaceId, 'view');
+  if (spaceId) {
+    await requireSpacePermission(req, spaceId, 'view');
+  }
   const documents = await prisma.document.findMany({
     where: spaceId ? { spaceId } : undefined,
     orderBy: { updatedAt: 'desc' },

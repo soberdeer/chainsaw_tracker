@@ -20,10 +20,28 @@ import {
   IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { createTask } from '../../../lib/api';
-import { displayStatus, getErrorMessage } from '../../../lib/taskUi';
-import type { Task, TaskList, TaskPriority, TaskStatus, User } from '../../../lib/types';
+import {
+  createTask,
+  displayStatus,
+  getErrorMessage,
+  type Task,
+  type TaskList,
+  type TaskPriority,
+  type TaskStatus,
+  type User,
+} from '@/lib';
 import classes from './TaskCreateModal.module.css';
+
+export interface TaskCreateModalProps {
+  opened: boolean;
+  taskList?: TaskList;
+  statuses: TaskStatus[];
+  users: User[];
+  initialStatusId?: string;
+  onClose: () => void;
+  onCreated: (task: Task) => void;
+  onError: (message: string) => void;
+}
 
 export function TaskCreateModal({
   opened,
@@ -34,16 +52,7 @@ export function TaskCreateModal({
   onClose,
   onCreated,
   onError,
-}: {
-  opened: boolean;
-  taskList?: TaskList;
-  statuses: TaskStatus[];
-  users: User[];
-  initialStatusId?: string;
-  onClose: () => void;
-  onCreated: (task: Task) => void;
-  onError: (message: string) => void;
-}) {
+}: TaskCreateModalProps) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [statusId, setStatusId] = useState('');
@@ -53,7 +62,9 @@ export function TaskCreateModal({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!opened) return;
+    if (!opened) {
+      return;
+    }
     setTitle('');
     setDescription('');
     setStatusId(initialStatusId || statuses[0]?.id || '');
@@ -63,7 +74,9 @@ export function TaskCreateModal({
   }, [opened, initialStatusId, statuses]);
 
   const submit = async () => {
-    if (!taskList?.id || !title.trim()) return;
+    if (!taskList?.id || !title.trim()) {
+      return;
+    }
     try {
       setSaving(true);
       const task = await createTask({

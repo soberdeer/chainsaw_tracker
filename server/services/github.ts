@@ -14,7 +14,9 @@ export function verifyGitHubSignature(
   signature: string | undefined,
   secret = process.env.GITHUB_WEBHOOK_SECRET
 ) {
-  if (!secret || !signature?.startsWith('sha256=')) return false;
+  if (!secret || !signature?.startsWith('sha256=')) {
+    return false;
+  }
   const expected = `sha256=${crypto.createHmac('sha256', secret).update(rawBody).digest('hex')}`;
   const signatureBuffer = Buffer.from(signature);
   const expectedBuffer = Buffer.from(expected);
@@ -29,7 +31,9 @@ export async function findTaskForGitHubLink(
   ...values: Array<string | null | undefined>
 ) {
   const taskKey = findTaskKey(...values);
-  if (!taskKey) return null;
+  if (!taskKey) {
+    return null;
+  }
   return prisma.task.findFirst({
     where: {
       workspaceId: repository.workspaceId,
@@ -171,12 +175,16 @@ export async function upsertPullRequest(
       syncedAt: new Date(),
     },
   });
-  if (task) await linkPullRequestToTask(pr, task.id).catch(() => undefined);
+  if (task) {
+    await linkPullRequestToTask(pr, task.id).catch(() => undefined);
+  }
   return { pr, linkedTaskId: task?.id || null };
 }
 
 export async function logPrActivity(pr: GitHubPullRequest, type: ActivityEventType) {
-  if (!pr.taskId) return null;
+  if (!pr.taskId) {
+    return null;
+  }
   return logTaskActivity({
     taskId: pr.taskId,
     type,

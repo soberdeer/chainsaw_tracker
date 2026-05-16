@@ -2,8 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { sendInviteEmail } from '../services/email.js';
-import { accessibleSpaceIds, requirePermission } from '../services/permissions.js';
-import { currentUserId } from '../services/permissions.js';
+import { accessibleSpaceIds, requirePermission, currentUserId } from '../services/permissions.js';
 import crypto from 'node:crypto';
 
 export const workspacesRouter = Router();

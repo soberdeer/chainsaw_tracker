@@ -24,10 +24,18 @@ import {
   duplicateDocument,
   updateDocument,
   uploadDocument,
-} from '../../../lib/api';
-import { getErrorMessage } from '../../../lib/taskUi';
-import type { DocumentItem } from '../../../lib/types';
+  getErrorMessage,
+  type DocumentItem,
+} from '@/lib';
 import classes from './DocumentsPanel.module.css';
+
+export interface DocumentsPanelProps {
+  documents: DocumentItem[];
+  spaceId: string;
+  onOpen: (doc: DocumentItem) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}
 
 export function DocumentsPanel({
   documents,
@@ -35,13 +43,7 @@ export function DocumentsPanel({
   onOpen,
   onChanged,
   onError,
-}: {
-  documents: DocumentItem[];
-  spaceId: string;
-  onOpen: (doc: DocumentItem) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
+}: DocumentsPanelProps) {
   const [embedUrl, setEmbedUrl] = useState('https://drive.google.com/file/d/example/preview');
   const run = async (action: () => Promise<unknown>) => {
     try {
@@ -54,7 +56,9 @@ export function DocumentsPanel({
 
   const createMd = async () => {
     const title = window.prompt('Doc title');
-    if (!title) return;
+    if (!title) {
+      return;
+    }
     await run(() => createMarkdownDoc({ spaceId, title, markdown: `# ${title}\n` }));
   };
 
@@ -132,7 +136,9 @@ export function DocumentsPanel({
                     <Menu.Item
                       onClick={() => {
                         const title = window.prompt('Doc name', doc.title);
-                        if (title) void run(() => updateDocument(doc.id, { title }));
+                        if (title) {
+                          void run(() => updateDocument(doc.id, { title }));
+                        }
                       }}
                     >
                       Rename
@@ -152,8 +158,9 @@ export function DocumentsPanel({
                     <Menu.Item
                       color="red"
                       onClick={() => {
-                        if (window.confirm(`Delete "${doc.title}"?`))
+                        if (window.confirm(`Delete "${doc.title}"?`)) {
                           void run(() => deleteDocument(doc.id));
+                        }
                       }}
                     >
                       Delete

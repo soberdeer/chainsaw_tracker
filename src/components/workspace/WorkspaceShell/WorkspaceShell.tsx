@@ -32,7 +32,7 @@ import {
   IconPlus,
   IconSearch,
 } from '@tabler/icons-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   createFolder,
@@ -44,8 +44,6 @@ import {
   reorderTasks,
   updateSpace,
   updateTask,
-} from '../../../lib/api';
-import {
   firstTaskFolder,
   firstTaskList,
   folderPath,
@@ -53,8 +51,10 @@ import {
   parseAppPath,
   taskPath,
   workspaceHasWork,
-} from '../../../lib/taskUi';
-import type { Task, User, Workspace } from '../../../lib/types';
+  type Task,
+  type User,
+  type Workspace,
+} from '@/lib';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
 import { GroupedTaskList, TaskBoard } from '../../tasks/StatusIcon';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
@@ -185,45 +185,43 @@ export function WorkspaceShell() {
     return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [workspace, tasks]);
 
-  const loadTasks = async (cursor?: string) => {
-    if (!workspace?.id || !activeTaskList?.id) {
-      setTasks([]);
-      setNextCursor(null);
-      return;
-    }
-    try {
-      setTasksLoading(true);
-      setTasksError(null);
-      const page = await getTasks({
-        workspaceId: workspace.id,
-        listId: activeTaskList.id,
-        statusId: statusFilter || undefined,
-        assigneeIds: assigneeFilter.length ? assigneeFilter : undefined,
-        priority: priorityFilter || undefined,
-        search: taskSearch,
-        limit: 50,
-        cursor,
-      });
-      setTasks((current) => (cursor ? [...current, ...page.items] : page.items));
-      setNextCursor(page.nextCursor || null);
-    } catch (error) {
-      setTasksError(getErrorMessage(error));
-    } finally {
-      setTasksLoading(false);
-    }
-  };
+  const loadTasks = useCallback(
+    async (cursor?: string) => {
+      if (!workspace?.id || !activeTaskList?.id) {
+        setTasks([]);
+        setNextCursor(null);
+        return;
+      }
+
+      try {
+        setTasksLoading(true);
+        setTasksError(null);
+
+        const page = await getTasks({
+          workspaceId: workspace.id,
+          listId: activeTaskList.id,
+          statusId: statusFilter || undefined,
+          assigneeIds: assigneeFilter.length ? assigneeFilter : undefined,
+          priority: priorityFilter || undefined,
+          search: taskSearch,
+          limit: 50,
+          cursor,
+        });
+
+        setTasks((current) => (cursor ? [...current, ...page.items] : page.items));
+        setNextCursor(page.nextCursor || null);
+      } catch (error) {
+        setTasksError(getErrorMessage(error));
+      } finally {
+        setTasksLoading(false);
+      }
+    },
+    [workspace?.id, activeTaskList?.id, statusFilter, assigneeFilter, priorityFilter, taskSearch]
+  );
 
   useEffect(() => {
-    void loadTasks();
-  }, [
-    workspace?.id,
-    activeTaskList?.id,
-    taskSearch,
-    statusFilter,
-    assigneeFilter.join(','),
-    priorityFilter,
-    refreshKey,
-  ]);
+    loadTasks();
+  }, [loadTasks]);
 
   const addTask = async (statusId: string) => {
     if (!activeTaskList) return;
@@ -376,7 +374,9 @@ export function WorkspaceShell() {
               aria-label="Add space"
               onClick={async () => {
                 const name = window.prompt('Space name');
-                if (!name) return;
+                if (!name) {
+                  return;
+                }
                 await runAction(async () => {
                   await createSpace({
                     workspaceId: workspace.id,
@@ -448,11 +448,12 @@ export function WorkspaceShell() {
                         <Menu.Item
                           onClick={() => {
                             const name = window.prompt('Space name', space.name);
-                            if (name)
-                              void runAction(async () => {
+                            if (name) {
+                              runAction(async () => {
                                 await updateSpace(space.id, { name });
                                 reload();
                               });
+                            }
                           }}
                         >
                           Rename
@@ -833,7 +834,7 @@ export function WorkspaceShell() {
                     <Button
                       variant="subtle"
                       loading={tasksLoading}
-                      onClick={() => void loadTasks(nextCursor)}
+                      onClick={() => loadTasks(nextCursor)}
                     >
                       Load more
                     </Button>

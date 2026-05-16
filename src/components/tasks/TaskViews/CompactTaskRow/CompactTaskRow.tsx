@@ -1,12 +1,20 @@
 import { ActionIcon, Badge, Text, Tooltip } from '@mantine/core';
 import { IconCalendarDue, IconChevronRight, IconFlag, IconList } from '@tabler/icons-react';
 import { useState } from 'react';
-import { displayStatus, formatDueDate } from '../../../../lib/taskUi';
-import type { Task } from '../../../../lib/types';
+import { displayStatus, formatDueDate, type Task } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
 import { StatusIcon } from '../../StatusIcon/StatusIcon';
 import { TaskActionsMenu } from '../TaskActionMenu/TaskActionMenu';
 import classes from './CompactTaskRow.module.css';
+
+export interface CompactTaskRowProps {
+  task: Task;
+  onOpen: (task: Task) => void;
+  onDragStart: (taskId: string) => void;
+  onDropOnTask: (targetTaskId: string) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}
 
 export function CompactTaskRow({
   task,
@@ -15,21 +23,11 @@ export function CompactTaskRow({
   onDropOnTask,
   onChanged,
   onError,
-}: {
-  task: Task;
-  onOpen: (task: Task) => void;
-  onDragStart: (taskId: string) => void;
-  onDropOnTask: (targetTaskId: string) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
+}: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
-  const [showSubtasks, setShowSubtasks] = useState(false);
-  if (task.title === 'CL-PROTO-004_implement-interaction-system') {
-    console.log(task);
-  }
+  const [_, setShowSubtasks] = useState(false);
 
   const toggleSubtasks = (e: any) => {
     e.preventDefault();

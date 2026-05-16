@@ -47,7 +47,9 @@ export function currentUserId(req: Request) {
 
 export async function workspaceMembership(req: Request, workspaceId: string) {
   const userId = currentUserId(req);
-  if (!userId) return null;
+  if (!userId) {
+    return null;
+  }
   return prisma.membership.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
     include: { workspace: { include: { permissionSets: true } } },
@@ -63,24 +65,37 @@ export async function canAccessSpace(
     where: { id: spaceId },
     include: { permissions: true },
   });
-  if (!space) return false;
+  if (!space) {
+    return false;
+  }
 
   const membership = await workspaceMembership(req, space.workspaceId);
-  if (!membership) return false;
-  if (membership.role === 'OWNER') return true;
+  if (!membership) {
+    return false;
+  }
+  if (membership.role === 'OWNER') {
+    return true;
+  }
 
   const spaceSet = space.permissions.find((item) => item.role === membership.role);
   const workspaceSet = membership.workspace.permissionSets.find(
     (item) => item.role === membership.role
   );
   if (!spaceSet && workspaceSet) {
-    if (permission === 'view') return true;
-    if (permission === 'edit')
+    if (permission === 'view') {
+      return true;
+    }
+    if (permission === 'edit') {
       return workspaceSet.manageTasks || workspaceSet.manageDocs || workspaceSet.manageSpaces;
+    }
     return workspaceSet.manageSpaces;
   }
-  if (permission === 'view') return Boolean(spaceSet?.canView);
-  if (permission === 'edit') return Boolean(spaceSet?.canEdit || spaceSet?.canManage);
+  if (permission === 'view') {
+    return Boolean(spaceSet?.canView);
+  }
+  if (permission === 'edit') {
+    return Boolean(spaceSet?.canEdit || spaceSet?.canManage);
+  }
   return Boolean(spaceSet?.canManage);
 }
 
@@ -98,18 +113,24 @@ export async function requireSpacePermission(
 
 export async function accessibleSpaceIds(req: Request, workspaceId: string) {
   const membership = await workspaceMembership(req, workspaceId);
-  if (!membership) return [];
+  if (!membership) {
+    return [];
+  }
 
   const spaces = await prisma.space.findMany({
     where: { workspaceId },
     include: { permissions: true },
   });
-  if (membership.role === 'OWNER') return spaces.map((space) => space.id);
+  if (membership.role === 'OWNER') {
+    return spaces.map((space) => space.id);
+  }
 
   return spaces
     .filter((space) => {
       const spaceSet = space.permissions.find((permission) => permission.role === membership.role);
-      if (spaceSet) return spaceSet.canView;
+      if (spaceSet) {
+        return spaceSet.canView;
+      }
       return Boolean(
         membership.workspace.permissionSets.find(
           (permission) => permission.role === membership.role
@@ -130,9 +151,15 @@ export async function canEditTask(
 ) {
   const workspaceId = task.workspaceId || task.folder.space.workspaceId;
   const membership = await workspaceMembership(req, workspaceId);
-  if (!membership) return false;
-  if (membership.role === 'OWNER' || membership.role === 'ADMIN') return true;
-  if (membership.role === 'LEAD') return canAccessSpace(req, task.folder.spaceId, 'edit');
+  if (!membership) {
+    return false;
+  }
+  if (membership.role === 'OWNER' || membership.role === 'ADMIN') {
+    return true;
+  }
+  if (membership.role === 'LEAD') {
+    return canAccessSpace(req, task.folder.spaceId, 'edit');
+  }
   if (membership.role === 'MEMBER') {
     const userId = currentUserId(req);
     return Boolean(

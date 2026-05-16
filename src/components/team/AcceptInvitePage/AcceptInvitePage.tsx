@@ -2,8 +2,7 @@ import { Alert, Box, Button, Loader, Paper, Stack, Text, Title, Tooltip } from '
 import { IconMailCheck } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
-import { acceptInvite } from '../../../lib/api';
-import { getErrorMessage } from '../../../lib/taskUi';
+import { acceptInvite, getErrorMessage } from '@/lib';
 import classes from './AcceptInvitePage.module.css';
 
 export function AcceptInvitePage() {
@@ -16,7 +15,9 @@ export function AcceptInvitePage() {
   const [error, setError] = useState<string | null>(null);
 
   const accept = async () => {
-    if (!token) return;
+    if (!token) {
+      return;
+    }
     try {
       setLoading(true);
       setError(null);

@@ -29,7 +29,9 @@ export async function logTaskActivity(input: {
       })
     )?.folder.space.workspaceId;
 
-  if (!workspaceId) return null;
+  if (!workspaceId) {
+    return null;
+  }
 
   return prisma.activityLog.create({
     data: {

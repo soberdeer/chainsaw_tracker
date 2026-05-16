@@ -58,7 +58,9 @@ const actions = [
 ] as const;
 
 function matches(query: string, ...values: Array<string | null | undefined>) {
-  if (!query) return true;
+  if (!query) {
+    return true;
+  }
   const needle = query.toLowerCase();
   return values.some((value) => value?.toLowerCase().includes(needle));
 }

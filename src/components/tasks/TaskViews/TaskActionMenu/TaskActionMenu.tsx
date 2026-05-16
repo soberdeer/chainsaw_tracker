@@ -1,19 +1,22 @@
 import { ActionIcon, Divider, Menu, Tooltip } from '@mantine/core';
 import { IconDots } from '@tabler/icons-react';
-import { createTask, deleteTask, duplicateTask, updateTask } from '../../../../lib/api';
-import { getErrorMessage } from '../../../../lib/taskUi';
-import type { Task } from '../../../../lib/types';
+import {
+  createTask,
+  deleteTask,
+  duplicateTask,
+  updateTask,
+  getErrorMessage,
+  type Task,
+} from '@/lib';
 import classes from './TaskActionMenu.module.css';
 
-export function TaskActionsMenu({
-  task,
-  onChanged,
-  onError,
-}: {
+export interface TaskActionMenuProps {
   task: Task;
   onChanged: () => void;
   onError: (message: string) => void;
-}) {
+}
+
+export function TaskActionsMenu({ task, onChanged, onError }: TaskActionMenuProps) {
   const copyLink = async () =>
     navigator.clipboard
       ?.writeText(`${window.location.origin}/space/${task.folderId}/task/${task.id}`)
@@ -49,7 +52,9 @@ export function TaskActionsMenu({
         <Menu.Item
           onClick={() => {
             const title = window.prompt('Task name', task.title);
-            if (title) void run(() => updateTask(task.id, { title }));
+            if (title) {
+              void run(() => updateTask(task.id, { title }));
+            }
           }}
         >
           Rename
@@ -74,7 +79,9 @@ export function TaskActionsMenu({
         <Menu.Item
           color="red"
           onClick={() => {
-            if (window.confirm(`Delete "${task.title}"?`)) void run(() => deleteTask(task.id));
+            if (window.confirm(`Delete "${task.title}"?`)) {
+              void run(() => deleteTask(task.id));
+            }
           }}
         >
           Delete

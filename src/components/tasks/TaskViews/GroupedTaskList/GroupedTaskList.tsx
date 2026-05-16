@@ -1,11 +1,21 @@
 import { ActionIcon, Box, Group, Text, Tooltip } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconDots, IconPlus } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import { displayStatus } from '../../../../lib/taskUi';
-import type { Task, TaskStatus } from '../../../../lib/types';
+import { displayStatus, type Task, type TaskStatus } from '@/lib';
 import { StatusIcon } from '../../StatusIcon/StatusIcon';
 import { CompactTaskRow } from '../CompactTaskRow/CompactTaskRow';
 import classes from './GroupedTaskList.module.css';
+
+export interface GroupedTaskListProps {
+  tasks: Task[];
+  statuses: TaskStatus[];
+  onAddTask: (statusId: string) => void;
+  onOpenTask: (task: Task) => void;
+  onMoveTask: (taskId: string, statusId: string) => void;
+  onReorderTasks: (taskId: string, statusId: string, orderedTaskIds: string[]) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}
 
 export function GroupedTaskList({
   tasks,
@@ -16,16 +26,7 @@ export function GroupedTaskList({
   onReorderTasks,
   onChanged,
   onError,
-}: {
-  tasks: Task[];
-  statuses: TaskStatus[];
-  onAddTask: (statusId: string) => void;
-  onOpenTask: (task: Task) => void;
-  onMoveTask: (taskId: string, statusId: string) => void;
-  onReorderTasks: (taskId: string, statusId: string, orderedTaskIds: string[]) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
+}: GroupedTaskListProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
   const orderedStatuses = useMemo(
@@ -36,8 +37,11 @@ export function GroupedTaskList({
   const toggleStatus = (statusId: string) => {
     setCollapsedStatuses((current) => {
       const next = new Set(current);
-      if (next.has(statusId)) next.delete(statusId);
-      else next.add(statusId);
+      if (next.has(statusId)) {
+        next.delete(statusId);
+      } else {
+        next.add(statusId);
+      }
       return next;
     });
   };
@@ -69,7 +73,9 @@ export function GroupedTaskList({
             onDrop={(event) => {
               event.preventDefault();
               const taskId = draggedTaskId || event.dataTransfer.getData('text/task-id');
-              if (taskId) reorderIntoGroup(taskId);
+              if (taskId) {
+                reorderIntoGroup(taskId);
+              }
               setDraggedTaskId(null);
             }}
           >
@@ -128,7 +134,9 @@ export function GroupedTaskList({
                     onDragStart={(taskId) => setDraggedTaskId(taskId)}
                     onDropOnTask={(targetTaskId) => {
                       const taskId = draggedTaskId;
-                      if (taskId && taskId !== targetTaskId) reorderIntoGroup(taskId, targetTaskId);
+                      if (taskId && taskId !== targetTaskId) {
+                        reorderIntoGroup(taskId, targetTaskId);
+                      }
                       setDraggedTaskId(null);
                     }}
                     onChanged={onChanged}

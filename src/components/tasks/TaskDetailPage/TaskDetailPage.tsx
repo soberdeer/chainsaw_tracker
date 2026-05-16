@@ -1,6 +1,5 @@
 import {
   ActionIcon,
-  Avatar,
   Badge,
   Button,
   Group,
@@ -34,25 +33,31 @@ import {
   refreshTaskGitHub,
   unlinkTaskPullRequest,
   updateTask,
-} from '../../../lib/api';
-import {
   displayStatus,
   formatDueDate,
   getErrorMessage,
   priorityColor,
   toDateInput,
-} from '../../../lib/taskUi';
-import type {
-  ActivityLog,
-  GitHubRepository,
-  Task,
-  TaskPriority,
-  TaskStatus,
-  Workspace,
-} from '../../../lib/types';
+  type ActivityLog,
+  type GitHubRepository,
+  type Task,
+  type TaskPriority,
+  type TaskStatus,
+  type Workspace,
+} from '@/lib';
 import { AvatarStack } from '../../common/AvatarStack';
 import { SubtaskModal } from './SubtaskModal/SubtaskModal';
 import classes from './TaskDetailPage.module.css';
+
+export interface TaskDetailPageProps {
+  task: Task;
+  workspace: Workspace;
+  statuses: TaskStatus[];
+  onBack: () => void;
+  onSaved: (task: Task) => void;
+  onOpenSubtask: (task: Task) => void;
+  onError: (message: string) => void;
+}
 
 export function TaskDetailPage({
   task,
@@ -62,15 +67,7 @@ export function TaskDetailPage({
   onSaved,
   onOpenSubtask,
   onError,
-}: {
-  task: Task;
-  workspace: Workspace;
-  statuses: TaskStatus[];
-  onBack: () => void;
-  onSaved: (task: Task) => void;
-  onOpenSubtask: (task: Task) => void;
-  onError: (message: string) => void;
-}) {
+}: TaskDetailPageProps) {
   const due = formatDueDate(task.dueDate);
   const start = formatDueDate(task.startDate);
   const status = displayStatus(undefined, task.status);
@@ -108,7 +105,7 @@ export function TaskDetailPage({
         setSelectedRepositoryId((current) => current || items[0]?.id || '');
       })
       .catch(() => setRepositories([]));
-  }, [task]);
+  }, [task, workspace, onError]);
 
   const showGitHubTab = Boolean(
     (task.githubPullRequests?.length || 0) > 0 ||

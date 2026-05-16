@@ -3,7 +3,6 @@ import {
   mapCommentActivity,
   mapFolder,
   mapFolderlessListFolder,
-  mapList,
   mapSpace,
   mapTask,
   mapTeam,
@@ -29,7 +28,9 @@ type PageQuery = {
 };
 
 function toMillis(value?: string | null) {
-  if (!value) return undefined;
+  if (!value) {
+    return undefined;
+  }
   const time = new Date(value).getTime();
   return Number.isNaN(time) ? undefined : time;
 }
@@ -73,7 +74,7 @@ export async function getList(listId: string) {
 
 export async function getWorkspaceTree() {
   const teams = await getTeams();
-  const workspaces = await Promise.all(
+  return await Promise.all(
     teams.map(async (team) => {
       const spaces = await getSpaces(team.id);
       const mappedSpaces = await Promise.all(
@@ -92,7 +93,6 @@ export async function getWorkspaceTree() {
       return mapTeam(team, mappedSpaces);
     })
   );
-  return workspaces;
 }
 
 export async function createSpace(
@@ -158,7 +158,9 @@ export async function getTasks(listId: string, query: PageQuery) {
         task.id.toLowerCase().includes(search)
     );
   }
-  if (query.priority) tasks = tasks.filter((task) => task.priority === query.priority);
+  if (query.priority) {
+    tasks = tasks.filter((task) => task.priority === query.priority);
+  }
   return {
     items: tasks.slice(0, query.limit || 100),
     nextCursor: tasks.length >= (query.limit || 100) ? String(page + 1) : null,
@@ -281,13 +283,13 @@ export async function getTaskComments(taskId: string) {
 export async function getTaskListOptions(workspaceId: string, teamId?: string) {
   const workspaces = await getWorkspaceTree();
   const workspace = workspaces.find((item) => item.id === workspaceId);
-  const lists =
+  return (
     workspace?.spaces.flatMap((space) =>
       space.folders
         .filter((folder) => !teamId || folder.id === teamId)
         .flatMap((folder) => folder.taskLists || [])
-    ) || [];
-  return lists;
+    ) || []
+  );
 }
 
 export async function getStatuses(workspaceId: string, listId?: string) {
@@ -298,7 +300,9 @@ export async function getStatuses(workspaceId: string, listId?: string) {
 }
 
 export async function searchTasks(query: string, workspaceId?: string) {
-  if (!workspaceId || !query.trim()) return [];
+  if (!workspaceId || !query.trim()) {
+    return [];
+  }
   const lists = await getTaskListOptions(workspaceId);
   const limitedLists = lists.slice(0, 8);
   const pages = await Promise.all(

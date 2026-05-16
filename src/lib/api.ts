@@ -17,7 +17,9 @@ const currentUserId = 'local-user';
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
   headers.set('x-user-id', currentUserId);
-  if (!(options.body instanceof FormData)) headers.set('Content-Type', 'application/json');
+  if (!(options.body instanceof FormData)) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   const response = await fetch(url, { ...options, headers });
   if (!response.ok) {
@@ -104,7 +106,9 @@ export function getTasks(params: {
 }) {
   const search = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') search.set(key, String(value));
+    if (value !== undefined && value !== null && value !== '') {
+      search.set(key, String(value));
+    }
   });
   return request<{ items: Task[]; nextCursor?: string | null }>(
     `/api/clickup/tasks?${search.toString()}`
@@ -141,7 +145,9 @@ export function updateTask(
 
 export function getTaskLists(workspaceId: string, teamId?: string) {
   const params = new URLSearchParams({ workspaceId });
-  if (teamId) params.set('teamId', teamId);
+  if (teamId) {
+    params.set('teamId', teamId);
+  }
   return request<TaskList[]>(`/api/clickup/task-lists?${params.toString()}`);
 }
 
@@ -231,7 +237,9 @@ export function createEmbedDoc(input: { spaceId: string; title: string; embedUrl
 export function uploadDocument(spaceId: string, file: File, title?: string) {
   const form = new FormData();
   form.set('spaceId', spaceId);
-  if (title) form.set('title', title);
+  if (title) {
+    form.set('title', title);
+  }
   form.set('file', file);
   return request<DocumentItem>('/api/documents/upload', { method: 'POST', body: form });
 }
@@ -304,7 +312,11 @@ export function updateWorkspacePermissions(
 
 export function searchAll(query: string, workspaceId?: string) {
   const params = new URLSearchParams();
-  if (query) params.set('q', query);
-  if (workspaceId) params.set('workspaceId', workspaceId);
+  if (query) {
+    params.set('q', query);
+  }
+  if (workspaceId) {
+    params.set('workspaceId', workspaceId);
+  }
   return request<SearchResult[]>(`/api/clickup/search?${params.toString()}`);
 }

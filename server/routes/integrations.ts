@@ -1,5 +1,4 @@
-import { Router } from 'express';
-import type { Request } from 'express';
+import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
 import { logTaskActivity } from '../services/activity.js';
@@ -50,10 +49,13 @@ async function requireTaskGithubAccess(req: Request, taskId: string) {
     Object.assign(error, { statusCode: 403 });
     throw error;
   }
-  if (['OWNER', 'ADMIN', 'LEAD'].includes(membership.role)) return task;
-  const userId = currentUserId(req);
-  if (membership.role === 'MEMBER' && (task.assigneeId === userId || task.createdById === userId))
+  if (['OWNER', 'ADMIN', 'LEAD'].includes(membership.role)) {
     return task;
+  }
+  const userId = currentUserId(req);
+  if (membership.role === 'MEMBER' && (task.assigneeId === userId || task.createdById === userId)) {
+    return task;
+  }
   const error = new Error('Missing GitHub task permission');
   Object.assign(error, { statusCode: 403 });
   throw error;
@@ -139,7 +141,9 @@ integrationsRouter.post('/github/webhook', async (req, res) => {
       closed: prPayload.merged ? 'GITHUB_PR_MERGED' : 'GITHUB_PR_CLOSED',
     };
     const activity = activityByAction[payload.action];
-    if (activity) await logPrActivity({ ...pr, reviewStatus }, activity);
+    if (activity) {
+      await logPrActivity({ ...pr, reviewStatus }, activity);
+    }
     res.json({ ok: true, pullRequestId: pr.id, taskId: pr.taskId });
     return;
   }
@@ -288,9 +292,14 @@ integrationsRouter.post('/github/repositories/:id/sync-pull-requests', async (re
         authorLogin: item.user?.login,
         reviewStatus,
       });
-      if (existing) summary.updated += 1;
-      else summary.created += 1;
-      if (linkedTaskId) summary.linked += 1;
+      if (existing) {
+        summary.updated += 1;
+      } else {
+        summary.created += 1;
+      }
+      if (linkedTaskId) {
+        summary.linked += 1;
+      }
     } catch {
       summary.errors += 1;
     }

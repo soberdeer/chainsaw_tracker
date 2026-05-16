@@ -19,10 +19,32 @@ import {
   IconPlus,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { createFolder, createSpace, searchAll } from '../../../lib/api';
-import { folderPath, getErrorMessage } from '../../../lib/taskUi';
-import type { Folder, SearchResult, Space, TaskList, Workspace } from '../../../lib/types';
+import {
+  createFolder,
+  createSpace,
+  searchAll,
+  folderPath,
+  getErrorMessage,
+  type Folder,
+  type SearchResult,
+  type Space,
+  type TaskList,
+  type Workspace,
+} from '@/lib';
 import classes from './GlobalSearchModal.module.css';
+
+export interface GlobalSearchModalProps {
+  opened: boolean;
+  workspace: Workspace;
+  activeSpace?: Space;
+  activeFolder?: Folder;
+  activeTaskList?: TaskList;
+  onClose: () => void;
+  onNavigate: (url: string) => void;
+  onReload: () => void;
+  onCreateTask: () => void;
+  onError: (message: string) => void;
+}
 
 export function GlobalSearchModal({
   opened,
@@ -35,36 +57,33 @@ export function GlobalSearchModal({
   onReload,
   onCreateTask,
   onError,
-}: {
-  opened: boolean;
-  workspace: Workspace;
-  activeSpace?: Space;
-  activeFolder?: Folder;
-  activeTaskList?: TaskList;
-  onClose: () => void;
-  onNavigate: (url: string) => void;
-  onReload: () => void;
-  onCreateTask: () => void;
-  onError: (message: string) => void;
-}) {
+}: GlobalSearchModalProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!opened) return;
+    if (!opened) {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     const handle = window.setTimeout(() => {
       searchAll(query, workspace.id)
         .then((items) => {
-          if (!cancelled) setResults(items);
+          if (!cancelled) {
+            setResults(items);
+          }
         })
         .catch((error) => {
-          if (!cancelled) onError(getErrorMessage(error));
+          if (!cancelled) {
+            onError(getErrorMessage(error));
+          }
         })
         .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled) {
+            setLoading(false);
+          }
         });
     }, 120);
     return () => {
@@ -74,7 +93,9 @@ export function GlobalSearchModal({
   }, [opened, query, workspace.id, onError]);
 
   useEffect(() => {
-    if (opened) setQuery('');
+    if (opened) {
+      setQuery('');
+    }
   }, [opened]);
 
   const runSearchAction = async (result: SearchResult) => {
@@ -86,12 +107,16 @@ export function GlobalSearchModal({
 
     try {
       if (result.action === 'create-task') {
-        if (!activeTaskList) return;
+        if (!activeTaskList) {
+          return;
+        }
         onCreateTask();
       }
       if (result.action === 'create-space') {
         const name = window.prompt('Space name');
-        if (!name) return;
+        if (!name) {
+          return;
+        }
         await createSpace({
           workspaceId: workspace.id,
           name,
@@ -103,7 +128,9 @@ export function GlobalSearchModal({
       }
       if (result.action === 'create-folder' && activeSpace) {
         const name = window.prompt('Folder name');
-        if (!name) return;
+        if (!name) {
+          return;
+        }
         await createFolder(activeSpace.id, { name, kind: 'TEAM', locked: true });
         onReload();
       }
@@ -117,11 +144,21 @@ export function GlobalSearchModal({
   };
 
   const iconFor = (type: SearchResult['type']) => {
-    if (type === 'task') return <IconCheck size="1.125rem" />;
-    if (type === 'doc') return <IconFileText size="1.125rem" />;
-    if (type === 'space') return <IconFolderOpen size="1.125rem" />;
-    if (type === 'folder') return <IconFolder size="1.125rem" />;
-    if (type === 'list') return <IconList size="1.125rem" />;
+    if (type === 'task') {
+      return <IconCheck size="1.125rem" />;
+    }
+    if (type === 'doc') {
+      return <IconFileText size="1.125rem" />;
+    }
+    if (type === 'space') {
+      return <IconFolderOpen size="1.125rem" />;
+    }
+    if (type === 'folder') {
+      return <IconFolder size="1.125rem" />;
+    }
+    if (type === 'list') {
+      return <IconList size="1.125rem" />;
+    }
     return <IconPlus size="1.125rem" />;
   };
 

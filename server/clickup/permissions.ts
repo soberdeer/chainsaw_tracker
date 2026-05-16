@@ -21,14 +21,18 @@ async function hasMembership(req: Request, allowedRoles: Set<string>) {
 }
 
 export async function requireClickUpTaskWrite(req: Request) {
-  if (await hasMembership(req, writeRoles)) return;
+  if (await hasMembership(req, writeRoles)) {
+    return;
+  }
   const error = new Error('You do not have permission to write ClickUp tasks');
   Object.assign(error, { statusCode: 403 });
   throw error;
 }
 
 export async function requireClickUpSpaceWrite(req: Request) {
-  if (await hasMembership(req, spaceRoles)) return;
+  if (await hasMembership(req, spaceRoles)) {
+    return;
+  }
   const error = new Error('You do not have permission to change ClickUp spaces, folders, or lists');
   Object.assign(error, { statusCode: 403 });
   throw error;

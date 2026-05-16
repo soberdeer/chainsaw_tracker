@@ -15,9 +15,15 @@ import {
 } from '@mantine/core';
 import { IconMailPlus } from '@tabler/icons-react';
 import { useState } from 'react';
-import { inviteMember, updateMembership, updateWorkspacePermissions } from '../../../lib/api';
-import { getErrorMessage } from '../../../lib/taskUi';
-import type { PermissionSet, Workspace, WorkspaceRole } from '../../../lib/types';
+import {
+  inviteMember,
+  updateMembership,
+  updateWorkspacePermissions,
+  getErrorMessage,
+  type PermissionSet,
+  type Workspace,
+  type WorkspaceRole,
+} from '@/lib';
 import classes from './TeamPanel.module.css';
 
 const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
@@ -29,15 +35,13 @@ const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = [
   'inviteMembers',
 ];
 
-export function TeamPanel({
-  workspace,
-  onChanged,
-  onError,
-}: {
+export interface TeamPanelProps {
   workspace: Workspace;
   onChanged: () => void;
   onError: (message: string) => void;
-}) {
+}
+
+export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
   const [email, setEmail] = useState('');
   const [role, setRole] = useState<WorkspaceRole>('MEMBER');
@@ -57,7 +61,9 @@ export function TeamPanel({
   };
 
   const sendInvite = async () => {
-    if (!email.trim()) return;
+    if (!email.trim()) {
+      return;
+    }
     await run(async () => {
       const invite = await inviteMember(workspace.id, { email, role });
       setInviteUrl(invite.inviteUrl);

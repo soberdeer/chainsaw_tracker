@@ -1,8 +1,12 @@
 import { Box, Paper, Stack, Text, Title } from '@mantine/core';
-import type { Workspace } from '../../../lib/types';
+import type { Workspace } from '@/lib';
 import classes from './EmptySetup.module.css';
 
-export function EmptySetup({ onCreated }: { onCreated: (workspace: Workspace) => void }) {
+export interface EmptySetupProps {
+  onCreated: (workspace: Workspace) => void;
+}
+
+export function EmptySetup({ onCreated }: EmptySetupProps) {
   void onCreated;
 
   return (

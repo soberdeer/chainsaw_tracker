@@ -42,13 +42,19 @@ const listTaskInclude = {
 };
 
 function serializeValue(value: unknown) {
-  if (value === null || value === undefined) return null;
-  if (value instanceof Date) return value.toISOString();
+  if (value === null || value === undefined) {
+    return null;
+  }
+  if (value instanceof Date) {
+    return value.toISOString();
+  }
   return String(value);
 }
 
 function normalizeManualTaskKey(value: string | null | undefined) {
-  if (!value) return value;
+  if (!value) {
+    return value;
+  }
   const normalized = value.trim().toUpperCase();
   if (extractTaskKey(normalized) !== normalized) {
     const error = new Error('Invalid taskKey format');
@@ -337,7 +343,9 @@ tasksRouter.patch('/:taskId', async (req, res) => {
         include: { folder: { include: { space: true } } },
       })
     : null;
-  if (list) await requireSpacePermission(req, list.folder.spaceId, 'edit');
+  if (list) {
+    await requireSpacePermission(req, list.folder.spaceId, 'edit');
+  }
   const nextTaskKey =
     'taskKey' in body
       ? normalizeManualTaskKey(body.taskKey) || null
@@ -400,62 +408,70 @@ tasksRouter.patch('/:taskId', async (req, res) => {
     previous: unknown;
     next: unknown;
   }> = [];
-  if ('title' in body && body.title !== existing.title)
+  if ('title' in body && body.title !== existing.title) {
     changes.push({
       type: 'TASK_TITLE_CHANGED',
       field: 'title',
       previous: existing.title,
       next: body.title,
     });
-  if ('description' in body && body.description !== existing.description)
+  }
+  if ('description' in body && body.description !== existing.description) {
     changes.push({
       type: 'TASK_DESCRIPTION_CHANGED',
       field: 'description',
       previous: existing.description,
       next: body.description,
     });
-  if ('priority' in body && body.priority !== existing.priority)
+  }
+  if ('priority' in body && body.priority !== existing.priority) {
     changes.push({
       type: 'TASK_PRIORITY_CHANGED',
       field: 'priority',
       previous: existing.priority,
       next: body.priority,
     });
-  if ('statusId' in body && body.statusId !== existing.statusId)
+  }
+  if ('statusId' in body && body.statusId !== existing.statusId) {
     changes.push({
       type: 'TASK_STATUS_CHANGED',
       field: 'statusId',
       previous: existing.statusId,
       next: body.statusId,
     });
-  if ('assigneeId' in body && body.assigneeId !== existing.assigneeId)
+  }
+  if ('assigneeId' in body && body.assigneeId !== existing.assigneeId) {
     changes.push({
       type: 'TASK_ASSIGNEE_CHANGED',
       field: 'assigneeId',
       previous: existing.assigneeId,
       next: body.assigneeId,
     });
-  if ('milestoneId' in body && body.milestoneId !== existing.milestoneId)
+  }
+  if ('milestoneId' in body && body.milestoneId !== existing.milestoneId) {
     changes.push({
       type: 'TASK_MILESTONE_CHANGED',
       field: 'milestoneId',
       previous: existing.milestoneId,
       next: body.milestoneId,
     });
-  if (list && list.id !== existing.taskListId)
+  }
+  if (list && list.id !== existing.taskListId) {
     changes.push({
       type: 'TASK_LIST_CHANGED',
       field: 'listId',
       previous: existing.taskListId,
       next: list.id,
     });
-  if (nextTaskKey !== undefined && nextTaskKey !== existing.taskKey)
+  }
+  if (nextTaskKey !== undefined && nextTaskKey !== existing.taskKey) {
     changes.push({
       type: 'TASK_KEY_CHANGED',
       field: 'taskKey',
       previous: existing.taskKey,
       next: nextTaskKey,
     });
+  }
   if (changes.length) {
     await logTaskActivity({
       workspaceId,

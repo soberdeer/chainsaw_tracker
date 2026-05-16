@@ -1,20 +1,14 @@
 import {
   IconBan,
   IconBlur,
-  IconCheckFilled,
   IconCircle,
-  IconCircleArrowRight,
   IconCircleCheck,
   IconCircleCheckFilled,
   IconCircleDashed,
   IconCircleDotted,
-  IconCircleMinus,
   IconClockPause,
   IconNoiseReduction,
-  IconPackage,
   IconPacman,
-  IconPacmanFilled,
-  IconPoint,
   IconProgress,
 } from '@tabler/icons-react';
 

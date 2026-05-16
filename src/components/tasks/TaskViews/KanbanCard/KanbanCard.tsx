@@ -1,9 +1,17 @@
 import { Badge, Box, Group, Paper, Text, Tooltip } from '@mantine/core';
-import { priorityColor } from '../../../../lib/taskUi';
-import type { Task } from '../../../../lib/types';
+import { priorityColor, type Task } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
 import { TaskActionsMenu } from '../TaskActionMenu/TaskActionMenu';
 import classes from './KanbanCard.module.css';
+
+export interface KanbanCardProps {
+  task: Task;
+  onOpen: (task: Task) => void;
+  onDragStart: (taskId: string) => void;
+  onDropOnTask: (targetTaskId: string) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+}
 
 export function KanbanCard({
   task,
@@ -12,14 +20,7 @@ export function KanbanCard({
   onDropOnTask,
   onChanged,
   onError,
-}: {
-  task: Task;
-  onOpen: (task: Task) => void;
-  onDragStart: (taskId: string) => void;
-  onDropOnTask: (targetTaskId: string) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
+}: KanbanCardProps) {
   return (
     <Paper
       className={classes.taskCard}

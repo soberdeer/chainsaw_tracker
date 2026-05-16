@@ -6,7 +6,9 @@ export async function bootstrapDefaultWorkspace() {
   try {
     const existingChainsaw = await prisma.workspace.findUnique({ where: { slug: 'chainsaw' } });
     const existingTasks = await prisma.task.count();
-    if (existingTasks > 0) return;
+    if (existingTasks > 0) {
+      return;
+    }
     if (existingChainsaw) {
       await importClickUpCsv(
         path.resolve('prisma/seed-data/clickup-export.csv'),

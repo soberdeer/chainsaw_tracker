@@ -13,10 +13,16 @@ import {
 } from '@mantine/core';
 import { IconLock, IconMailPlus } from '@tabler/icons-react';
 import { useState } from 'react';
-import { inviteMember } from '../../../lib/api';
-import { getErrorMessage } from '../../../lib/taskUi';
-import type { Space, Workspace } from '../../../lib/types';
+import { inviteMember, getErrorMessage, type Space, type Workspace } from '@/lib';
 import classes from './ShareSpaceModal.module.css';
+
+export interface ShareSpaceModalProps {
+  opened: boolean;
+  workspace: Workspace;
+  space: Space;
+  onClose: () => void;
+  onError: (message: string) => void;
+}
 
 export function ShareSpaceModal({
   opened,
@@ -24,19 +30,15 @@ export function ShareSpaceModal({
   space,
   onClose,
   onError,
-}: {
-  opened: boolean;
-  workspace: Workspace;
-  space: Space;
-  onClose: () => void;
-  onError: (message: string) => void;
-}) {
+}: ShareSpaceModalProps) {
   const [email, setEmail] = useState('');
   const [role, setRole] = useState('MEMBER');
   const [sending, setSending] = useState(false);
 
   const invite = async () => {
-    if (!email.trim()) return;
+    if (!email.trim()) {
+      return;
+    }
     try {
       setSending(true);
       await inviteMember(workspace.id, { email, role });
