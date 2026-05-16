@@ -10,4 +10,7 @@ export default defineConfig({
       '/uploads': 'http://localhost:4000',
     },
   },
+  resolve: {
+    tsconfigPaths: true,
+  },
 });
