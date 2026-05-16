@@ -2,15 +2,30 @@
 
 Compact task tracker built with React, Vite, Express, Prisma, Postgres and Mantine.
 
+The production task tracker runtime uses the real ClickUp API through backend adapter routes under `/api/clickup/*`. PostgreSQL is still used for local app features that remain outside the ClickUp task source of truth, such as documents, memberships/permissions scaffolding, and existing optional GitHub storage.
+
 ## Local Setup
 
-1. Start Postgres and run migrations:
+1. Configure `.env`:
+
+```bash
+CLICKUP_TOKEN="pk_your_personal_clickup_token"
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
+CLIENT_URL="http://localhost:5173"
+PORT=4000
+```
+
+`CLICKUP_TOKEN` is a personal API token. It is used only on the backend as the `Authorization` header for ClickUp API requests. Do not use the ClickUp OAuth token endpoint for this value.
+
+On server start the app creates only a small local permission record for `local-user`. It does not seed or cache ClickUp task data at runtime.
+
+2. Start Postgres and run migrations:
 
 ```bash
 npm run setup
 ```
 
-2. Start the app:
+3. Start the app:
 
 ```bash
 npm run dev
@@ -46,7 +61,28 @@ Then run:
 npm run setup:local
 ```
 
-## ClickUp CSV Import
+## ClickUp API Task Runtime
+
+Runtime task data comes from ClickUp API v2:
+
+- Workspaces: `GET /team`
+- Spaces: `GET /team/{team_id}/space`
+- Folders: `GET /space/{space_id}/folder`
+- Lists: `GET /folder/{folder_id}/list` and `GET /space/{space_id}/list`
+- Tasks: `GET/POST /list/{list_id}/task`, `GET/PUT/DELETE /task/{task_id}`
+- Comments/activity view: `GET /task/{task_id}/comment`
+
+The frontend calls only the backend adapter and never receives `CLICKUP_TOKEN`.
+
+Unsupported by design in this scope:
+
+- ClickUp Chats
+- ClickUp Guests
+- Fake chat/guest UI
+
+See `README.manual-test.md` for the verification checklist and the list of adapter endpoints.
+
+## Legacy ClickUp CSV Import
 
 Use the `Import CSV` button or `POST /api/imports/clickup-csv`. The importer upserts ClickUp tasks by `externalSource=CLICKUP` and `externalId`, keeps `externalUrl`, `syncedAt`, and the raw external snapshot, and does not duplicate tasks on repeat imports.
 

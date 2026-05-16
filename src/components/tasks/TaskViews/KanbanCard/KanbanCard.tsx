@@ -1,7 +1,8 @@
-import type { Task } from "../../../../lib/types";
-import { priorityColor } from "../../../../lib/taskUi";
-import { Avatar, Badge, Box, Group, Paper, Text } from "@mantine/core";
-import { TaskActionsMenu } from "../TaskActionMenu/TaskActionMenu";
+import { Badge, Box, Group, Paper, Text, Tooltip } from '@mantine/core';
+import { priorityColor } from '../../../../lib/taskUi';
+import type { Task } from '../../../../lib/types';
+import { AvatarStack } from '../../../common/AvatarStack';
+import { TaskActionsMenu } from '../TaskActionMenu/TaskActionMenu';
 import classes from './KanbanCard.module.css';
 
 export function KanbanCard({
@@ -10,7 +11,7 @@ export function KanbanCard({
   onDragStart,
   onDropOnTask,
   onChanged,
-  onError
+  onError,
 }: {
   task: Task;
   onOpen: (task: Task) => void;
@@ -37,22 +38,46 @@ export function KanbanCard({
       onClick={() => onOpen(task)}
     >
       <Group justify="space-between" align="flex-start" wrap="nowrap">
-        <Text fw={650} size="sm">{task.title}</Text>
+        <Text fw={650} size="sm">
+          {task.title}
+        </Text>
         <Group gap={4}>
-          <Badge size="xs" color={priorityColor[task.priority]}>{task.priority}</Badge>
-          <TaskActionsMenu task={task} onChanged={onChanged} onError={onError}/>
+          <Tooltip label={`Priority: ${task.priority}`}>
+            <Badge size="xs" color={priorityColor[task.priority]}>
+              {task.priority}
+            </Badge>
+          </Tooltip>
+          <TaskActionsMenu task={task} onChanged={onChanged} onError={onError} />
         </Group>
       </Group>
-      {task.description && <Text size="xs" c="dimmed" lineClamp={2}>{task.description}</Text>}
+      {task.description && (
+        <Text size="xs" c="dimmed" lineClamp={2}>
+          {task.description}
+        </Text>
+      )}
       <Group gap="xs">
-        {task.taskKey && <Badge size="xs" variant="light">{task.taskKey}</Badge>}
-        <Badge size="xs" variant="light">{task.externalSource || 'LOCAL'}</Badge>
+        {task.taskKey && (
+          <Tooltip label={`Task key: ${task.taskKey}`}>
+            <Badge size="xs" variant="light">
+              {task.taskKey}
+            </Badge>
+          </Tooltip>
+        )}
+        <Tooltip label={`Source: ${task.externalSource || 'LOCAL'}`}>
+          <Badge size="xs" variant="light">
+            {task.externalSource || 'LOCAL'}
+          </Badge>
+        </Tooltip>
       </Group>
       <Group justify="space-between" mt="sm">
         <Group gap={5}>
-          {task.tags.map(({ tag }) => <Box key={tag.id} className={classes.tagDot} style={{ background: tag.color }}/>)}
+          {task.tags.map(({ tag }) => (
+            <Tooltip key={tag.id} label={`Tag: ${tag.name}`}>
+              <Box className={classes.tagDot} style={{ background: tag.color }} />
+            </Tooltip>
+          ))}
         </Group>
-        {task.assignee && <Avatar size="1.5rem" radius="xl">{task.assignee.name.slice(0, 1)}</Avatar>}
+        {task.assignees?.length ? <AvatarStack users={task.assignees} size="1.5rem" /> : null}
       </Group>
     </Paper>
   );

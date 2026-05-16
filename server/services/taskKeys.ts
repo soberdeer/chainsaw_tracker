@@ -1,4 +1,5 @@
-const taskKeyPattern = /(^|[^A-Z0-9])(CL-(?:PROTO|VRS|ALP|BET|RC|R)-\d{3}(?:\.\d{2})?)(?=$|[^A-Z0-9])/i;
+const taskKeyPattern =
+  /(^|[^A-Z0-9])(CL-(?:PROTO|VRS|ALP|BET|RC|R)-\d{3}(?:\.\d{2})?)(?=$|[^A-Z0-9])/i;
 
 export function extractTaskKey(input: string | null | undefined): string | null {
   if (!input) return null;

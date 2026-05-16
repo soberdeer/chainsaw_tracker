@@ -1,6 +1,6 @@
+import { extractTaskKey } from '../server/services/taskKeys.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { extractTaskKey } from '../server/services/taskKeys.js';
 
 test('extractTaskKey finds supported task keys in titles, branches, PRs and commits', () => {
   assert.equal(extractTaskKey('CL-PROTO-001_Task name'), 'CL-PROTO-001');

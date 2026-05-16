@@ -1,0 +1,75 @@
+.modalContent {
+  background: #171717;
+  border: 1px solid #2f2f2f;
+  color: #f1f3f5;
+}
+
+.modalBody {
+  padding: 0;
+}
+
+.header {
+  min-height: 5.875rem;
+  padding: 0 var(--mantine-spacing-xl);
+  border-bottom: 1px solid #2d2d2d;
+}
+
+.tabs {
+  flex: 1;
+}
+
+.closeButton {
+  width: 3rem;
+  height: 3rem;
+  border-radius: var(--mantine-radius-xl);
+}
+
+.body {
+  min-height: 38rem;
+  padding: 3rem;
+}
+
+.titleInput {
+  min-height: 4rem;
+  border-color: #303030;
+  background: #181818;
+  color: #f8f9fa;
+  font-size: 2rem;
+  font-weight: 700;
+}
+
+.descriptionInput {
+  border: 0;
+  background: transparent;
+  color: #ced4da;
+  font-size: 1.25rem;
+}
+
+.statusSelect {
+  width: 12rem;
+}
+
+.statusDot {
+  width: 0.875rem;
+  height: 0.875rem;
+  border-radius: var(--mantine-radius-xl);
+}
+
+.compactField {
+  width: 9.5rem;
+}
+
+.wideField {
+  width: 15rem;
+}
+
+.dateField {
+  width: 11rem;
+}
+
+.footer {
+  min-height: 6.75rem;
+  padding: 0 2.75rem;
+  border-top: 1px solid #2d2d2d;
+  background: #111;
+}

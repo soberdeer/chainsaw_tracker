@@ -1,14 +1,18 @@
-import { promises as fs } from 'node:fs';
-import path from 'node:path';
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
 import XLSX from 'xlsx';
+import { promises as fs } from 'node:fs';
+import path from 'node:path';
 
 const turndown = new TurndownService({ headingStyle: 'atx', codeBlockStyle: 'fenced' });
 
 const textExtensions = new Set(['.txt', '.csv', '.tsv', '.json', '.xml', '.yaml', '.yml', '.log']);
 
-export async function convertUploadToMarkdown(filePath: string, originalName: string, mimeType: string) {
+export async function convertUploadToMarkdown(
+  filePath: string,
+  originalName: string,
+  mimeType: string
+) {
   const ext = path.extname(originalName).toLowerCase();
 
   if (ext === '.md' || ext === '.markdown') {

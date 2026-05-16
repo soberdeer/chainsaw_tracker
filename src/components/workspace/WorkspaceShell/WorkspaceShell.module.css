@@ -33,7 +33,7 @@
   color: var(--app-muted);
   display: grid;
   align-items: center;
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto;
   gap: var(--mantine-spacing-xs);
   padding: 0.25rem var(--mantine-spacing-xs);
   border-radius: var(--mantine-radius-md);
@@ -95,12 +95,6 @@
   color: #00c853;
   font-size: 1.375rem;
   line-height: 1;
-}
-
-.taskCount {
-  background: transparent;
-  color: var(--app-text);
-  font-size: var(--mantine-font-size-lg);
 }
 
 .rowAction {

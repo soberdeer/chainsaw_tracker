@@ -1,25 +1,27 @@
-import { mkdirSync } from 'node:fs';
-import path from 'node:path';
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { importClickUpCsv } from '../services/clickupImport.js';
 import { requirePermission } from '../services/permissions.js';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
 
 const importDir = path.resolve('uploads', 'imports');
 mkdirSync(importDir, { recursive: true });
 
 const upload = multer({
   dest: importDir,
-  limits: { fileSize: 25 * 1024 * 1024 }
+  limits: { fileSize: 25 * 1024 * 1024 },
 });
 
 export const importsRouter = Router();
 
 importsRouter.post('/clickup-csv', upload.single('file'), async (req, res) => {
-  const body = z.object({
-    workspaceId: z.string()
-  }).parse(req.body);
+  const body = z
+    .object({
+      workspaceId: z.string(),
+    })
+    .parse(req.body);
 
   await requirePermission(req, body.workspaceId, 'manageTasks');
 

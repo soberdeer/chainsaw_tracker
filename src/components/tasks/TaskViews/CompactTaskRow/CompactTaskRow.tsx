@@ -1,8 +1,11 @@
-import type { Task } from "../../../../lib/types";
-import { displayStatus, formatDueDate } from "../../../../lib/taskUi";
-import { Avatar, Badge, Text } from "@mantine/core";
-import { IconCalendarDue, IconChevronRight, IconFlag, IconList } from "@tabler/icons-react";
-import { TaskActionsMenu } from "../TaskActionMenu/TaskActionMenu";
+import { ActionIcon, Badge, Text, Tooltip } from '@mantine/core';
+import { IconCalendarDue, IconChevronRight, IconFlag, IconList } from '@tabler/icons-react';
+import { useState } from 'react';
+import { displayStatus, formatDueDate } from '../../../../lib/taskUi';
+import type { Task } from '../../../../lib/types';
+import { AvatarStack } from '../../../common/AvatarStack';
+import { StatusIcon } from '../../StatusIcon/StatusIcon';
+import { TaskActionsMenu } from '../TaskActionMenu/TaskActionMenu';
 import classes from './CompactTaskRow.module.css';
 
 export function CompactTaskRow({
@@ -11,7 +14,7 @@ export function CompactTaskRow({
   onDragStart,
   onDropOnTask,
   onChanged,
-  onError
+  onError,
 }: {
   task: Task;
   onOpen: (task: Task) => void;
@@ -23,6 +26,16 @@ export function CompactTaskRow({
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
+  const [showSubtasks, setShowSubtasks] = useState(false);
+  if (task.title === 'CL-PROTO-004_implement-interaction-system') {
+    console.log(task);
+  }
+
+  const toggleSubtasks = (e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setShowSubtasks((s) => !s);
+  };
 
   return (
     <div
@@ -41,26 +54,72 @@ export function CompactTaskRow({
       onClick={() => onOpen(task)}
     >
       <div className={classes.nameCell}>
-        <IconChevronRight size="0.875rem" className={classes.mutedIcon} />
-        <span className={classes.statusRing} style={{ borderColor: status.color }} />
-        <Text className={classes.taskTitle}>{task.title}</Text>
-        {task.taskKey && <Badge className={classes.tagBadge} color="gray">{task.taskKey}</Badge>}
-        <Badge size="xs" variant="light">{task.externalSource || 'LOCAL'}</Badge>
-        <IconList size="1rem" className={classes.mutedIcon} />
-        {task.taskList?.name && <Badge className={classes.tagBadge} color="blue">{task.taskList.name}</Badge>}
-        {task.milestone?.title && <Badge className={classes.tagBadge} color="grape">{task.milestone.title}</Badge>}
+        {(task.subtasks?.length || 0) > 0 && (
+          <Tooltip label="Expand subtasks">
+            <ActionIcon onClick={toggleSubtasks}>
+              <IconChevronRight size="0.875rem" className={classes.mutedIcon} />
+            </ActionIcon>
+          </Tooltip>
+        )}
+
+        <Tooltip label={`Status: ${status.label}`}>
+          <StatusIcon statusId={task.status} color={status.color} />
+        </Tooltip>
+        <Text className={classes.taskTitle} fz="sm" fw="bold">
+          {task.title}
+        </Text>
+        {task.taskKey && (
+          <Tooltip label={task.taskKey}>
+            <Badge color="gray">{task.taskKey}</Badge>
+          </Tooltip>
+        )}
+        <Tooltip label="Task list">
+          <IconList size="1rem" className={classes.mutedIcon} />
+        </Tooltip>
+        {/*{task.taskList?.name &&*/}
+        {/*    <Tooltip label={task.taskList.name}><Badge color="blue">{task.taskList.name}</Badge></Tooltip>}*/}
+        {task.milestone?.title && (
+          <Tooltip label={task.milestone.title}>
+            <Badge color="grape">{task.milestone.title}</Badge>
+          </Tooltip>
+        )}
         {task.tags.map(({ tag }) => (
-          <Badge key={tag.id} className={classes.tagBadge} style={{ background: tag.color }}>{tag.name}</Badge>
+          <Tooltip key={tag.id} label={tag.name}>
+            <Badge>{tag.name}</Badge>
+          </Tooltip>
         ))}
       </div>
       <div className={classes.assigneeCell}>
-        {task.assignee ? <Avatar size="2.125rem" radius="xl" color="brown">{task.assignee.name.slice(0, 1)}</Avatar> : <Text c="dimmed">-</Text>}
+        {task.assignees?.length ? (
+          <AvatarStack users={task.assignees} />
+        ) : (
+          <Text c="dimmed">-</Text>
+        )}
       </div>
-      <div className={isLate ? `${classes.dueCell} ${classes.lateDue}` : classes.dueCell}>{due || <IconCalendarDue size="1.125rem" />}</div>
+      <Text className={isLate ? `${classes.dueCell} ${classes.lateDue}` : classes.dueCell}>
+        {due || (
+          <Tooltip label="No due date">
+            <IconCalendarDue size="1.125rem" />
+          </Tooltip>
+        )}
+      </Text>
       <div className={classes.priorityCell}>
-        {task.priority === 'LOW' ? <IconFlag size="1.1875rem" className={classes.mutedIcon} /> : <><IconFlag size="1.1875rem" fill="#ff8787" color="#ff8787" /> {task.priority[0] + task.priority.slice(1).toLowerCase()}</>}
+        {task.priority === 'LOW' ? (
+          <Tooltip label="Priority: LOW">
+            <IconFlag size="1.1875rem" className={classes.mutedIcon} />
+          </Tooltip>
+        ) : (
+          <>
+            <Tooltip label={`Priority: ${task.priority}`}>
+              <IconFlag size="1.1875rem" fill="#ff8787" color="#ff8787" />
+            </Tooltip>{' '}
+            {task.priority[0] + task.priority.slice(1).toLowerCase()}
+          </>
+        )}
       </div>
-      <Text size="xs" c="dimmed">{task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}</Text>
+      <Text size="sm" c="dimmed">
+        {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}
+      </Text>
       <TaskActionsMenu task={task} onChanged={onChanged} onError={onError} />
     </div>
   );

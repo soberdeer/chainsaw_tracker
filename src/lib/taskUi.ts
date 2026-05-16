@@ -14,18 +14,23 @@ export const statusMeta: Record<string, { label: string; color: string; tone: st
   scoping: { label: 'Scoping', color: '#7048e8', tone: 'blue' },
   open: { label: 'Open', color: '#868e96', tone: 'gray' },
   closed: { label: 'Closed', color: '#5cc4a7', tone: 'mint' },
-  done: { label: 'Done', color: '#5cc4a7', tone: 'mint' }
+  done: { label: 'Done', color: '#5cc4a7', tone: 'mint' },
 };
 
 export const priorityColor: Record<TaskPriority, string> = {
   LOW: 'gray',
   NORMAL: 'blue',
   HIGH: 'orange',
-  URGENT: 'red'
+  URGENT: 'red',
 };
 
 export function firstTaskFolder(space?: Space) {
-  return space?.folders.find((folder) => folder.taskLists?.length || (folder.tasks?.length || folder._count?.tasks || 0) > 0) || space?.folders[0];
+  return (
+    space?.folders.find(
+      (folder) =>
+        folder.taskLists?.length || (folder.tasks?.length || folder._count?.tasks || 0) > 0
+    ) || space?.folders[0]
+  );
 }
 
 export function firstTaskList(folder?: Folder) {
@@ -33,11 +38,13 @@ export function firstTaskList(folder?: Folder) {
 }
 
 export function tasksWithList(taskList?: TaskList) {
-  return taskList ? (taskList.tasks || []).map((task) => ({ ...task, folderName: taskList.name })) : [];
+  return taskList
+    ? (taskList.tasks || []).map((task) => ({ ...task, folderName: taskList.name }))
+    : [];
 }
 
 export function displayStatus(status?: TaskStatus, fallback?: string) {
-  const key = status?.name || fallback || 'backlog';
+  const key = (status?.name || fallback || 'backlog').toLowerCase();
   return statusMeta[key] || { label: key, color: status?.color || '#868e96', tone: 'gray' };
 }
 
@@ -71,7 +78,11 @@ export function parseAppPath(pathname: string) {
 
 export function workspaceHasWork(workspace: Workspace) {
   return workspace.spaces.some((space) =>
-    space.folders.some((folder) => (folder.taskLists?.length || 0) > 0 || (folder.tasks?.length || folder._count?.tasks || 0) > 0)
+    space.folders.some(
+      (folder) =>
+        (folder.taskLists?.length || 0) > 0 ||
+        (folder.tasks?.length || folder._count?.tasks || 0) > 0
+    )
   );
 }
 
@@ -81,7 +92,11 @@ export function formatDueDate(value?: string) {
   const now = new Date('2026-05-11T00:00:00');
   const days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
   if (days < 0 && days > -14) return `${Math.abs(days)} days ago`;
-  return new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'numeric', year: '2-digit' }).format(date);
+  return new Intl.DateTimeFormat('en-GB', {
+    day: 'numeric',
+    month: 'numeric',
+    year: '2-digit',
+  }).format(date);
 }
 
 export function toDateInput(value?: string) {

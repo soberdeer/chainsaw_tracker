@@ -1,9 +1,27 @@
+import {
+  ActionIcon,
+  Group,
+  Loader,
+  Modal,
+  ScrollArea,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Tooltip,
+} from '@mantine/core';
+import {
+  IconCheck,
+  IconFileText,
+  IconFolder,
+  IconFolderOpen,
+  IconList,
+  IconPlus,
+} from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { ActionIcon, Button, Group, Loader, Modal, ScrollArea, Stack, Text, TextInput, ThemeIcon } from '@mantine/core';
-import { IconCheck, IconFileText, IconFolder, IconFolderOpen, IconList, IconPlus } from '@tabler/icons-react';
-import { createFolder, createSpace, createTask, searchAll } from '../../../lib/api';
-import type { Folder, SearchResult, Space, TaskList, TaskStatus, Workspace } from '../../../lib/types';
-import { docPath, folderPath, getErrorMessage } from '../../../lib/taskUi';
+import { createFolder, createSpace, searchAll } from '../../../lib/api';
+import { folderPath, getErrorMessage } from '../../../lib/taskUi';
+import type { Folder, SearchResult, Space, TaskList, Workspace } from '../../../lib/types';
 import classes from './GlobalSearchModal.module.css';
 
 export function GlobalSearchModal({
@@ -12,21 +30,21 @@ export function GlobalSearchModal({
   activeSpace,
   activeFolder,
   activeTaskList,
-  statuses,
   onClose,
   onNavigate,
   onReload,
-  onError
+  onCreateTask,
+  onError,
 }: {
   opened: boolean;
   workspace: Workspace;
   activeSpace?: Space;
   activeFolder?: Folder;
   activeTaskList?: TaskList;
-  statuses: TaskStatus[];
   onClose: () => void;
   onNavigate: (url: string) => void;
   onReload: () => void;
+  onCreateTask: () => void;
   onError: (message: string) => void;
 }) {
   const [query, setQuery] = useState('');
@@ -68,15 +86,19 @@ export function GlobalSearchModal({
 
     try {
       if (result.action === 'create-task') {
-        const title = window.prompt('Task name');
-        if (!title || !activeTaskList) return;
-        await createTask({ taskListId: activeTaskList.id, title, statusId: statuses[0]?.id, priority: 'NORMAL' });
-        onReload();
+        if (!activeTaskList) return;
+        onCreateTask();
       }
       if (result.action === 'create-space') {
         const name = window.prompt('Space name');
         if (!name) return;
-        await createSpace({ workspaceId: workspace.id, name, color: '#4c6ef5', initials: name.slice(0, 1).toUpperCase(), locked: true });
+        await createSpace({
+          workspaceId: workspace.id,
+          name,
+          color: '#4c6ef5',
+          initials: name.slice(0, 1).toUpperCase(),
+          locked: true,
+        });
         onReload();
       }
       if (result.action === 'create-folder' && activeSpace) {
@@ -87,10 +109,6 @@ export function GlobalSearchModal({
       }
       if (result.action === 'open-board' && activeSpace && activeFolder) {
         onNavigate(folderPath(activeSpace.id, activeFolder.id));
-      }
-      if (result.action === 'open-docs' && activeSpace) {
-        const doc = activeSpace.documents[0];
-        if (doc) onNavigate(docPath(activeSpace.id, doc.id));
       }
       onClose();
     } catch (error) {
@@ -108,7 +126,14 @@ export function GlobalSearchModal({
   };
 
   return (
-    <Modal opened={opened} onClose={onClose} size="80rem" yOffset="6vh" withCloseButton={false} classNames={{ content: classes.modalContent, body: classes.modalBody }}>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      size="80rem"
+      yOffset="6vh"
+      withCloseButton={false}
+      classNames={{ content: classes.modalContent, body: classes.modalBody }}
+    >
       <Stack gap={0}>
         <Group className={classes.modalHeader} wrap="nowrap">
           <TextInput
@@ -119,27 +144,48 @@ export function GlobalSearchModal({
             autoFocus
             className={classes.searchInput}
           />
-          <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">×</ActionIcon>
+          <Tooltip label="Close search">
+            <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">
+              ×
+            </ActionIcon>
+          </Tooltip>
         </Group>
         <Group className={classes.tabs} gap="xs">
-          {['All', 'Tasks', 'Docs', 'Spaces'].map((item) => <Button key={item} variant="subtle" size="compact-md">{item}</Button>)}
+          <Text size="sm" c="dimmed">
+            ClickUp task search
+          </Text>
           {loading && <Loader size="xs" />}
         </Group>
         <ScrollArea h="32.5rem">
           <Stack gap={4} p="md">
-            <Text size="sm" c="dimmed" fw={700}>Results</Text>
+            <Text size="sm" c="dimmed" fw={700}>
+              Results
+            </Text>
             {results.map((result) => (
-              <button key={`${result.type}:${result.id}`} type="button" className={classes.resultRow} onClick={() => runSearchAction(result)}>
-                <ThemeIcon variant="subtle" color={result.type === 'action' ? 'teal' : 'gray'}>{iconFor(result.type)}</ThemeIcon>
+              <button
+                key={`${result.type}:${result.id}`}
+                type="button"
+                className={classes.resultRow}
+                onClick={() => runSearchAction(result)}
+              >
+                <Tooltip label={`Result type: ${result.type}`}>
+                  <ThemeIcon variant="subtle" color={result.type === 'action' ? 'teal' : 'gray'}>
+                    {iconFor(result.type)}
+                  </ThemeIcon>
+                </Tooltip>
                 <span className={classes.resultTitle}>{result.title}</span>
-                {result.subtitle && <span className={classes.resultSubtitle}>{result.subtitle}</span>}
+                {result.subtitle && (
+                  <span className={classes.resultSubtitle}>{result.subtitle}</span>
+                )}
               </button>
             ))}
             {!results.length && !loading && <Text c="dimmed">Nothing found</Text>}
           </Stack>
         </ScrollArea>
         <Group className={classes.modalFooter}>
-          <Text size="sm" c="dimmed">Press / to open search, Enter to open a result</Text>
+          <Text size="sm" c="dimmed">
+            Press / to open search, Enter to open a result
+          </Text>
         </Group>
       </Stack>
     </Modal>

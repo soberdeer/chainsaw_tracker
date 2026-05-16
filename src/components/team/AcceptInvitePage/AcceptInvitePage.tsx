@@ -1,6 +1,6 @@
-import { useState } from 'react';
-import { Alert, Box, Button, Loader, Paper, Stack, Text, Title } from '@mantine/core';
+import { Alert, Box, Button, Loader, Paper, Stack, Text, Title, Tooltip } from '@mantine/core';
 import { IconMailCheck } from '@tabler/icons-react';
+import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { acceptInvite } from '../../../lib/api';
 import { getErrorMessage } from '../../../lib/taskUi';
@@ -10,7 +10,9 @@ export function AcceptInvitePage() {
   const { token } = useParams();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [acceptedWorkspace, setAcceptedWorkspace] = useState<{ id: string; name: string } | null>(null);
+  const [acceptedWorkspace, setAcceptedWorkspace] = useState<{ id: string; name: string } | null>(
+    null
+  );
   const [error, setError] = useState<string | null>(null);
 
   const accept = async () => {
@@ -31,17 +33,25 @@ export function AcceptInvitePage() {
     <Box className={`${classes.center} ${classes.setupScreen}`}>
       <Paper withBorder className={classes.inviteCard}>
         <Stack gap="md" align="flex-start">
-          <IconMailCheck size="2rem" />
+          <Tooltip label="Workspace invite">
+            <IconMailCheck size="2rem" />
+          </Tooltip>
           <Title order={2}>Accept workspace invite</Title>
           {acceptedWorkspace ? (
             <>
               <Text c="dimmed">You now have access to {acceptedWorkspace.name}.</Text>
-              <Button component={Link} to="/" onClick={() => navigate('/')}>Open workspace</Button>
+              <Button component={Link} to="/" onClick={() => navigate('/')}>
+                Open workspace
+              </Button>
             </>
           ) : (
             <>
               <Text c="dimmed">This invite will add your current local user to the workspace.</Text>
-              {error && <Alert color="red" title="Could not accept invite">{error}</Alert>}
+              {error && (
+                <Alert color="red" title="Could not accept invite">
+                  {error}
+                </Alert>
+              )}
               <Button loading={loading} disabled={!token} onClick={accept}>
                 {loading ? <Loader size="xs" /> : 'Accept invite'}
               </Button>

@@ -1,27 +1,64 @@
-import { useEffect, useMemo, useState } from 'react';
-import { ActionIcon, Alert, AppShell, Badge, Box, Button, Group, Loader, Menu, ScrollArea, Select, Stack, Tabs, Text, TextInput, ThemeIcon, Title, useMantineColorScheme } from '@mantine/core';
-import { IconCheck, IconChevronDown, IconColumns, IconDots, IconFileText, IconFilter, IconFolder, IconFolderOpen, IconLayoutKanban, IconList, IconLock, IconPlus, IconSearch, IconSettings, IconSubtask, IconUsers } from '@tabler/icons-react';
-import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { createFolder, createMarkdownDoc, createSpace, createTask, createTaskList, getMilestones, getTask, getTasks, getWorkspaces, reorderTasks, updateSpace, updateTask } from '../../../lib/api';
-import type { DocumentItem, Milestone, Task, Workspace } from '../../../lib/types';
 import {
-  docPath,
+  ActionIcon,
+  Alert,
+  AppShell,
+  Badge,
+  Box,
+  Button,
+  Group,
+  Loader,
+  Menu,
+  MultiSelect,
+  ScrollArea,
+  Select,
+  Stack,
+  Tabs,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Title,
+  Tooltip,
+  useMantineColorScheme,
+} from '@mantine/core';
+import {
+  IconCheck,
+  IconChevronDown,
+  IconDots,
+  IconFolder,
+  IconFolderOpen,
+  IconLayoutKanban,
+  IconList,
+  IconLock,
+  IconPlus,
+  IconSearch,
+} from '@tabler/icons-react';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
+import {
+  createFolder,
+  createSpace,
+  createTaskList,
+  getTask,
+  getTasks,
+  getWorkspaces,
+  reorderTasks,
+  updateSpace,
+  updateTask,
+} from '../../../lib/api';
+import {
   firstTaskFolder,
   firstTaskList,
   folderPath,
   getErrorMessage,
   parseAppPath,
   taskPath,
-  workspaceHasWork
+  workspaceHasWork,
 } from '../../../lib/taskUi';
-import { DocumentPage } from '../../docs/DocumentPage/DocumentPage';
-import { DocumentsPanel } from '../../docs/DocumentsPanel/DocumentsPanel';
-import { EmptySetup } from '../../setup/EmptySetup/EmptySetup';
+import type { Task, User, Workspace } from '../../../lib/types';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
+import { GroupedTaskList, TaskBoard } from '../../tasks/StatusIcon';
+import { TaskCreateModal } from '../../tasks/TaskCreateModal';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
-import { GroupedTaskList, TaskBoard } from '../../tasks/TaskViews';
-import { TeamPanel } from '../../team/TeamPanel/TeamPanel';
-import { ShareSpaceModal } from '../ShareSpaceModal/ShareSpaceModal';
 import classes from './WorkspaceShell.module.css';
 
 export function WorkspaceShell() {
@@ -43,14 +80,11 @@ export function WorkspaceShell() {
   const [nextCursor, setNextCursor] = useState<string | null>(null);
   const [taskSearch, setTaskSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<string | null>(null);
-  const [assigneeFilter, setAssigneeFilter] = useState<string | null>(null);
+  const [assigneeFilter, setAssigneeFilter] = useState<string[]>([]);
   const [priorityFilter, setPriorityFilter] = useState<string | null>(null);
-  const [milestoneFilter, setMilestoneFilter] = useState<string | null>(null);
-  const [milestones, setMilestones] = useState<Milestone[]>([]);
-  const [selectedDoc, setSelectedDoc] = useState<DocumentItem | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
-  const [shareSpaceOpen, setShareSpaceOpen] = useState(false);
+  const [createTaskStatusId, setCreateTaskStatusId] = useState<string | null>(null);
 
   const reload = () => setRefreshKey((key) => key + 1);
   const runAction = async (action: () => Promise<void>) => {
@@ -65,7 +99,8 @@ export function WorkspaceShell() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const isInput = target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
+      const isInput =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable;
       if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
         event.preventDefault();
         setSearchOpen(true);
@@ -79,51 +114,76 @@ export function WorkspaceShell() {
   }, []);
 
   useEffect(() => {
-    getWorkspaces().then((items) => {
-      setWorkspaces(items);
-      const route = parseAppPath(location.pathname);
-      const defaultWorkspace =
-        items.find((item) => item.spaces.some((space) => space.id === route.spaceId)) ||
-        items.find((item) => item.id === workspaceId) ||
-        items.find(workspaceHasWork) ||
-        items[0];
-      if (defaultWorkspace?.id && defaultWorkspace.id !== workspaceId) setWorkspaceId(defaultWorkspace.id);
+    getWorkspaces()
+      .then((items) => {
+        setWorkspaces(items);
+        const route = parseAppPath(location.pathname);
+        const defaultWorkspace =
+          items.find((item) => item.spaces.some((space) => space.id === route.spaceId)) ||
+          items.find((item) => item.id === workspaceId) ||
+          items.find(workspaceHasWork) ||
+          items[0];
+        if (defaultWorkspace?.id && defaultWorkspace.id !== workspaceId)
+          setWorkspaceId(defaultWorkspace.id);
 
-      const defaultSpace =
-        defaultWorkspace?.spaces.find((space) => space.id === route.spaceId) ||
-        defaultWorkspace?.spaces.find((space) => firstTaskFolder(space)) ||
-        defaultWorkspace?.spaces[0];
-      const defaultFolder = defaultSpace?.folders.find((folder) => folder.id === route.folderId) || firstTaskFolder(defaultSpace);
-      const defaultTaskList = firstTaskList(defaultFolder);
-      setSpaceId(defaultSpace?.id);
-      setFolderId(defaultFolder?.id);
-      setTaskListId(defaultTaskList?.id);
-      setLoading(false);
+        const defaultSpace =
+          defaultWorkspace?.spaces.find((space) => space.id === route.spaceId) ||
+          defaultWorkspace?.spaces.find((space) => firstTaskFolder(space)) ||
+          defaultWorkspace?.spaces[0];
+        const defaultFolder =
+          defaultSpace?.folders.find((folder) => folder.id === route.folderId) ||
+          firstTaskFolder(defaultSpace);
+        const defaultTaskList = firstTaskList(defaultFolder);
+        setSpaceId(defaultSpace?.id);
+        setFolderId(defaultFolder?.id);
+        setTaskListId(defaultTaskList?.id);
+        setLoading(false);
 
-      if (route.taskId) {
-        getTask(route.taskId).then(setSelectedTask).catch((error) => setActionError(getErrorMessage(error)));
-        setSelectedDoc(null);
-      } else {
-        setSelectedTask(null);
-      }
+        if (route.taskId) {
+          getTask(route.taskId)
+            .then(setSelectedTask)
+            .catch((error) => setActionError(getErrorMessage(error)));
+        } else {
+          setSelectedTask(null);
+        }
 
-      if (route.docId && defaultSpace) {
-        setSelectedDoc(defaultSpace.documents.find((doc) => doc.id === route.docId) || null);
-      } else {
-        setSelectedDoc(null);
-      }
-
-      if (!route.spaceId && defaultSpace && defaultFolder) {
-        navigate(folderPath(defaultSpace.id, defaultFolder.id), { replace: true });
-      }
-    });
+        if (!route.spaceId && defaultSpace && defaultFolder) {
+          navigate(folderPath(defaultSpace.id, defaultFolder.id), { replace: true });
+        }
+      })
+      .catch((error) => {
+        setActionError(getErrorMessage(error));
+        setLoading(false);
+      });
   }, [refreshKey, workspaceId, location.pathname, navigate]);
 
   const workspace = workspaces.find((item) => item.id === workspaceId) || workspaces[0];
-  const activeSpace = useMemo(() => workspace?.spaces.find((space) => space.id === spaceId) || workspace?.spaces[0], [workspace, spaceId]);
-  const activeFolder = useMemo(() => activeSpace?.folders.find((folder) => folder.id === folderId) || firstTaskFolder(activeSpace), [activeSpace, folderId]);
-  const activeTaskList = useMemo(() => activeFolder?.taskLists?.find((list) => list.id === taskListId) || firstTaskList(activeFolder), [activeFolder, taskListId]);
+  const activeSpace = useMemo(
+    () => workspace?.spaces.find((space) => space.id === spaceId) || workspace?.spaces[0],
+    [workspace, spaceId]
+  );
+  const activeFolder = useMemo(
+    () =>
+      activeSpace?.folders.find((folder) => folder.id === folderId) || firstTaskFolder(activeSpace),
+    [activeSpace, folderId]
+  );
+  const activeTaskList = useMemo(
+    () =>
+      activeFolder?.taskLists?.find((list) => list.id === taskListId) ||
+      firstTaskList(activeFolder),
+    [activeFolder, taskListId]
+  );
   const statuses = activeTaskList?.statuses || [];
+  const availableAssignees = useMemo(() => {
+    const users = new Map<string, User>();
+    workspace?.memberships.forEach((membership) => users.set(membership.user.id, membership.user));
+    tasks.forEach((task) => {
+      (task.assignees || (task.assignee ? [task.assignee] : [])).forEach((user) =>
+        users.set(user.id, user)
+      );
+    });
+    return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }, [workspace, tasks]);
 
   const loadTasks = async (cursor?: string) => {
     if (!workspace?.id || !activeTaskList?.id) {
@@ -138,14 +198,13 @@ export function WorkspaceShell() {
         workspaceId: workspace.id,
         listId: activeTaskList.id,
         statusId: statusFilter || undefined,
-        assigneeId: assigneeFilter || undefined,
+        assigneeIds: assigneeFilter.length ? assigneeFilter : undefined,
         priority: priorityFilter || undefined,
-        milestoneId: milestoneFilter || undefined,
         search: taskSearch,
         limit: 50,
-        cursor
+        cursor,
       });
-      setTasks((current) => cursor ? [...current, ...page.items] : page.items);
+      setTasks((current) => (cursor ? [...current, ...page.items] : page.items));
       setNextCursor(page.nextCursor || null);
     } catch (error) {
       setTasksError(getErrorMessage(error));
@@ -156,21 +215,19 @@ export function WorkspaceShell() {
 
   useEffect(() => {
     void loadTasks();
-  }, [workspace?.id, activeTaskList?.id, taskSearch, statusFilter, assigneeFilter, priorityFilter, milestoneFilter, refreshKey]);
-
-  useEffect(() => {
-    if (!workspace?.id) return;
-    getMilestones(workspace.id, activeFolder?.id).then(setMilestones).catch(() => setMilestones([]));
-  }, [workspace?.id, activeFolder?.id]);
+  }, [
+    workspace?.id,
+    activeTaskList?.id,
+    taskSearch,
+    statusFilter,
+    assigneeFilter.join(','),
+    priorityFilter,
+    refreshKey,
+  ]);
 
   const addTask = async (statusId: string) => {
     if (!activeTaskList) return;
-    const title = window.prompt('Task name');
-    if (!title) return;
-    await runAction(async () => {
-      await createTask({ taskListId: activeTaskList.id, statusId, title, priority: 'NORMAL' });
-      reload();
-    });
+    setCreateTaskStatusId(statusId);
   };
 
   const moveTask = async (taskId: string, statusId: string) => {
@@ -193,7 +250,9 @@ export function WorkspaceShell() {
     if (!activeSpace || !activeFolder) return;
     setSelectedTask(task);
     navigate(taskPath(activeSpace.id, activeFolder.id, task.id));
-    getTask(task.id).then(setSelectedTask).catch((error) => setActionError(getErrorMessage(error)));
+    getTask(task.id)
+      .then(setSelectedTask)
+      .catch((error) => setActionError(getErrorMessage(error)));
   };
 
   const openSubtask = (task: Task) => {
@@ -207,33 +266,32 @@ export function WorkspaceShell() {
   const backToFolder = () => {
     if (!activeSpace || !activeFolder) return;
     setSelectedTask(null);
-    setSelectedDoc(null);
     navigate(folderPath(activeSpace.id, activeFolder.id));
   };
 
-  const openDoc = (document: DocumentItem) => {
-    if (!activeSpace) return;
-    setSelectedDoc(document);
-    setSelectedTask(null);
-    navigate(docPath(activeSpace.id, document.id));
-  };
-
-  if (loading) return <Box className={classes.center}><Loader /></Box>;
+  if (loading)
+    return (
+      <Box className={classes.center}>
+        <Loader />
+      </Box>
+    );
 
   if (!workspace) {
+    if (actionError) {
+      return (
+        <Box className={`${classes.center} ${classes.setupScreen}`}>
+          <Alert color="red" title="Could not load ClickUp workspace">
+            {actionError}
+          </Alert>
+        </Box>
+      );
+    }
     return (
-      <EmptySetup
-        onCreated={(createdWorkspace) => {
-          setWorkspaces([createdWorkspace]);
-          setWorkspaceId(createdWorkspace.id);
-          const defaultSpace = createdWorkspace.spaces[0];
-          const defaultFolder = firstTaskFolder(defaultSpace);
-          setSpaceId(defaultSpace?.id);
-          setFolderId(defaultFolder?.id);
-          setTaskListId(firstTaskList(defaultFolder)?.id);
-          reload();
-        }}
-      />
+      <Box className={`${classes.center} ${classes.setupScreen}`}>
+        <Alert color="yellow" title="No ClickUp workspaces">
+          The ClickUp API returned no workspaces for this token.
+        </Alert>
+      </Box>
     );
   }
 
@@ -243,12 +301,28 @@ export function WorkspaceShell() {
         <Stack>
           <Title order={2}>{workspace.name}</Title>
           <Text c="dimmed">Workspace created. Add the first space to start working.</Text>
-          {actionError && <Alert color="red" title="Could not create space" withCloseButton onClose={() => setActionError(null)}>{actionError}</Alert>}
+          {actionError && (
+            <Alert
+              color="red"
+              title="Could not create space"
+              withCloseButton
+              onClose={() => setActionError(null)}
+            >
+              {actionError}
+            </Alert>
+          )}
           <Button
-            onClick={() => runAction(async () => {
-              await createSpace({ workspaceId: workspace.id, name: 'General', color: '#4c6ef5', initials: 'G' });
-              reload();
-            })}
+            onClick={() =>
+              runAction(async () => {
+                await createSpace({
+                  workspaceId: workspace.id,
+                  name: 'General',
+                  color: '#4c6ef5',
+                  initials: 'G',
+                });
+                reload();
+              })
+            }
           >
             Create first space
           </Button>
@@ -265,125 +339,185 @@ export function WorkspaceShell() {
         activeSpace={activeSpace}
         activeFolder={activeFolder}
         activeTaskList={activeTaskList}
-        statuses={statuses}
         onClose={() => setSearchOpen(false)}
         onNavigate={(url) => navigate(url)}
         onReload={reload}
+        onCreateTask={() => setCreateTaskStatusId(statuses[0]?.id || null)}
         onError={setActionError}
       />
-      <ShareSpaceModal
-        opened={shareSpaceOpen}
-        workspace={workspace}
-        space={activeSpace}
-        onClose={() => setShareSpaceOpen(false)}
+      <TaskCreateModal
+        opened={Boolean(createTaskStatusId)}
+        taskList={activeTaskList}
+        statuses={statuses}
+        users={availableAssignees}
+        initialStatusId={createTaskStatusId || statuses[0]?.id}
+        onClose={() => setCreateTaskStatusId(null)}
+        onCreated={() => reload()}
         onError={setActionError}
       />
       <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
         <Group mb="lg" gap="sm" justify="space-between">
           <Group gap="sm">
-            <ThemeIcon size="lg" radius="md" color="dark"><IconCheck size="1.25rem" /></ThemeIcon>
+            <Tooltip label="Workspace">
+              <ThemeIcon size="lg" radius="md" color="dark">
+                <IconCheck size="1.25rem" />
+              </ThemeIcon>
+            </Tooltip>
             <div>
               <Text fw={800}>{workspace.name}</Text>
-              <Text size="xs" c="dimmed">All Tasks - studio workspace</Text>
+              <Text size="xs" c="dimmed">
+                All Tasks - studio workspace
+              </Text>
             </div>
           </Group>
-          <ActionIcon
-            variant="light"
-            aria-label="Add space"
-            onClick={async () => {
-              const name = window.prompt('Space name');
-              if (!name) return;
-              await runAction(async () => {
-                await createSpace({ workspaceId: workspace.id, name, color: '#4c6ef5', initials: name.slice(0, 1).toUpperCase(), locked: true });
-                reload();
-              });
-            }}
-          >
-            <IconPlus size="1.25rem" />
-          </ActionIcon>
+          <Tooltip label="Add space">
+            <ActionIcon
+              variant="light"
+              aria-label="Add space"
+              onClick={async () => {
+                const name = window.prompt('Space name');
+                if (!name) return;
+                await runAction(async () => {
+                  await createSpace({
+                    workspaceId: workspace.id,
+                    name,
+                    color: '#4c6ef5',
+                    initials: name.slice(0, 1).toUpperCase(),
+                    locked: true,
+                  });
+                  reload();
+                });
+              }}
+            >
+              <IconPlus size="1.25rem" />
+            </ActionIcon>
+          </Tooltip>
         </Group>
-        <Text size="lg" fw={700} mb="md">Spaces</Text>
+        <Text size="lg" fw={700} mb="md">
+          Spaces
+        </Text>
         <ScrollArea className={classes.spacesTree}>
           {workspace.spaces.map((space) => {
             const isActiveSpace = space.id === activeSpace.id;
             return (
               <Box key={space.id} className={classes.spaceTreeBlock}>
-                <button
-                  type="button"
-                  className={isActiveSpace ? `${classes.spaceTreeRow} ${classes.active}` : classes.spaceTreeRow}
-                  onClick={() => {
-                    setSpaceId(space.id);
-                    const folder = firstTaskFolder(space);
-                    setFolderId(folder?.id);
-                    setTaskListId(firstTaskList(folder)?.id);
-                    if (folder) navigate(folderPath(space.id, folder.id));
-                  }}
-                >
-                  <span className={classes.spaceInitial} style={{ background: space.color }}>{space.initials || space.name.slice(0, 1)}</span>
-                  <span className={classes.spaceName}>{space.name}</span>
-                  {space.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
+                <Group wrap="nowrap" gap={0}>
+                  <button
+                    type="button"
+                    className={
+                      isActiveSpace
+                        ? `${classes.spaceTreeRow} ${classes.active}`
+                        : classes.spaceTreeRow
+                    }
+                    onClick={() => {
+                      setSpaceId(space.id);
+                      const folder = firstTaskFolder(space);
+                      setFolderId(folder?.id);
+                      setTaskListId(firstTaskList(folder)?.id);
+                      if (folder) navigate(folderPath(space.id, folder.id));
+                    }}
+                  >
+                    <span className={classes.spaceInitial} style={{ background: space.color }}>
+                      {space.initials || space.name.slice(0, 1)}
+                    </span>
+                    <span className={classes.spaceName}>{space.name}</span>
+                    {space.locked && (
+                      <Tooltip label={`${space.name} is private`}>
+                        <IconLock size="1rem" className={classes.mutedIcon} />
+                      </Tooltip>
+                    )}
+                  </button>
                   {isActiveSpace && (
                     <Menu width="22rem" position="right-start">
                       <Menu.Target>
-                        <IconDots size="1.125rem" className={classes.rowAction} onClick={(event) => event.stopPropagation()} />
+                        <Tooltip label="Space actions">
+                          <ActionIcon
+                            component="div"
+                            variant="subtle"
+                            aria-label="Space actions"
+                            className={classes.rowAction}
+                          >
+                            <IconDots size="1.125rem" />
+                          </ActionIcon>
+                        </Tooltip>
                       </Menu.Target>
-                      <Menu.Dropdown className={classes.menuDropdown} onClick={(event) => event.stopPropagation()}>
-                        <Menu.Item onClick={() => setShareSpaceOpen(true)}>Sharing & Permissions</Menu.Item>
-                        <Menu.Item onClick={() => {
-                          const name = window.prompt('Space name', space.name);
-                          if (name) void runAction(async () => {
-                            await updateSpace(space.id, { name });
-                            reload();
-                          });
-                        }}>Rename</Menu.Item>
-                        <Menu.Item onClick={() => navigator.clipboard?.writeText(`${window.location.origin}/space/${space.id}`)}>Copy link</Menu.Item>
+                      <Menu.Dropdown
+                        className={classes.menuDropdown}
+                        onClick={(event) => event.stopPropagation()}
+                      >
+                        <Menu.Item
+                          onClick={() => {
+                            const name = window.prompt('Space name', space.name);
+                            if (name)
+                              void runAction(async () => {
+                                await updateSpace(space.id, { name });
+                                reload();
+                              });
+                          }}
+                        >
+                          Rename
+                        </Menu.Item>
+                        <Menu.Item
+                          onClick={() =>
+                            navigator.clipboard?.writeText(
+                              `${window.location.origin}/space/${space.id}`
+                            )
+                          }
+                        >
+                          Copy link
+                        </Menu.Item>
                         <Menu.Divider />
                         <Menu.Label>Create new</Menu.Label>
-                        <Menu.Item onClick={async () => {
+                        <Menu.Item
+                          onClick={async () => {
+                            const name = window.prompt('Folder name');
+                            if (!name) return;
+                            await runAction(async () => {
+                              await createFolder(space.id, { name, kind: 'TEAM', locked: true });
+                              reload();
+                            });
+                          }}
+                        >
+                          Folder
+                        </Menu.Item>
+                        <Menu.Item
+                          onClick={async () => {
+                            const folder = firstTaskFolder(space);
+                            if (!folder) return;
+                            const name = window.prompt('List name');
+                            if (!name) return;
+                            await runAction(async () => {
+                              await createTaskList(folder.id, { name, icon: '☣' });
+                              reload();
+                            });
+                          }}
+                        >
+                          List
+                        </Menu.Item>
+                      </Menu.Dropdown>
+                    </Menu>
+                  )}
+                  {isActiveSpace && (
+                    <Tooltip label="Add folder">
+                      <ActionIcon
+                        variant="subtle"
+                        aria-label="Add folder"
+                        className={classes.rowAction}
+                        onClick={async (event) => {
+                          event.stopPropagation();
                           const name = window.prompt('Folder name');
                           if (!name) return;
                           await runAction(async () => {
                             await createFolder(space.id, { name, kind: 'TEAM', locked: true });
                             reload();
                           });
-                        }}>Folder</Menu.Item>
-                        <Menu.Item onClick={async () => {
-                          const title = window.prompt('Doc title');
-                          if (!title) return;
-                          await runAction(async () => {
-                            await createMarkdownDoc({ spaceId: space.id, title, markdown: `# ${title}` });
-                            reload();
-                          });
-                        }}>Doc</Menu.Item>
-                        <Menu.Item onClick={async () => {
-                          const folder = firstTaskFolder(space);
-                          if (!folder) return;
-                          const name = window.prompt('List name');
-                          if (!name) return;
-                          await runAction(async () => {
-                            await createTaskList(folder.id, { name, icon: '☣' });
-                            reload();
-                          });
-                        }}>List</Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
+                        }}
+                      >
+                        <IconPlus size="1.125rem" />
+                      </ActionIcon>
+                    </Tooltip>
                   )}
-                  {isActiveSpace && (
-                    <IconPlus
-                      size="1.125rem"
-                      className={classes.rowAction}
-                      onClick={async (event) => {
-                        event.stopPropagation();
-                        const name = window.prompt('Folder name');
-                        if (!name) return;
-                        await runAction(async () => {
-                          await createFolder(space.id, { name, kind: 'TEAM', locked: true });
-                          reload();
-                        });
-                      }}
-                    />
-                  )}
-                </button>
+                </Group>
 
                 {isActiveSpace && (
                   <Box className={classes.folderTree}>
@@ -394,47 +528,77 @@ export function WorkspaceShell() {
                         <Box key={folder.id}>
                           <button
                             type="button"
-                            className={isActiveFolder ? `${classes.folderTreeRow} ${classes.active}` : classes.folderTreeRow}
+                            className={
+                              isActiveFolder
+                                ? `${classes.folderTreeRow} ${classes.active}`
+                                : classes.folderTreeRow
+                            }
                             onClick={() => {
                               setFolderId(folder.id);
                               setTaskListId(firstTaskList(folder)?.id);
                               navigate(folderPath(space.id, folder.id));
                             }}
                           >
-                            {isDocs ? <IconFolderOpen size="1.25rem" color="#4c6ef5" /> : <IconFolder size="1.25rem" />}
+                            <Tooltip label={isDocs ? 'Docs folder' : 'Task folder'}>
+                              {isDocs ? (
+                                <IconFolderOpen size="1.25rem" color="#4c6ef5" />
+                              ) : (
+                                <IconFolder size="1.25rem" />
+                              )}
+                            </Tooltip>
                             <span>{folder.name}</span>
-                            {folder.locked && <IconLock size="0.9375rem" className={classes.mutedIcon} />}
-                            {!isDocs && <IconDots size="1rem" className={classes.rowAction} />}
+                            {folder.locked && (
+                              <Tooltip label={`${folder.name} is private`}>
+                                <IconLock size="0.9375rem" className={classes.mutedIcon} />
+                              </Tooltip>
+                            )}
                             {!isDocs && (
-                              <IconPlus
-                                size="1rem"
-                                className={classes.rowAction}
-                                onClick={async (event) => {
-                                  event.stopPropagation();
-                                  const name = window.prompt('Task list name');
-                                  if (!name) return;
-                                  await runAction(async () => {
-                                    await createTaskList(folder.id, { name, icon: '☣' });
-                                    reload();
-                                  });
-                                }}
-                              />
+                              <Tooltip label="Add task list">
+                                <ActionIcon
+                                  variant="subtle"
+                                  aria-label="Add task list"
+                                  className={classes.rowAction}
+                                  onClick={async (event) => {
+                                    event.stopPropagation();
+                                    const name = window.prompt('Task list name');
+                                    if (!name) return;
+                                    await runAction(async () => {
+                                      await createTaskList(folder.id, { name, icon: '☣' });
+                                      reload();
+                                    });
+                                  }}
+                                >
+                                  <IconPlus size="1rem" />
+                                </ActionIcon>
+                              </Tooltip>
                             )}
                           </button>
                           {folder.taskLists?.map((taskList) => (
                             <button
                               key={taskList.id}
                               type="button"
-                              className={taskList.id === activeTaskList?.id ? `${classes.taskListNav} ${classes.active}` : classes.taskListNav}
+                              className={
+                                taskList.id === activeTaskList?.id
+                                  ? `${classes.taskListNav} ${classes.active}`
+                                  : classes.taskListNav
+                              }
                               onClick={() => {
                                 setFolderId(folder.id);
                                 setTaskListId(taskList.id);
                                 navigate(folderPath(space.id, folder.id));
                               }}
                             >
-                              <span className={classes.taskListIcon}>{taskList.icon || '☣'}</span>
+                              <Tooltip label={`Task list: ${taskList.name}`}>
+                                <span className={classes.taskListIcon}>{taskList.icon || '☣'}</span>
+                              </Tooltip>
                               <span>{taskList.name}</span>
-                              <Badge className={classes.taskCount}>{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
+                              <Tooltip
+                                label={`${taskList._count?.tasks ?? taskList.tasks?.length ?? 0} tasks in ${taskList.name}`}
+                              >
+                                <Badge variant="light">
+                                  {taskList._count?.tasks ?? taskList.tasks?.length ?? 0}
+                                </Badge>
+                              </Tooltip>
                             </button>
                           ))}
                         </Box>
@@ -452,12 +616,19 @@ export function WorkspaceShell() {
               const name = window.prompt('Space name');
               if (!name) return;
               await runAction(async () => {
-                await createSpace({ workspaceId: workspace.id, name, color: '#4c6ef5', initials: name.slice(0, 1).toUpperCase(), locked: true });
+                await createSpace({
+                  workspaceId: workspace.id,
+                  name,
+                  color: '#4c6ef5',
+                  initials: name.slice(0, 1).toUpperCase(),
+                  locked: true,
+                });
                 reload();
               });
             }}
           >
-            <IconPlus size="1.125rem" />New Space
+            <IconPlus size="1.125rem" />
+            New Space
           </button>
         </ScrollArea>
       </AppShell.Navbar>
@@ -465,27 +636,72 @@ export function WorkspaceShell() {
       <AppShell.Main className={classes.mainShell}>
         <Stack gap={0}>
           {actionError && (
-            <Alert color="red" title="Action failed" withCloseButton onClose={() => setActionError(null)} m="md">
+            <Alert
+              color="red"
+              title="Action failed"
+              withCloseButton
+              onClose={() => setActionError(null)}
+              m="md"
+            >
               {actionError}
             </Alert>
           )}
           <Group className={classes.topBar} justify="space-between">
             <Group gap="xs" wrap="nowrap">
-              <span className={classes.breadcrumbChip} style={{ background: activeSpace.color }}>{activeSpace.initials || activeSpace.name.slice(0, 1)}</span>
-              <Button component={Link} to={folderPath(activeSpace.id, activeFolder?.id || '')} variant="subtle" size="compact-md">{activeSpace.name}</Button>
-              {activeSpace.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
+              <span className={classes.breadcrumbChip} style={{ background: activeSpace.color }}>
+                {activeSpace.initials || activeSpace.name.slice(0, 1)}
+              </span>
+              <Button
+                component={Link}
+                to={folderPath(activeSpace.id, activeFolder?.id || '')}
+                variant="subtle"
+                size="compact-md"
+              >
+                {activeSpace.name}
+              </Button>
+              {activeSpace.locked && (
+                <Tooltip label={`${activeSpace.name} is private`}>
+                  <IconLock size="1rem" className={classes.mutedIcon} />
+                </Tooltip>
+              )}
               <Text c="dimmed">/</Text>
-              <IconFolder size="1.25rem" className={classes.mutedIcon} />
-              {activeFolder ? <Button component={Link} to={folderPath(activeSpace.id, activeFolder.id)} variant="subtle" size="compact-md">{activeFolder.name}</Button> : <Text fw={700}>Docs</Text>}
-              {activeFolder?.locked && <IconLock size="1rem" className={classes.mutedIcon} />}
+              <Tooltip label="Current folder">
+                <IconFolder size="1.25rem" className={classes.mutedIcon} />
+              </Tooltip>
+              {activeFolder ? (
+                <Button
+                  component={Link}
+                  to={folderPath(activeSpace.id, activeFolder.id)}
+                  variant="subtle"
+                  size="compact-md"
+                >
+                  {activeFolder.name}
+                </Button>
+              ) : (
+                <Text fw={700}>Docs</Text>
+              )}
+              {activeFolder?.locked && (
+                <Tooltip label={`${activeFolder.name} is private`}>
+                  <IconLock size="1rem" className={classes.mutedIcon} />
+                </Tooltip>
+              )}
               <Text c="dimmed">/</Text>
               <Text fw={800}>{selectedTask?.title || activeTaskList?.name || 'DOC'}</Text>
-              <IconChevronDown size="1rem" className={classes.mutedIcon} />
-              <ActionIcon variant="subtle" color="gray" aria-label="Favorite"><IconCheck size="1.125rem" /></ActionIcon>
+              <Tooltip label="Current location">
+                <IconChevronDown size="1rem" className={classes.mutedIcon} />
+              </Tooltip>
             </Group>
             <Group gap="md">
-              <Button variant="light" leftSection={<IconSearch size="1rem" />} onClick={() => setSearchOpen(true)}>Search ⌘K</Button>
-              <Button variant="light" onClick={() => toggleColorScheme()}>{colorScheme === 'dark' ? 'Light' : 'Dark'}</Button>
+              <Button
+                variant="light"
+                leftSection={<IconSearch size="1rem" />}
+                onClick={() => setSearchOpen(true)}
+              >
+                Search ⌘K
+              </Button>
+              <Button variant="light" onClick={() => toggleColorScheme()}>
+                {colorScheme === 'dark' ? 'Light' : 'Dark'}
+              </Button>
             </Group>
           </Group>
 
@@ -504,38 +720,33 @@ export function WorkspaceShell() {
                 onError={setActionError}
               />
             </Box>
-          ) : selectedDoc ? (
-            <Box p="lg">
-              <DocumentPage
-                document={selectedDoc}
-                onBack={backToFolder}
-                onSaved={(document) => {
-                  setSelectedDoc(document);
-                  reload();
-                }}
-                onError={setActionError}
-              />
-            </Box>
           ) : (
             <Tabs defaultValue="tasks" keepMounted={false} className={classes.contentTabs}>
               <Tabs.List className={classes.viewTabs}>
-                <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>Board</Tabs.Tab>
-                <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>List</Tabs.Tab>
-                <Tabs.Tab value="docs" leftSection={<IconFileText size="1rem" />}>Docs</Tabs.Tab>
-                <Tabs.Tab value="team" leftSection={<IconUsers size="1rem" />}>Permissions</Tabs.Tab>
+                <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>
+                  Board
+                </Tabs.Tab>
+                <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>
+                  List
+                </Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="tasks">
                 <Stack gap={0}>
                   <Group className={classes.taskToolbar} justify="space-between">
                     <Group gap="xs">
-                      <Button className={`${classes.pillControl} ${classes.pillActive}`} variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Group: Status</Button>
-                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconSubtask size="1.125rem" />}>Subtasks</Button>
-                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconColumns size="1.125rem" />}>Columns</Button>
+                      <Tooltip label="Grouped by ClickUp status">
+                        <Badge variant="light">Grouped by ClickUp status</Badge>
+                      </Tooltip>
                     </Group>
                     <Group gap="xs">
-                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconFilter size="1.125rem" />}>Filter</Button>
-                      <TextInput value={taskSearch} onChange={(event) => setTaskSearch(event.currentTarget.value)} placeholder="Search tasks" leftSection={<IconSearch size="1rem" />} w="16rem" />
+                      <TextInput
+                        value={taskSearch}
+                        onChange={(event) => setTaskSearch(event.currentTarget.value)}
+                        placeholder="Search tasks"
+                        leftSection={<IconSearch size="1rem" />}
+                        w="16rem"
+                      />
                       <Select
                         value={statusFilter}
                         onChange={setStatusFilter}
@@ -544,13 +755,17 @@ export function WorkspaceShell() {
                         data={statuses.map((item) => ({ value: item.id, label: item.name }))}
                         w="10rem"
                       />
-                      <Select
+                      <MultiSelect
                         value={assigneeFilter}
                         onChange={setAssigneeFilter}
                         clearable
-                        placeholder="Assignee"
-                        data={workspace.memberships.map((membership) => ({ value: membership.user.id, label: membership.user.name }))}
-                        w="11rem"
+                        placeholder="Assignees"
+                        data={availableAssignees.map((user) => ({
+                          value: user.id,
+                          label: user.name,
+                        }))}
+                        w="14rem"
+                        searchable
                       />
                       <Select
                         value={priorityFilter}
@@ -560,33 +775,82 @@ export function WorkspaceShell() {
                         data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
                         w="9rem"
                       />
-                      <Select
-                        value={milestoneFilter}
-                        onChange={setMilestoneFilter}
-                        clearable
-                        placeholder="Milestone"
-                        data={milestones.map((milestone) => ({ value: milestone.id, label: milestone.title }))}
-                        w="11rem"
-                      />
-                      <ActionIcon className={classes.pillIcon} variant="subtle" aria-label="Search" onClick={() => setSearchOpen(true)}><IconSearch size="1.25rem" /></ActionIcon>
-                      <Button className={classes.pillControl} variant="subtle" leftSection={<IconSettings size="1.125rem" />}>Customize</Button>
-                      <Button color="teal" rightSection={<IconChevronDown size="1rem" />} onClick={() => statuses[0] && addTask(statuses[0].id)}>Add Task</Button>
+                      <Tooltip label="Open search">
+                        <ActionIcon
+                          className={classes.pillIcon}
+                          variant="subtle"
+                          aria-label="Search"
+                          onClick={() => setSearchOpen(true)}
+                        >
+                          <IconSearch size="1.25rem" />
+                        </ActionIcon>
+                      </Tooltip>
+                      <Button
+                        color="teal"
+                        rightSection={<IconChevronDown size="1rem" />}
+                        onClick={() => statuses[0] && addTask(statuses[0].id)}
+                      >
+                        Add Task
+                      </Button>
                     </Group>
                   </Group>
-                  {tasksError && <Alert color="red" title="Could not load tasks">{tasksError}</Alert>}
-                  {tasksLoading && !tasks.length ? <Box className={classes.center} p="xl"><Loader /></Box> : tasks.length === 0 ? (
-                    <Box p="xl"><Text c="dimmed">No tasks match these filters.</Text></Box>
-                  ) : view === 'board' ? (
-                    <TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} />
-                  ) : (
-                    <GroupedTaskList tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onMoveTask={moveTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} />
+                  {tasksError && (
+                    <Alert color="red" title="Could not load tasks">
+                      {tasksError}
+                    </Alert>
                   )}
-                  {nextCursor && <Button variant="subtle" loading={tasksLoading} onClick={() => void loadTasks(nextCursor)}>Load more</Button>}
+                  {tasksLoading && !tasks.length ? (
+                    <Box className={classes.center} p="xl">
+                      <Loader />
+                    </Box>
+                  ) : tasks.length === 0 ? (
+                    <Box p="xl">
+                      <Text c="dimmed">No tasks match these filters.</Text>
+                    </Box>
+                  ) : view === 'board' ? (
+                    <TaskBoard
+                      tasks={tasks}
+                      statuses={statuses}
+                      onAddTask={addTask}
+                      onOpenTask={openTask}
+                      onReorderTasks={reorderTaskGroup}
+                      onChanged={reload}
+                      onError={setActionError}
+                    />
+                  ) : (
+                    <GroupedTaskList
+                      tasks={tasks}
+                      statuses={statuses}
+                      onAddTask={addTask}
+                      onOpenTask={openTask}
+                      onMoveTask={moveTask}
+                      onReorderTasks={reorderTaskGroup}
+                      onChanged={reload}
+                      onError={setActionError}
+                    />
+                  )}
+                  {nextCursor && (
+                    <Button
+                      variant="subtle"
+                      loading={tasksLoading}
+                      onClick={() => void loadTasks(nextCursor)}
+                    >
+                      Load more
+                    </Button>
+                  )}
                 </Stack>
               </Tabs.Panel>
-              <Tabs.Panel value="docs" p="lg"><DocumentsPanel documents={activeSpace.documents} spaceId={activeSpace.id} onOpen={openDoc} onChanged={reload} onError={setActionError} /></Tabs.Panel>
-              <Tabs.Panel value="team" p="lg"><TeamPanel workspace={workspace} onChanged={reload} onError={setActionError} /></Tabs.Panel>
-              <Tabs.Panel value="board" p="lg"><TaskBoard tasks={tasks} statuses={statuses} onAddTask={addTask} onOpenTask={openTask} onReorderTasks={reorderTaskGroup} onChanged={reload} onError={setActionError} /></Tabs.Panel>
+              <Tabs.Panel value="board" p="lg">
+                <TaskBoard
+                  tasks={tasks}
+                  statuses={statuses}
+                  onAddTask={addTask}
+                  onOpenTask={openTask}
+                  onReorderTasks={reorderTaskGroup}
+                  onChanged={reload}
+                  onError={setActionError}
+                />
+              </Tabs.Panel>
             </Tabs>
           )}
         </Stack>

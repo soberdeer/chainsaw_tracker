@@ -1,9 +1,9 @@
-import { promises as fs } from 'node:fs';
+import type { Prisma, TaskPriority } from '@prisma/client';
 import XLSX from 'xlsx';
 import { prisma } from '../db.js';
-import type { Prisma, TaskPriority } from '@prisma/client';
 import { logTaskActivity } from './activity.js';
 import { extractTaskKey } from './taskKeys.js';
+import { promises as fs } from 'node:fs';
 
 type CsvRow = Record<string, unknown>;
 
@@ -16,7 +16,7 @@ const statusColors: Record<string, string> = {
   backlog: '#868e96',
   open: '#868e96',
   'to do': '#868e96',
-  scoping: '#7048e8'
+  scoping: '#7048e8',
 };
 
 function fixMojibake(value: string) {
@@ -82,7 +82,10 @@ function parsePriority(value: unknown): TaskPriority {
 }
 
 function hasMilestoneTag(value: unknown) {
-  return parseJsonArray(value).some((tagValue) => text((tagValue as Record<string, unknown>).name || tagValue).toLowerCase() === 'milestone');
+  return parseJsonArray(value).some(
+    (tagValue) =>
+      text((tagValue as Record<string, unknown>).name || tagValue).toLowerCase() === 'milestone'
+  );
 }
 
 function initials(name: string) {
@@ -123,7 +126,7 @@ async function readRows(filePath: string) {
     type: 'buffer',
     cellDates: false,
     raw: true,
-    codepage: 65001
+    codepage: 65001,
   });
 
   const sheetName = workbook.SheetNames[0];
@@ -137,7 +140,7 @@ async function readRows(filePath: string) {
   return XLSX.utils
     .sheet_to_json<CsvRow>(sheet, {
       defval: '',
-      raw: true
+      raw: true,
     })
     .map(normalizeRow);
 }
@@ -161,133 +164,135 @@ export async function importClickUpCsv(filePath: string, workspaceId: string) {
     try {
       const spaceName = text(row['Space Name']) || 'Imported Space';
 
-    if (!createdSpaces.has(spaceName)) {
-      const space = await prisma.space.upsert({
-        where: {
-          workspaceId_name: {
+      if (!createdSpaces.has(spaceName)) {
+        const space = await prisma.space.upsert({
+          where: {
+            workspaceId_name: {
+              workspaceId,
+              name: spaceName,
+            },
+          },
+          create: {
             workspaceId,
-            name: spaceName
-          }
-        },
-        create: {
-          workspaceId,
-          name: spaceName,
-          color: colorForIndex(spaceIndex++),
-          initials: initials(spaceName),
-          locked: true,
-          permissions: {
-            create: [
-              {
-                role: 'OWNER',
-                canView: true,
-                canEdit: true,
-                canManage: true
-              },
-              {
-                role: 'ADMIN',
-                canView: true,
-                canEdit: true,
-                canManage: true
-              },
-              {
-                role: 'LEAD',
-                canView: true,
-                canEdit: true
-              },
-              {
-                role: 'MEMBER',
-                canView: true,
-                canEdit: true
-              },
-              {
-                role: 'VIEWER',
-                canView: true
-              }
-            ]
-          }
-        },
-        update: {}
-      });
+            name: spaceName,
+            color: colorForIndex(spaceIndex++),
+            initials: initials(spaceName),
+            locked: true,
+            permissions: {
+              create: [
+                {
+                  role: 'OWNER',
+                  canView: true,
+                  canEdit: true,
+                  canManage: true,
+                },
+                {
+                  role: 'ADMIN',
+                  canView: true,
+                  canEdit: true,
+                  canManage: true,
+                },
+                {
+                  role: 'LEAD',
+                  canView: true,
+                  canEdit: true,
+                },
+                {
+                  role: 'MEMBER',
+                  canView: true,
+                  canEdit: true,
+                },
+                {
+                  role: 'VIEWER',
+                  canView: true,
+                },
+              ],
+            },
+          },
+          update: {},
+        });
 
-      createdSpaces.set(spaceName, space.id);
-    }
+        createdSpaces.set(spaceName, space.id);
+      }
 
-    const spaceId = createdSpaces.get(spaceName)!;
+      const spaceId = createdSpaces.get(spaceName)!;
 
-    const folderName = parseFolderName(row['Folder Name/Path']);
-    const folderKey = `${spaceId}:${folderName}`;
+      const folderName = parseFolderName(row['Folder Name/Path']);
+      const folderKey = `${spaceId}:${folderName}`;
 
-    if (!createdFolders.has(folderKey)) {
-      const folder = await prisma.folder.upsert({
-        where: {
-          spaceId_name: {
+      if (!createdFolders.has(folderKey)) {
+        const folder = await prisma.folder.upsert({
+          where: {
+            spaceId_name: {
+              spaceId,
+              name: folderName,
+            },
+          },
+          create: {
             spaceId,
-            name: folderName
-          }
-        },
-        create: {
-          spaceId,
-          name: folderName,
-          kind: folderName.toLowerCase().includes('doc') ? 'DOCS' : 'TEAM',
-          locked: true
-        },
-        update: {}
-      });
+            name: folderName,
+            kind: folderName.toLowerCase().includes('doc') ? 'DOCS' : 'TEAM',
+            locked: true,
+          },
+          update: {},
+        });
 
-      createdFolders.set(folderKey, folder.id);
-    }
+        createdFolders.set(folderKey, folder.id);
+      }
 
-    const folderId = createdFolders.get(folderKey)!;
+      const folderId = createdFolders.get(folderKey)!;
 
-    const listName = text(row['List Name']) || 'Imported Tasks';
-    const listKey = `${folderId}:${listName}`;
+      const listName = text(row['List Name']) || 'Imported Tasks';
+      const listKey = `${folderId}:${listName}`;
 
-    if (!createdLists.has(listKey)) {
-      const taskList = await prisma.taskList.upsert({
-        where: {
-          folderId_name: {
+      if (!createdLists.has(listKey)) {
+        const taskList = await prisma.taskList.upsert({
+          where: {
+            folderId_name: {
+              folderId,
+              name: listName,
+            },
+          },
+          create: {
             folderId,
-            name: listName
-          }
-        },
-        create: {
-          folderId,
-          name: listName,
-          icon: '☣'
-        },
-        update: {}
-      });
+            name: listName,
+            icon: '☣',
+          },
+          update: {},
+        });
 
-      createdLists.set(listKey, taskList.id);
-    }
+        createdLists.set(listKey, taskList.id);
+      }
 
-    const taskListId = createdLists.get(listKey)!;
+      const taskListId = createdLists.get(listKey)!;
 
-    const statusName = text(row.Status).toLowerCase() || 'to do';
-    const statusKey = `${taskListId}:${statusName}`;
+      const statusName = text(row.Status).toLowerCase() || 'to do';
+      const statusKey = `${taskListId}:${statusName}`;
 
-    if (!createdStatuses.has(statusKey)) {
-      const statusCount = [...createdStatuses.keys()].filter((key) => key.startsWith(`${taskListId}:`)).length;
+      if (!createdStatuses.has(statusKey)) {
+        const statusCount = [...createdStatuses.keys()].filter((key) =>
+          key.startsWith(`${taskListId}:`)
+        ).length;
 
-      const status = await prisma.taskStatus.upsert({
-        where: {
-          taskListId_name: {
+        const status = await prisma.taskStatus.upsert({
+          where: {
+            taskListId_name: {
+              taskListId,
+              name: statusName,
+            },
+          },
+          create: {
             taskListId,
-            name: statusName
-          }
-        },
-        create: {
-          taskListId,
-          name: statusName,
-          color: statusColors[statusName] || '#868e96',
-          isDone: ['complete', 'closed', 'shipped'].includes(statusName),
-          position: statusCount
-        },
-        update: {}
-      });
+            name: statusName,
+            color: statusColors[statusName] || '#868e96',
+            isDone: ['complete', 'closed', 'shipped'].includes(statusName),
+            position: statusCount,
+          },
+          update: {},
+        });
 
-      createdStatuses.set(statusKey, status.id);
-    }
+        createdStatuses.set(statusKey, status.id);
+      }
 
       const sourceExternalId = text(row['Task ID']);
       if (!sourceExternalId) {
@@ -296,178 +301,178 @@ export async function importClickUpCsv(filePath: string, workspaceId: string) {
       }
       const title = text(row['Task Name']) || sourceExternalId || 'Untitled task';
 
-    const assignees = parseJsonArray(row.Assignees);
-    const firstAssignee = assignees[0] as Record<string, unknown> | undefined;
+      const assignees = parseJsonArray(row.Assignees);
+      const firstAssignee = assignees[0] as Record<string, unknown> | undefined;
 
-    const assigneeEmail = text(firstAssignee?.email);
-    const assigneeName = text(firstAssignee?.username) || assigneeEmail;
+      const assigneeEmail = text(firstAssignee?.email);
+      const assigneeName = text(firstAssignee?.username) || assigneeEmail;
 
-    const assignee = assigneeEmail
-      ? await prisma.user.upsert({
+      const assignee = assigneeEmail
+        ? await prisma.user.upsert({
+            where: {
+              email: assigneeEmail,
+            },
+            create: {
+              email: assigneeEmail,
+              name: assigneeName || assigneeEmail,
+            },
+            update: {
+              name: assigneeName || assigneeEmail,
+            },
+          })
+        : null;
+
+      const statusId = createdStatuses.get(statusKey);
+      const isMilestone = hasMilestoneTag(row.Tags);
+      const milestone = isMilestone
+        ? await prisma.milestone.upsert({
+            where: { workspaceId_title: { workspaceId, title } },
+            create: { workspaceId, folderId, title, dueDate: parseDate(row['Due Date']) },
+            update: { folderId, dueDate: parseDate(row['Due Date']) },
+          })
+        : null;
+
+      const externalUrl = text(row['Task Link']) || null;
+      const description = text(row['Task Content']) || null;
+      const priority = parsePriority(row.Priority);
+      const startDate = parseDate(row['Start Date']);
+      const dueDate = parseDate(row['Due Date']);
+      const extractedTaskKey = extractTaskKey(title);
+      const importPayload = JSON.parse(JSON.stringify(row)) as Prisma.InputJsonValue;
+
+      const existing = sourceExternalId
+        ? await prisma.task.findUnique({
+            where: {
+              externalSource_externalId: {
+                externalSource: 'CLICKUP',
+                externalId: sourceExternalId,
+              },
+            },
+          })
+        : null;
+      const taskKeyOwner = extractedTaskKey
+        ? await prisma.task.findUnique({
+            where: {
+              workspaceId_taskKey: {
+                workspaceId,
+                taskKey: extractedTaskKey,
+              },
+            },
+            select: { id: true },
+          })
+        : null;
+      const taskKey = taskKeyOwner && taskKeyOwner.id !== existing?.id ? null : extractedTaskKey;
+
+      const clickUpData = {
+        workspaceId,
+        departmentId: spaceId,
+        teamId: folderId,
+        listId: taskListId,
+        folderId,
+        taskListId,
+        statusId,
+        milestoneId: milestone?.id || null,
+        externalSource: 'CLICKUP' as const,
+        externalId: sourceExternalId || null,
+        externalUrl,
+        syncedAt: new Date(),
+        taskKey,
+        externalTitle: title,
+        externalDescription: description,
+        externalStatus: statusName,
+        sourceExternalId,
+        sourceUrl: externalUrl,
+        importPayload,
+      };
+
+      const editableData = {
+        title,
+        description,
+        status: statusName,
+        priority,
+        startDate,
+        dueDate,
+        assigneeId: assignee?.id,
+        position: await prisma.task.count({
           where: {
-            email: assigneeEmail
+            taskListId,
+            statusId,
           },
-          create: {
-            email: assigneeEmail,
-            name: assigneeName || assigneeEmail
-          },
-          update: {
-            name: assigneeName || assigneeEmail
-          }
-        })
-      : null;
+        }),
+      };
 
-    const statusId = createdStatuses.get(statusKey);
-    const isMilestone = hasMilestoneTag(row.Tags);
-    const milestone = isMilestone
-      ? await prisma.milestone.upsert({
-          where: { workspaceId_title: { workspaceId, title } },
-          create: { workspaceId, folderId, title, dueDate: parseDate(row['Due Date']) },
-          update: { folderId, dueDate: parseDate(row['Due Date']) }
-        })
-      : null;
-
-    const externalUrl = text(row['Task Link']) || null;
-    const description = text(row['Task Content']) || null;
-    const priority = parsePriority(row.Priority);
-    const startDate = parseDate(row['Start Date']);
-    const dueDate = parseDate(row['Due Date']);
-    const extractedTaskKey = extractTaskKey(title);
-    const importPayload = JSON.parse(JSON.stringify(row)) as Prisma.InputJsonValue;
-
-    const existing = sourceExternalId
-      ? await prisma.task.findUnique({
-          where: {
-            externalSource_externalId: {
-              externalSource: 'CLICKUP',
-              externalId: sourceExternalId
-            }
-          }
-        })
-      : null;
-    const taskKeyOwner = extractedTaskKey
-      ? await prisma.task.findUnique({
-          where: {
-            workspaceId_taskKey: {
-              workspaceId,
-              taskKey: extractedTaskKey
-            }
-          },
-          select: { id: true }
-        })
-      : null;
-    const taskKey = taskKeyOwner && taskKeyOwner.id !== existing?.id ? null : extractedTaskKey;
-
-    const clickUpData = {
-      workspaceId,
-      departmentId: spaceId,
-      teamId: folderId,
-      listId: taskListId,
-      folderId,
-      taskListId,
-      statusId,
-      milestoneId: milestone?.id || null,
-      externalSource: 'CLICKUP' as const,
-      externalId: sourceExternalId || null,
-      externalUrl,
-      syncedAt: new Date(),
-      taskKey,
-      externalTitle: title,
-      externalDescription: description,
-      externalStatus: statusName,
-      sourceExternalId,
-      sourceUrl: externalUrl,
-      importPayload
-    };
-
-    const editableData = {
-      title,
-      description,
-      status: statusName,
-      priority,
-      startDate,
-      dueDate,
-      assigneeId: assignee?.id,
-      position: await prisma.task.count({
-        where: {
-          taskListId,
-          statusId
-        }
-      })
-    };
-
-    const shouldUpdateLocalFields =
-      !existing ||
-      !existing.locallyEditedAt ||
-      !existing.syncedAt ||
-      existing.locallyEditedAt <= existing.syncedAt;
+      const shouldUpdateLocalFields =
+        !existing ||
+        !existing.locallyEditedAt ||
+        !existing.syncedAt ||
+        existing.locallyEditedAt <= existing.syncedAt;
 
       const task = existing
-      ? await prisma.task.update({
-          where: { id: existing.id },
-          data: {
-            ...clickUpData,
-            ...(shouldUpdateLocalFields ? editableData : {})
-          }
-        })
-      : await prisma.task.create({
-          data: {
-            ...clickUpData,
-            ...editableData
-          }
-        });
+        ? await prisma.task.update({
+            where: { id: existing.id },
+            data: {
+              ...clickUpData,
+              ...(shouldUpdateLocalFields ? editableData : {}),
+            },
+          })
+        : await prisma.task.create({
+            data: {
+              ...clickUpData,
+              ...editableData,
+            },
+          });
 
-    if (existing) {
-      updated += 1;
-    } else {
-      created += 1;
-      await logTaskActivity({
-        workspaceId,
-        taskId: task.id,
-        type: 'TASK_IMPORTED_FROM_CLICKUP',
-        message: `Imported from ClickUp ${sourceExternalId}`,
-        metadata: { externalId: sourceExternalId, externalUrl }
-      });
-    }
+      if (existing) {
+        updated += 1;
+      } else {
+        created += 1;
+        await logTaskActivity({
+          workspaceId,
+          taskId: task.id,
+          type: 'TASK_IMPORTED_FROM_CLICKUP',
+          message: `Imported from ClickUp ${sourceExternalId}`,
+          metadata: { externalId: sourceExternalId, externalUrl },
+        });
+      }
 
       createdTasks.set(sourceExternalId, task.id);
 
-    const tags = parseJsonArray(row.Tags);
+      const tags = parseJsonArray(row.Tags);
 
-    for (const tagValue of tags) {
-      const tagName = text((tagValue as Record<string, unknown>).name || tagValue);
+      for (const tagValue of tags) {
+        const tagName = text((tagValue as Record<string, unknown>).name || tagValue);
 
-      if (!tagName) continue;
+        if (!tagName) continue;
 
-      const tag = await prisma.tag.upsert({
-        where: {
-          workspaceId_name: {
+        const tag = await prisma.tag.upsert({
+          where: {
+            workspaceId_name: {
+              workspaceId,
+              name: tagName,
+            },
+          },
+          create: {
             workspaceId,
-            name: tagName
-          }
-        },
-        create: {
-          workspaceId,
-          name: tagName,
-          color: '#7048e8'
-        },
-        update: {}
-      });
+            name: tagName,
+            color: '#7048e8',
+          },
+          update: {},
+        });
 
-      await prisma.taskTag.upsert({
-        where: {
-          taskId_tagId: {
+        await prisma.taskTag.upsert({
+          where: {
+            taskId_tagId: {
+              taskId: task.id,
+              tagId: tag.id,
+            },
+          },
+          create: {
             taskId: task.id,
-            tagId: tag.id
-          }
-        },
-        create: {
-          taskId: task.id,
-          tagId: tag.id
-        },
-        update: {}
-      });
-    }
+            tagId: tag.id,
+          },
+          update: {},
+        });
+      }
     } catch (error) {
       errors += 1;
       console.warn('ClickUp import row failed:', error instanceof Error ? error.message : error);
@@ -484,11 +489,11 @@ export async function importClickUpCsv(filePath: string, workspaceId: string) {
     if (taskId && parentId) {
       await prisma.task.update({
         where: {
-          id: taskId
+          id: taskId,
         },
         data: {
-          parentId
-        }
+          parentId,
+        },
       });
     }
   }
@@ -502,6 +507,6 @@ export async function importClickUpCsv(filePath: string, workspaceId: string) {
     spaces: createdSpaces.size,
     folders: createdFolders.size,
     lists: createdLists.size,
-    statuses: createdStatuses.size
+    statuses: createdStatuses.size,
   };
 }

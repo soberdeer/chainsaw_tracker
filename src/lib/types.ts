@@ -1,5 +1,14 @@
 export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
-export type TaskDevelopmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BRANCH_CREATED' | 'PR_OPEN' | 'CODE_REVIEW' | 'APPROVED' | 'CHANGES_REQUESTED' | 'MERGED' | 'CLOSED';
+export type TaskDevelopmentStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'BRANCH_CREATED'
+  | 'PR_OPEN'
+  | 'CODE_REVIEW'
+  | 'APPROVED'
+  | 'CHANGES_REQUESTED'
+  | 'MERGED'
+  | 'CLOSED';
 export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 export type DocumentKind = 'MARKDOWN' | 'IMAGE' | 'SPREADSHEET' | 'EMBED';
 
@@ -53,6 +62,7 @@ export type Task = {
   taskList?: TaskList;
   statusRef?: TaskStatus;
   assignee?: User;
+  assignees: User[];
   tags: { tag: Tag }[];
   subtasks?: Task[];
   dependencies?: TaskDependency[];
@@ -220,5 +230,12 @@ export type SearchResult = {
   title: string;
   subtitle?: string;
   url?: string;
-  action?: 'create-task' | 'create-doc' | 'create-space' | 'create-folder' | 'open-board' | 'open-docs' | 'open-permissions';
+  action?:
+    | 'create-task'
+    | 'create-doc'
+    | 'create-space'
+    | 'create-folder'
+    | 'open-board'
+    | 'open-docs'
+    | 'open-permissions';
 };
