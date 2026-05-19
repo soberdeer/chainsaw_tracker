@@ -28,18 +28,7 @@ export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTask
   };
 
   return (
-    <div
-      className={classes.taskRow}
-      role="button"
-      tabIndex={0}
-      onClick={() => onOpen(task)}
-      onKeyDown={(event) => {
-        if (event.key === 'Enter' || event.key === ' ') {
-          event.preventDefault();
-          onOpen(task);
-        }
-      }}
-    >
+    <div className={classes.taskRow}>
       <div className={classes.nameCell}>
         {(task.subtasks?.length || 0) > 0 && (
           <Tooltip label="Expand subtasks">
@@ -52,7 +41,14 @@ export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTask
         <Tooltip label={`Status: ${status.label}`}>
           <StatusIcon statusId={task.status} color={status.color} />
         </Tooltip>
-        <Text className={classes.taskTitle} fz="sm" fw="bold">
+        <Text
+          component="button"
+          type="button"
+          className={classes.taskTitle}
+          fz="sm"
+          fw="bold"
+          onClick={() => onOpen(task)}
+        >
           {task.title}
         </Text>
         {task.taskKey && (
@@ -63,8 +59,11 @@ export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTask
         <Tooltip label="Task list">
           <IconList size="1rem" className={classes.mutedIcon} />
         </Tooltip>
-        {/*{task.taskList?.name &&*/}
-        {/*    <Tooltip label={task.taskList.name}><Badge color="blue">{task.taskList.name}</Badge></Tooltip>}*/}
+        {task.taskList?.name && (
+          <Tooltip label={task.taskList.name}>
+            <Badge color="blue">{task.taskList.name}</Badge>
+          </Tooltip>
+        )}
         {task.milestone?.title && (
           <Tooltip label={task.milestone.title}>
             <Badge color="grape">{task.milestone.title}</Badge>

@@ -235,22 +235,6 @@ export function deleteDocument(documentId: string) {
   return request<void>(`/api/documents/${documentId}`, { method: 'DELETE' });
 }
 
-export function updateSpace(
-  spaceId: string,
-  input: {
-    name?: string;
-    description?: string | null;
-    color?: string;
-    initials?: string | null;
-    locked?: boolean;
-  }
-) {
-  return request(`/api/openproject/spaces/${spaceId}`, {
-    method: 'PATCH',
-    body: JSON.stringify(input),
-  });
-}
-
 export function inviteMember(workspaceId: string, input: { email: string; role?: string }) {
   return request<{ inviteUrl: string; delivery: { sent: boolean; provider: string } }>(
     `/api/workspaces/${workspaceId}/invites`,

@@ -40,10 +40,19 @@
 }
 
 .taskTitle {
+  border: 0;
+  padding: 0;
+  background: transparent;
   color: var(--app-text);
+  cursor: pointer;
+  font: inherit;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.taskTitle:hover {
+  text-decoration: underline;
 }
 
 .assigneeCell,

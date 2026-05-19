@@ -176,7 +176,7 @@ export function GlobalSearchModal({
         </Group>
         <Group className={classes.tabs} gap="xs">
           <Text size="sm" c="dimmed">
-            ClickUp task search
+            OpenProject task search
           </Text>
           {loading && <Loader size="xs" />}
         </Group>

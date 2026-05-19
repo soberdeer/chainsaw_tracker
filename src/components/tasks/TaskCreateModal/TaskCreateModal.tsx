@@ -5,7 +5,6 @@ import {
   MultiSelect,
   Select,
   Stack,
-  Tabs,
   Text,
   Textarea,
   TextInput,
@@ -108,23 +107,7 @@ export function TaskCreateModal({
     >
       <Stack gap={0}>
         <Group className={classes.header} justify="space-between">
-          <Tabs defaultValue="task" className={classes.tabs}>
-            <Tabs.List>
-              <Tabs.Tab value="task">Task</Tabs.Tab>
-              <Tabs.Tab value="doc" disabled>
-                Doc
-              </Tabs.Tab>
-              <Tabs.Tab value="reminder" disabled>
-                Reminder
-              </Tabs.Tab>
-              <Tabs.Tab value="whiteboard" disabled>
-                Whiteboard
-              </Tabs.Tab>
-              <Tabs.Tab value="dashboard" disabled>
-                Dashboard
-              </Tabs.Tab>
-            </Tabs.List>
-          </Tabs>
+          <Text className={classes.modalTitle}>Task</Text>
           <Tooltip label="Close task creator">
             <Button
               variant="subtle"

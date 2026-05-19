@@ -17,7 +17,7 @@ test('maps OpenProject work package fields into tracker task shape', () => {
       updatedAt: '2026-05-18T11:00:00Z',
       _links: {
         self: { href: '/api/v3/work_packages/277' },
-        project: { href: '/api/v3/projects/5', title: 'ClickUp Import' },
+        project: { href: '/api/v3/projects/5', title: 'OpenProject Import' },
         status: { href: '/api/v3/statuses/7', title: 'In progress' },
         priority: { href: '/api/v3/priorities/9', title: 'High' },
         assignee: { href: '/api/v3/users/4', title: 'OpenProject Admin' },
