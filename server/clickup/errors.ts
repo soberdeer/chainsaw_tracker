@@ -1,7 +1,9 @@
 export class ClickUpConfigError extends Error {
   statusCode = 503;
 
-  constructor(message = 'CLICKUP_TOKEN is required for the ClickUp task tracker') {
+  constructor(
+    message = 'CLICKUP_TOKEN is required only for the one-time ClickUp migration script'
+  ) {
     super(message);
   }
 }

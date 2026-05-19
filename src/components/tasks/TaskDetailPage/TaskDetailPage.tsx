@@ -85,6 +85,7 @@ export function TaskDetailPage({
   const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
   const [manualPr, setManualPr] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
+  const githubSupportedForTask = task.externalSource !== 'OPENPROJECT';
 
   useEffect(() => {
     setTitle(task.title);
@@ -99,18 +100,24 @@ export function TaskDetailPage({
     getTaskActivity(task.id)
       .then((page) => setActivity(page.items))
       .catch((error) => onError(getErrorMessage(error)));
-    getGitHubRepositories(workspace.id)
-      .then((items) => {
-        setRepositories(items);
-        setSelectedRepositoryId((current) => current || items[0]?.id || '');
-      })
-      .catch(() => setRepositories([]));
-  }, [task, workspace, onError]);
+    if (githubSupportedForTask) {
+      getGitHubRepositories(workspace.id)
+        .then((items) => {
+          setRepositories(items);
+          setSelectedRepositoryId((current) => current || items[0]?.id || '');
+        })
+        .catch(() => setRepositories([]));
+    } else {
+      setRepositories([]);
+      setSelectedRepositoryId('');
+    }
+  }, [task, workspace, onError, githubSupportedForTask]);
 
   const showGitHubTab = Boolean(
-    (task.githubPullRequests?.length || 0) > 0 ||
-    (task.githubBranches?.length || 0) > 0 ||
-    repositories.length > 0
+    githubSupportedForTask &&
+    ((task.githubPullRequests?.length || 0) > 0 ||
+      (task.githubBranches?.length || 0) > 0 ||
+      repositories.length > 0)
   );
 
   const updateAndRefresh = async (input: Parameters<typeof updateTask>[1]) => {

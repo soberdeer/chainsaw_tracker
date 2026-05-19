@@ -1,3 +1,5 @@
+// Migration-only ClickUp response types for scripts/seed-openproject-from-clickup.ts.
+// Runtime task data comes from OpenProject.
 export type ClickUpTeam = {
   id: string;
   name: string;

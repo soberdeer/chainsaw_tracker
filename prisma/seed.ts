@@ -1,6 +1,4 @@
 import { PrismaClient } from '@prisma/client';
-import { importClickUpCsv } from '../server/services/clickupImport.js';
-import path from 'node:path';
 
 const prisma = new PrismaClient();
 
@@ -87,62 +85,9 @@ async function main() {
     create: { userId: user.id, workspaceId: workspace.id, role: 'OWNER' },
   });
 
-  const space = await prisma.space.upsert({
-    where: { workspaceId_name: { workspaceId: workspace.id, name: 'Programming Department' } },
-    update: {},
-    create: {
-      workspaceId: workspace.id,
-      name: 'Programming Department',
-      color: '#fa5252',
-      initials: 'P',
-      locked: true,
-      permissions: {
-        create: [
-          { role: 'OWNER', canView: true, canEdit: true, canManage: true },
-          { role: 'ADMIN', canView: true, canEdit: true, canManage: true },
-          { role: 'LEAD', canView: true, canEdit: true },
-          { role: 'MEMBER', canView: true, canEdit: true },
-          { role: 'VIEWER', canView: true },
-        ],
-      },
-    },
-  });
-
-  await prisma.spacePermission.upsert({
-    where: { spaceId_role: { spaceId: space.id, role: 'LEAD' } },
-    create: { spaceId: space.id, role: 'LEAD', canView: true, canEdit: true },
-    update: { canView: true, canEdit: true },
-  });
-
-  const folder = await prisma.folder.upsert({
-    where: { spaceId_name: { spaceId: space.id, name: 'Core Dev Team' } },
-    update: {},
-    create: { spaceId: space.id, name: 'Core Dev Team', kind: 'TEAM', locked: true },
-  });
-
-  await prisma.taskList.upsert({
-    where: { folderId_name: { folderId: folder.id, name: 'Dev Task' } },
-    update: {},
-    create: {
-      folderId: folder.id,
-      name: 'Dev Task',
-      icon: '☣',
-      statuses: {
-        create: [
-          { name: 'backlog', color: '#868e96', position: 0 },
-          { name: 'in development', color: '#3b82f6', position: 1 },
-          { name: 'in review', color: '#d6336c', position: 2 },
-          { name: 'shipped', color: '#4d9f87', position: 3, isDone: true },
-        ],
-      },
-    },
-  });
-
-  const summary = await importClickUpCsv(
-    path.resolve('prisma/seed-data/clickup-export.csv'),
-    workspace.id
+  console.log(
+    'Seeded local OpenProject runtime scaffold. Task data is loaded from OpenProject API.'
   );
-  console.log('ClickUp seed summary:', summary);
 }
 
 main().finally(async () => {

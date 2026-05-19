@@ -22,18 +22,22 @@ PostgreSQL/Prisma remains only for local scaffold features such as demo membersh
 Required runtime env:
 
 ```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
+PORT=4000
+CLIENT_URL="http://localhost:5173"
+
 OPENPROJECT_BASE_URL="http://localhost:8080"
 OPENPROJECT_API_TOKEN="opapi_..."
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
-CLIENT_URL="http://localhost:5173"
-PORT=4000
+OPENPROJECT_TIMEOUT_MS=15000
+OPENPROJECT_AUTH_MODE="basic"
 ```
 
 Optional:
 
 ```bash
-OPENPROJECT_TIMEOUT_MS=15000
-OPENPROJECT_AUTH_MODE=basic # basic or bearer
+GITHUB_INTEGRATION_ENABLED="false"
+GITHUB_WEBHOOK_SECRET=""
+GITHUB_TOKEN=""
 ```
 
 `OPENPROJECT_API_TOKEN` is used only by the backend. It is never sent to the frontend.
@@ -55,6 +59,8 @@ The production runtime uses a stable OpenProject mapping:
 - UI task: OpenProject work package
 
 The optional ClickUp migration script can create OpenProject projects from ClickUp spaces/folders/lists, but the app does not need `server/openproject/seed-data/clickup-hierarchy.json` to run.
+
+The remaining `server/clickup/client.ts`, `server/clickup/types.ts`, and `server/clickup/errors.ts` files are migration-only helpers for that script. They are not mounted by `server/index.ts` and are not used by the frontend runtime.
 
 ## Permissions
 
@@ -97,6 +103,7 @@ Unsupported OpenProject adapter actions are disabled in the UI. Folder/list crea
 - Docs are still local docs, not OpenProject wiki pages. The UI should treat them as Local Docs.
 - Tags, attachments, dependencies, time entries, and custom fields are hidden or read-only unless wired to OpenProject.
 - GitHub integration is optional and isolated from OpenProject task runtime.
+- GitHub links are hidden for OpenProject-backed work packages until an explicit `OpenProject workPackageId -> local GitHub link taskId` mapping exists.
 
 ## Optional ClickUp Migration
 

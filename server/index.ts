@@ -5,7 +5,6 @@ import { toHttpError } from './errors.js';
 import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermissions.js';
 import { openProjectRouter } from './openproject/routes.js';
 import { documentsRouter } from './routes/documents.js';
-import { importsRouter } from './routes/imports.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { referencesRouter } from './routes/references.js';
 import { workspacesRouter } from './routes/workspaces.js';
@@ -32,7 +31,6 @@ app.get('/api/health', (_req, res) => {
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/openproject', openProjectRouter);
 app.use('/api/documents', documentsRouter);
-app.use('/api/imports', importsRouter);
 app.use('/api', referencesRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/integrations', integrationsRouter);

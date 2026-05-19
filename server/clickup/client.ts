@@ -1,5 +1,7 @@
 import { ClickUpApiError, ClickUpConfigError } from './errors.js';
 
+// Migration-only helper for scripts/seed-openproject-from-clickup.ts.
+// The tracker runtime is OpenProject-backed and does not import this module.
 const baseUrl = 'https://api.clickup.com/api/v2';
 const timeoutMs = Number(process.env.CLICKUP_TIMEOUT_MS || 15000);
 
