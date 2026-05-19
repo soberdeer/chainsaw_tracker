@@ -1,9 +1,9 @@
 import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
-import { bootstrapClickUpLocalPermissions } from './clickup/localPermissions.js';
-import { clickupRouter } from './clickup/routes.js';
 import { toHttpError } from './errors.js';
+import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermissions.js';
+import { openProjectRouter } from './openproject/routes.js';
 import { documentsRouter } from './routes/documents.js';
 import { importsRouter } from './routes/imports.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -30,7 +30,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', workspacesRouter);
-app.use('/api/clickup', clickupRouter);
+app.use('/api/openproject', openProjectRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/imports', importsRouter);
 app.use('/api', referencesRouter);
@@ -45,10 +45,12 @@ app.use(
   }
 );
 
-bootstrapClickUpLocalPermissions()
+bootstrapOpenProjectLocalPermissions()
   .catch((error) => {
     console.warn(
-      `ClickUp local permission bootstrap skipped: ${error instanceof Error ? error.message : String(error)}`
+      `OpenProject local permission bootstrap skipped: ${
+        error instanceof Error ? error.message : String(error)
+      }`
     );
   })
   .finally(() => {

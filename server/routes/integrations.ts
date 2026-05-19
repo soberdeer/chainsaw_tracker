@@ -183,11 +183,16 @@ integrationsRouter.post('/github/webhook', async (req, res) => {
 
 integrationsRouter.get('/github/repositories', async (req, res) => {
   const workspaceId = z.string().parse(req.query.workspaceId);
-  await requirePermission(req, workspaceId, 'manageTasks');
   if (!isGitHubIntegrationEnabled()) {
     res.json([]);
     return;
   }
+  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  if (!workspace) {
+    res.json([]);
+    return;
+  }
+  await requirePermission(req, workspaceId, 'manageTasks');
   const repositories = await prisma.gitHubRepository.findMany({
     where: { workspaceId },
     orderBy: { createdAt: 'asc' },

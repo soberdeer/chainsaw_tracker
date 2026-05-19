@@ -215,7 +215,7 @@ export function TaskCreateModal({
               leftSection={<IconFlag size="1rem" />}
               className={classes.compactField}
             />
-            <Tooltip label="Tags are read from ClickUp after task creation">
+            <Tooltip label="Tags are not mapped from OpenProject in this adapter yet">
               <Button variant="default" leftSection={<IconTag size="1rem" />} disabled>
                 Tags
               </Button>
@@ -226,7 +226,7 @@ export function TaskCreateModal({
             <Text c="dimmed" fw={700}>
               Fields
             </Text>
-            <Tooltip label="Custom fields are managed in ClickUp">
+            <Tooltip label="Custom fields are managed in OpenProject">
               <span>
                 <Button variant="light" disabled>
                   + Create new field
@@ -237,7 +237,7 @@ export function TaskCreateModal({
         </Stack>
 
         <Group className={classes.footer} justify="space-between">
-          <Tooltip label="Templates are managed in ClickUp">
+          <Tooltip label="Templates are managed in OpenProject">
             <span>
               <Button variant="default" disabled>
                 Templates

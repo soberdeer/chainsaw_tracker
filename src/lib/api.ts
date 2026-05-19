@@ -31,7 +31,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 }
 
 export async function getWorkspaces(): Promise<Workspace[]> {
-  return request<Workspace[]>('/api/clickup/workspaces');
+  return request<Workspace[]>('/api/openproject/workspaces');
 }
 
 export function createSpace(input: {
@@ -41,14 +41,14 @@ export function createSpace(input: {
   initials?: string;
   locked?: boolean;
 }) {
-  return request('/api/clickup/spaces', { method: 'POST', body: JSON.stringify(input) });
+  return request('/api/openproject/spaces', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function createFolder(
   spaceId: string,
   input: { name: string; kind: 'DOCS' | 'TEAM' | 'GENERAL'; locked?: boolean }
 ) {
-  return request(`/api/clickup/spaces/${spaceId}/folders`, {
+  return request(`/api/openproject/spaces/${spaceId}/folders`, {
     method: 'POST',
     body: JSON.stringify(input),
   });
@@ -57,7 +57,7 @@ export function createFolder(
 export function createTaskList(folderId: string, input: { name: string; icon?: string }) {
   const folderless = folderId.endsWith(':folderless');
   const parentId = folderless ? folderId.replace(':folderless', '') : folderId;
-  return request(`/api/clickup/folders/${parentId}/lists`, {
+  return request(`/api/openproject/folders/${parentId}/lists`, {
     method: 'POST',
     body: JSON.stringify({ ...input, folderless }),
   });
@@ -82,11 +82,11 @@ export function createTask(input: {
   dueDate?: string;
   githubUrl?: string;
 }) {
-  return request('/api/clickup/tasks', { method: 'POST', body: JSON.stringify(input) });
+  return request('/api/openproject/tasks', { method: 'POST', body: JSON.stringify(input) });
 }
 
 export function getTask(taskId: string) {
-  return request<Task>(`/api/clickup/tasks/${taskId}`);
+  return request<Task>(`/api/openproject/tasks/${taskId}`);
 }
 
 export function getTasks(params: {
@@ -99,7 +99,7 @@ export function getTasks(params: {
   assigneeIds?: string[];
   milestoneId?: string;
   search?: string;
-  source?: 'CLICKUP' | 'LOCAL';
+  source?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
   priority?: string;
   limit?: number;
   cursor?: string;
@@ -111,13 +111,13 @@ export function getTasks(params: {
     }
   });
   return request<{ items: Task[]; nextCursor?: string | null }>(
-    `/api/clickup/tasks?${search.toString()}`
+    `/api/openproject/tasks?${search.toString()}`
   );
 }
 
 export function getTaskActivity(taskId: string) {
   return request<{ items: ActivityLog[]; nextCursor?: string | null }>(
-    `/api/clickup/tasks/${taskId}/activity`
+    `/api/openproject/tasks/${taskId}/activity`
   );
 }
 
@@ -137,7 +137,7 @@ export function updateTask(
     tagNames?: string[];
   }
 ) {
-  return request<Task>(`/api/clickup/tasks/${taskId}`, {
+  return request<Task>(`/api/openproject/tasks/${taskId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
@@ -148,7 +148,7 @@ export function getTaskLists(workspaceId: string, teamId?: string) {
   if (teamId) {
     params.set('teamId', teamId);
   }
-  return request<TaskList[]>(`/api/clickup/task-lists?${params.toString()}`);
+  return request<TaskList[]>(`/api/openproject/task-lists?${params.toString()}`);
 }
 
 export function getGitHubRepositories(workspaceId: string) {
@@ -205,19 +205,23 @@ export function refreshTaskGitHub(taskId: string) {
 }
 
 export function reorderTasks(input: {
+  listId: string;
   taskId: string;
   statusId: string;
   orderedTaskIds: string[];
 }) {
-  return updateTask(input.taskId, { statusId: input.statusId }).then((task) => [task]);
+  return request<Task[]>('/api/openproject/tasks/reorder', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function duplicateTask(taskId: string) {
-  return request<Task>(`/api/clickup/tasks/${taskId}/duplicate`, { method: 'POST' });
+  return request<Task>(`/api/openproject/tasks/${taskId}/duplicate`, { method: 'POST' });
 }
 
 export function deleteTask(taskId: string) {
-  return request<void>(`/api/clickup/tasks/${taskId}`, { method: 'DELETE' });
+  return request<void>(`/api/openproject/tasks/${taskId}`, { method: 'DELETE' });
 }
 
 export function createMarkdownDoc(input: { spaceId: string; title: string; markdown: string }) {
@@ -272,7 +276,7 @@ export function updateSpace(
     locked?: boolean;
   }
 ) {
-  return request(`/api/clickup/spaces/${spaceId}`, {
+  return request(`/api/openproject/spaces/${spaceId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
@@ -318,5 +322,5 @@ export function searchAll(query: string, workspaceId?: string) {
   if (workspaceId) {
     params.set('workspaceId', workspaceId);
   }
-  return request<SearchResult[]>(`/api/clickup/search?${params.toString()}`);
+  return request<SearchResult[]>(`/api/openproject/search?${params.toString()}`);
 }

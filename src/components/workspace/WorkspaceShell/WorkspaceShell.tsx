@@ -35,9 +35,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  createFolder,
   createSpace,
-  createTaskList,
   getTask,
   getTasks,
   getWorkspaces,
@@ -238,9 +236,30 @@ export function WorkspaceShell() {
   };
 
   const reorderTaskGroup = async (taskId: string, statusId: string, orderedTaskIds: string[]) => {
+    if (!activeTaskList?.id) return;
+    const movingTask = tasks.find((task) => task.id === taskId);
+    const nextTasks = tasks
+      .filter((task) => task.id !== taskId)
+      .map((task) => {
+        const nextPosition = orderedTaskIds.indexOf(task.id);
+        if (nextPosition >= 0 && (task.statusId === statusId || task.status === statusId)) {
+          return { ...task, position: nextPosition };
+        }
+        return task;
+      });
+    if (movingTask) {
+      const nextPosition = orderedTaskIds.indexOf(taskId);
+      nextTasks.push({
+        ...movingTask,
+        statusId,
+        status: statuses.find((status) => status.id === statusId)?.name || movingTask.status,
+        position: nextPosition >= 0 ? nextPosition : orderedTaskIds.length,
+      });
+      setTasks(nextTasks);
+    }
     await runAction(async () => {
-      await reorderTasks({ taskId, statusId, orderedTaskIds });
-      reload();
+      await reorderTasks({ listId: activeTaskList.id, taskId, statusId, orderedTaskIds });
+      await loadTasks();
     });
   };
 
@@ -278,7 +297,7 @@ export function WorkspaceShell() {
     if (actionError) {
       return (
         <Box className={`${classes.center} ${classes.setupScreen}`}>
-          <Alert color="red" title="Could not load ClickUp workspace">
+          <Alert color="red" title="Could not load OpenProject workspace">
             {actionError}
           </Alert>
         </Box>
@@ -286,8 +305,8 @@ export function WorkspaceShell() {
     }
     return (
       <Box className={`${classes.center} ${classes.setupScreen}`}>
-        <Alert color="yellow" title="No ClickUp workspaces">
-          The ClickUp API returned no workspaces for this token.
+        <Alert color="yellow" title="No OpenProject projects">
+          The OpenProject API returned no projects for this token.
         </Alert>
       </Box>
     );
@@ -469,50 +488,18 @@ export function WorkspaceShell() {
                         </Menu.Item>
                         <Menu.Divider />
                         <Menu.Label>Create new</Menu.Label>
-                        <Menu.Item
-                          onClick={async () => {
-                            const name = window.prompt('Folder name');
-                            if (!name) return;
-                            await runAction(async () => {
-                              await createFolder(space.id, { name, kind: 'TEAM', locked: true });
-                              reload();
-                            });
-                          }}
-                        >
-                          Folder
-                        </Menu.Item>
-                        <Menu.Item
-                          onClick={async () => {
-                            const folder = firstTaskFolder(space);
-                            if (!folder) return;
-                            const name = window.prompt('List name');
-                            if (!name) return;
-                            await runAction(async () => {
-                              await createTaskList(folder.id, { name, icon: '☣' });
-                              reload();
-                            });
-                          }}
-                        >
-                          List
-                        </Menu.Item>
+                        <Menu.Item disabled>Folders are not available in OpenProject</Menu.Item>
+                        <Menu.Item disabled>Lists are not available in OpenProject</Menu.Item>
                       </Menu.Dropdown>
                     </Menu>
                   )}
                   {isActiveSpace && (
-                    <Tooltip label="Add folder">
+                    <Tooltip label="OpenProject projects do not have folders">
                       <ActionIcon
                         variant="subtle"
-                        aria-label="Add folder"
+                        aria-label="Folders are not available in OpenProject"
                         className={classes.rowAction}
-                        onClick={async (event) => {
-                          event.stopPropagation();
-                          const name = window.prompt('Folder name');
-                          if (!name) return;
-                          await runAction(async () => {
-                            await createFolder(space.id, { name, kind: 'TEAM', locked: true });
-                            reload();
-                          });
-                        }}
+                        disabled
                       >
                         <IconPlus size="1.125rem" />
                       </ActionIcon>
@@ -527,53 +514,6 @@ export function WorkspaceShell() {
                       const isActiveFolder = folder.id === activeFolder?.id;
                       return (
                         <Box key={folder.id}>
-                          <button
-                            type="button"
-                            className={
-                              isActiveFolder
-                                ? `${classes.folderTreeRow} ${classes.active}`
-                                : classes.folderTreeRow
-                            }
-                            onClick={() => {
-                              setFolderId(folder.id);
-                              setTaskListId(firstTaskList(folder)?.id);
-                              navigate(folderPath(space.id, folder.id));
-                            }}
-                          >
-                            <Tooltip label={isDocs ? 'Docs folder' : 'Task folder'}>
-                              {isDocs ? (
-                                <IconFolderOpen size="1.25rem" color="#4c6ef5" />
-                              ) : (
-                                <IconFolder size="1.25rem" />
-                              )}
-                            </Tooltip>
-                            <span>{folder.name}</span>
-                            {folder.locked && (
-                              <Tooltip label={`${folder.name} is private`}>
-                                <IconLock size="0.9375rem" className={classes.mutedIcon} />
-                              </Tooltip>
-                            )}
-                            {!isDocs && (
-                              <Tooltip label="Add task list">
-                                <ActionIcon
-                                  variant="subtle"
-                                  aria-label="Add task list"
-                                  className={classes.rowAction}
-                                  onClick={async (event) => {
-                                    event.stopPropagation();
-                                    const name = window.prompt('Task list name');
-                                    if (!name) return;
-                                    await runAction(async () => {
-                                      await createTaskList(folder.id, { name, icon: '☣' });
-                                      reload();
-                                    });
-                                  }}
-                                >
-                                  <IconPlus size="1rem" />
-                                </ActionIcon>
-                              </Tooltip>
-                            )}
-                          </button>
                           {folder.taskLists?.map((taskList) => (
                             <button
                               key={taskList.id}
@@ -589,10 +529,10 @@ export function WorkspaceShell() {
                                 navigate(folderPath(space.id, folder.id));
                               }}
                             >
-                              <Tooltip label={`Task list: ${taskList.name}`}>
+                              <Tooltip label={`Task list: ${folder.name}`}>
                                 <span className={classes.taskListIcon}>{taskList.icon || '☣'}</span>
                               </Tooltip>
-                              <span>{taskList.name}</span>
+                              <span>{folder.name}</span>
                               <Tooltip
                                 label={`${taskList._count?.tasks ?? taskList.tasks?.length ?? 0} tasks in ${taskList.name}`}
                               >
@@ -736,8 +676,8 @@ export function WorkspaceShell() {
                 <Stack gap={0}>
                   <Group className={classes.taskToolbar} justify="space-between">
                     <Group gap="xs">
-                      <Tooltip label="Grouped by ClickUp status">
-                        <Badge variant="light">Grouped by ClickUp status</Badge>
+                      <Tooltip label="Grouped by OpenProject status">
+                        <Badge variant="light">Grouped by OpenProject status</Badge>
                       </Tooltip>
                     </Group>
                     <Group gap="xs">

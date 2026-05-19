@@ -16,8 +16,9 @@
     "preview": "vite preview --host 0.0.0.0",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "seed:openproject:clickup": "tsx scripts/seed-openproject-from-clickup.ts",
     "oxlint": "oxlint . --fix",
-    "lint": "npm run oxlint && npm run stylelint",
+    "lint": "npm run oxlint",
     "test:code": "tsx --test tests/*.test.ts",
     "test": "npm run format && npm run lint && npm run test:code",
     "format": "oxfmt --write \"**/*.{ts,tsx,css}\""

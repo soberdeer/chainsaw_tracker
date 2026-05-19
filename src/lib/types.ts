@@ -45,7 +45,7 @@ export type Task = {
   startDate?: string;
   dueDate?: string;
   githubUrl?: string;
-  externalSource?: 'CLICKUP' | 'LOCAL';
+  externalSource?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
   externalId?: string;
   externalUrl?: string;
   syncedAt?: string;

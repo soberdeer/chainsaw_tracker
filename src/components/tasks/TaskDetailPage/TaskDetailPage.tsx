@@ -242,7 +242,7 @@ export function TaskDetailPage({
                 href={task.externalUrl}
                 target="_blank"
               >
-                Open ClickUp
+                Open OpenProject
               </Button>
             )}
             {task.syncedAt && (
@@ -259,14 +259,14 @@ export function TaskDetailPage({
           </Text>
         </Stack>
         <Stack gap="xs">
-          <Text fw={700}>ClickUp URL</Text>
+          <Text fw={700}>OpenProject URL</Text>
           {task.externalUrl ? (
             <Button size="xs" variant="light" component="a" href={task.externalUrl} target="_blank">
-              Open in ClickUp
+              Open in OpenProject
             </Button>
           ) : (
             <Text size="sm" c="dimmed">
-              No ClickUp URL
+              No OpenProject URL
             </Text>
           )}
         </Stack>
@@ -304,10 +304,10 @@ export function TaskDetailPage({
         </Tabs.List>
         <Tabs.Panel value="details" pt="md">
           <Stack>
-            <Text c="dimmed">Task fields are saved through the ClickUp API.</Text>
+            <Text c="dimmed">Task fields are saved through the OpenProject API.</Text>
             <Text size="sm" c="dimmed">
               Dependencies, linked tasks, custom fields, attachments, and timers are intentionally
-              hidden until wired to ClickUp endpoints.
+              hidden until wired to OpenProject endpoints.
             </Text>
           </Stack>
         </Tabs.Panel>

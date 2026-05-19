@@ -39,6 +39,8 @@ export function CompactTaskRow({
     <div
       className={classes.taskRow}
       draggable
+      role="button"
+      tabIndex={0}
       onDragStart={(event) => {
         event.dataTransfer.setData('text/task-id', task.id);
         onDragStart(task.id);
@@ -50,6 +52,12 @@ export function CompactTaskRow({
         onDropOnTask(task.id);
       }}
       onClick={() => onOpen(task)}
+      onKeyDown={(event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onOpen(task);
+        }
+      }}
     >
       <div className={classes.nameCell}>
         {(task.subtasks?.length || 0) > 0 && (

@@ -26,7 +26,7 @@ export function TaskBoard({
 }: TaskBoardProps) {
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const orderedStatuses = useMemo(
-    () => [...statuses].sort((a, b) => b.position - a.position),
+    () => [...statuses].sort((a, b) => a.position - b.position),
     [statuses]
   );
 
