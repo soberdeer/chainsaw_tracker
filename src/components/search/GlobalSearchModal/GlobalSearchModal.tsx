@@ -42,6 +42,8 @@ export interface GlobalSearchModalProps {
   onReload: () => void;
   onCreateTask: () => void;
   onError: (message: string) => void;
+  canManageSpaces: boolean;
+  canWriteTasks: boolean;
 }
 
 export function GlobalSearchModal({
@@ -55,6 +57,8 @@ export function GlobalSearchModal({
   onReload,
   onCreateTask,
   onError,
+  canManageSpaces,
+  canWriteTasks,
 }: GlobalSearchModalProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -105,12 +109,15 @@ export function GlobalSearchModal({
 
     try {
       if (result.action === 'create-task') {
-        if (!activeTaskList) {
+        if (!activeTaskList || !canWriteTasks) {
           return;
         }
         onCreateTask();
       }
       if (result.action === 'create-space') {
+        if (!canManageSpaces) {
+          return;
+        }
         const name = window.prompt('Space name');
         if (!name) {
           return;
@@ -148,6 +155,10 @@ export function GlobalSearchModal({
     }
     return <IconPlus size="1.125rem" />;
   };
+
+  const actionDisabled = (result: SearchResult) =>
+    (result.action === 'create-task' && !canWriteTasks) ||
+    (result.action === 'create-space' && !canManageSpaces);
 
   return (
     <Modal
@@ -190,6 +201,7 @@ export function GlobalSearchModal({
                 key={`${result.type}:${result.id}`}
                 type="button"
                 className={classes.resultRow}
+                disabled={actionDisabled(result)}
                 onClick={() => runSearchAction(result)}
               >
                 <Tooltip label={`Result type: ${result.type}`}>

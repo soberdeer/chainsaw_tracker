@@ -60,7 +60,7 @@ The production runtime uses a stable OpenProject mapping:
 
 The optional ClickUp migration script can create OpenProject projects from ClickUp spaces/folders/lists, but the app does not need `server/openproject/seed-data/clickup-hierarchy.json` to run.
 
-The remaining `server/clickup/client.ts`, `server/clickup/types.ts`, and `server/clickup/errors.ts` files are migration-only helpers for that script. They are not mounted by `server/index.ts` and are not used by the frontend runtime.
+The remaining ClickUp helper files live under `scripts/migration/clickup`. They are migration-only helpers for that script. They are not mounted by `server/index.ts` and are not used by the frontend runtime.
 
 ## Permissions
 
@@ -95,6 +95,17 @@ Frontend task runtime uses `/api/openproject/*`:
 - `GET /api/openproject/search?q=...`
 
 Unsupported OpenProject adapter actions are disabled in the UI. Folder/list creation is not active because OpenProject has no direct folder/list equivalent in this mapping.
+
+## Filters
+
+Task list filters are sent to OpenProject API v3 as work package filters:
+
+- status uses `status = <id>`
+- assignee uses `assignee = <id>`
+- priority uses `priority = <id>`
+- search uses `subject ~ <text>`
+
+Search is a subject/title contains filter, not a global full-text search across every work package field.
 
 ## Current Limitations
 

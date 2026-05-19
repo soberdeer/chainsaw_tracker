@@ -13,9 +13,16 @@ export interface CompactTaskRowProps {
   onMove?: (taskId: string) => void;
   onChanged: () => void;
   onError: (message: string) => void;
+  canWriteTasks: boolean;
 }
 
-export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTaskRowProps) {
+export function CompactTaskRow({
+  task,
+  onOpen,
+  onChanged,
+  onError,
+  canWriteTasks,
+}: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
@@ -106,7 +113,12 @@ export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTask
       <Text size="sm" c="dimmed">
         {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}
       </Text>
-      <TaskActionsMenu task={task} onChanged={onChanged} onError={onError} />
+      <TaskActionsMenu
+        task={task}
+        onChanged={onChanged}
+        onError={onError}
+        canWriteTasks={canWriteTasks}
+      />
     </div>
   );
 }

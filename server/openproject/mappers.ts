@@ -108,7 +108,16 @@ export function mapWorkspace(
     name: 'OpenProject',
     slug: 'openproject',
     spaces: projects.map((project) => mapProject(project, statuses)),
-    memberships: users.map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER', user })),
+    memberships: [
+      {
+        id: 'openproject:local-user',
+        role: 'OWNER',
+        user: { id: 'local-user', email: 'owner@local.app', name: 'Workspace Owner' },
+      },
+      ...users
+        .filter((user) => user.id !== 'local-user')
+        .map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER' as const, user })),
+    ],
     permissionSets: [
       {
         role: 'OWNER',
@@ -131,7 +140,7 @@ export function mapWorkspace(
         manageWorkspace: false,
         manageSpaces: false,
         manageDocs: false,
-        manageTasks: true,
+        manageTasks: false,
         inviteMembers: false,
       },
       {
@@ -139,7 +148,7 @@ export function mapWorkspace(
         manageWorkspace: false,
         manageSpaces: false,
         manageDocs: false,
-        manageTasks: true,
+        manageTasks: false,
         inviteMembers: false,
       },
       {

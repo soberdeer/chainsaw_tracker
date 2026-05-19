@@ -1,4 +1,4 @@
-import { buildWorkPackageFilters } from '../server/openproject/service.js';
+import { buildWorkPackageFilters, getTasks } from '../server/openproject/service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -44,4 +44,58 @@ test('buildWorkPackageFilters maps OpenProject filters', async () => {
 test('buildWorkPackageFilters includes all statuses by default', async () => {
   const filters = await buildWorkPackageFilters({});
   assert.deepEqual(filters, [{ status: { operator: '*', values: [] } }]);
+});
+
+test('getTasks sends OpenProject filters to the work package request', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+  const requests: URL[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL) => {
+    const url = new URL(String(input));
+    requests.push(url);
+
+    if (url.pathname === '/api/v3/users') {
+      return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
+    }
+
+    if (url.pathname === '/api/v3/priorities') {
+      return new Response(
+        JSON.stringify({
+          _embedded: {
+            elements: [{ id: 9, name: 'High', _links: { self: { href: '/api/v3/priorities/9' } } }],
+          },
+        }),
+        { status: 200 }
+      );
+    }
+
+    if (url.pathname === '/api/v3/projects/42/work_packages') {
+      return new Response(JSON.stringify({ total: 0, _embedded: { elements: [] } }), {
+        status: 200,
+      });
+    }
+
+    return new Response(JSON.stringify({ message: `Unexpected ${url.pathname}` }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+
+  await getTasks('42', {
+    status: 'op-status:12:status',
+    assignees: ['4'],
+    priority: 'HIGH',
+    search: 'prototype',
+    limit: 25,
+  });
+
+  const workPackagesRequest = requests.find(
+    (request) => request.pathname === '/api/v3/projects/42/work_packages'
+  );
+  assert.ok(workPackagesRequest);
+  assert.equal(workPackagesRequest.searchParams.get('pageSize'), '25');
+  assert.deepEqual(JSON.parse(workPackagesRequest.searchParams.get('filters') || '[]'), [
+    { status: { operator: '=', values: ['12'] } },
+    { assignee: { operator: '=', values: ['4'] } },
+    { priority: { operator: '=', values: ['9'] } },
+    { subject: { operator: '~', values: ['prototype'] } },
+  ]);
 });

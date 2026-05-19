@@ -46,9 +46,14 @@ export async function bootstrapOpenProjectLocalPermissions() {
       },
     }),
     prisma.permissionSet.upsert({
+      where: { workspaceId_role: { workspaceId: workspace.id, role: 'LEAD' } },
+      update: { manageDocs: false, manageTasks: false },
+      create: { workspaceId: workspace.id, role: 'LEAD', manageDocs: false, manageTasks: false },
+    }),
+    prisma.permissionSet.upsert({
       where: { workspaceId_role: { workspaceId: workspace.id, role: 'MEMBER' } },
-      update: { manageDocs: false, manageTasks: true },
-      create: { workspaceId: workspace.id, role: 'MEMBER', manageDocs: false, manageTasks: true },
+      update: { manageDocs: false, manageTasks: false },
+      create: { workspaceId: workspace.id, role: 'MEMBER', manageDocs: false, manageTasks: false },
     }),
   ]);
 

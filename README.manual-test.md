@@ -65,6 +65,7 @@ curl http://localhost:4000/api/openproject/workspaces
    - `PATCH /api/openproject/spaces/:spaceId`
    - `POST /api/openproject/spaces/:spaceId/folders`
    - `POST /api/openproject/folders/:folderId/lists`
+6. Disabled menu items must not be clickable and must not send API requests.
 
 ## Task List
 
@@ -73,8 +74,14 @@ curl http://localhost:4000/api/openproject/workspaces
 3. Confirm the request includes `listId` or another OpenProject adapter id and a finite `limit`.
 4. Test status, assignee, priority, and search filters.
 5. Confirm filters are sent to the backend and OpenProject filter builder, not applied only to mock data.
-6. Use Load more if `nextCursor` exists.
-7. Confirm loading, empty, and error states render honestly.
+6. OpenProject-backed filters use API v3 work package filters:
+   - status: `{ "status": { "operator": "=", "values": ["<id>"] } }`
+   - assignee: `{ "assignee": { "operator": "=", "values": ["<id>"] } }`
+   - priority: `{ "priority": { "operator": "=", "values": ["<id>"] } }`
+   - search: `{ "subject": { "operator": "~", "values": ["text"] } }`
+7. Search is subject/title contains search, not a global full-text search across every field.
+8. Use Load more if `nextCursor` exists.
+9. Confirm loading, empty, and error states render honestly.
 
 ## Task Detail
 

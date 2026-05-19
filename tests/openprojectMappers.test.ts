@@ -1,4 +1,8 @@
-import { mapWorkPackage, priorityToOpenProjectName } from '../server/openproject/mappers.js';
+import {
+  mapWorkPackage,
+  mapWorkspace,
+  priorityToOpenProjectName,
+} from '../server/openproject/mappers.js';
 import type { User } from '../src/lib/types.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -43,4 +47,18 @@ test('maps tracker priority to OpenProject priority names', () => {
   assert.equal(priorityToOpenProjectName('HIGH'), 'High');
   assert.equal(priorityToOpenProjectName('NORMAL'), 'Normal');
   assert.equal(priorityToOpenProjectName('LOW'), 'Low');
+});
+
+test('maps OpenProject workspace permissions to service-token write model', () => {
+  const workspace = mapWorkspace([], [], []);
+  const permissionByRole = new Map(workspace.permissionSets.map((set) => [set.role, set]));
+
+  assert.equal(permissionByRole.get('OWNER')?.manageTasks, true);
+  assert.equal(permissionByRole.get('ADMIN')?.manageTasks, true);
+  assert.equal(permissionByRole.get('LEAD')?.manageTasks, false);
+  assert.equal(permissionByRole.get('MEMBER')?.manageTasks, false);
+  assert.equal(
+    workspace.memberships.find((membership) => membership.user.id === 'local-user')?.role,
+    'OWNER'
+  );
 });

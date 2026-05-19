@@ -14,6 +14,7 @@ export interface GroupedTaskListProps {
   onMoveTask: (taskId: string, statusId: string) => void;
   onChanged: () => void;
   onError: (message: string) => void;
+  canWriteTasks: boolean;
 }
 
 export function GroupedTaskList({
@@ -24,6 +25,7 @@ export function GroupedTaskList({
   onMoveTask,
   onChanged,
   onError,
+  canWriteTasks,
 }: GroupedTaskListProps) {
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
   const orderedStatuses = useMemo(
@@ -79,15 +81,17 @@ export function GroupedTaskList({
               <Text c="dimmed" fw={700}>
                 {groupTasks.length}
               </Text>
-              <Tooltip label={`Create task in ${meta.label}`}>
-                <ActionIcon
-                  variant="subtle"
-                  aria-label={`Create task in ${meta.label}`}
-                  onClick={() => onAddTask(status.id)}
-                >
-                  <IconPlus size="1.25rem" />
-                </ActionIcon>
-              </Tooltip>
+              {canWriteTasks && (
+                <Tooltip label={`Create task in ${meta.label}`}>
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label={`Create task in ${meta.label}`}
+                    onClick={() => onAddTask(status.id)}
+                  >
+                    <IconPlus size="1.25rem" />
+                  </ActionIcon>
+                </Tooltip>
+              )}
             </Group>
             {!isCollapsed && (
               <>
@@ -109,16 +113,19 @@ export function GroupedTaskList({
                     onMove={(taskId) => void onMoveTask(taskId, status.id)}
                     onChanged={onChanged}
                     onError={onError}
+                    canWriteTasks={canWriteTasks}
                   />
                 ))}
-                <button
-                  className={classes.addTask}
-                  type="button"
-                  onClick={() => onAddTask(status.id)}
-                >
-                  <IconPlus size="1.125rem" />
-                  Add Task
-                </button>
+                {canWriteTasks && (
+                  <button
+                    className={classes.addTask}
+                    type="button"
+                    onClick={() => onAddTask(status.id)}
+                  >
+                    <IconPlus size="1.125rem" />
+                    Add Task
+                  </button>
+                )}
               </>
             )}
           </section>

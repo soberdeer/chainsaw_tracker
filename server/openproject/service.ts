@@ -125,7 +125,19 @@ export async function getWorkspaceTree() {
     return [
       {
         ...seeded,
-        memberships: users.map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER', user })),
+        memberships: [
+          {
+            id: 'openproject:local-user',
+            role: 'OWNER' as const,
+            user: { id: 'local-user', email: 'owner@local.app', name: 'Workspace Owner' },
+          },
+          ...users
+            .filter((user) => user.id !== 'local-user')
+            .map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER' as const, user })),
+        ],
+        permissionSets: seeded.permissionSets.map((set) =>
+          set.role === 'LEAD' || set.role === 'MEMBER' ? { ...set, manageTasks: false } : set
+        ),
       },
     ];
   }

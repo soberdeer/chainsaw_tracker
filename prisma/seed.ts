@@ -32,8 +32,8 @@ async function main() {
             manageTasks: true,
             inviteMembers: true,
           },
-          { role: 'LEAD', manageDocs: true, manageTasks: true },
-          { role: 'MEMBER', manageDocs: true, manageTasks: true },
+          { role: 'LEAD', manageDocs: true, manageTasks: false },
+          { role: 'MEMBER', manageDocs: true, manageTasks: false },
           { role: 'VIEWER', manageTasks: false },
         ],
       },
@@ -74,8 +74,13 @@ async function main() {
     }),
     prisma.permissionSet.upsert({
       where: { workspaceId_role: { workspaceId: workspace.id, role: 'LEAD' } },
-      create: { workspaceId: workspace.id, role: 'LEAD', manageDocs: true, manageTasks: true },
-      update: { manageDocs: true, manageTasks: true },
+      create: { workspaceId: workspace.id, role: 'LEAD', manageDocs: true, manageTasks: false },
+      update: { manageDocs: true, manageTasks: false },
+    }),
+    prisma.permissionSet.upsert({
+      where: { workspaceId_role: { workspaceId: workspace.id, role: 'MEMBER' } },
+      create: { workspaceId: workspace.id, role: 'MEMBER', manageDocs: true, manageTasks: false },
+      update: { manageDocs: true, manageTasks: false },
     }),
   ]);
 

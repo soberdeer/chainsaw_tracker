@@ -57,6 +57,7 @@ export interface TaskDetailPageProps {
   onSaved: (task: Task) => void;
   onOpenSubtask: (task: Task) => void;
   onError: (message: string) => void;
+  canWriteTasks: boolean;
 }
 
 export function TaskDetailPage({
@@ -67,6 +68,7 @@ export function TaskDetailPage({
   onSaved,
   onOpenSubtask,
   onError,
+  canWriteTasks,
 }: TaskDetailPageProps) {
   const due = formatDueDate(task.dueDate);
   const start = formatDueDate(task.startDate);
@@ -121,6 +123,9 @@ export function TaskDetailPage({
   );
 
   const updateAndRefresh = async (input: Parameters<typeof updateTask>[1]) => {
+    if (!canWriteTasks) {
+      return;
+    }
     try {
       onSaved(await updateTask(task.id, input));
     } catch (error) {
@@ -129,6 +134,9 @@ export function TaskDetailPage({
   };
 
   const save = async () => {
+    if (!canWriteTasks) {
+      return;
+    }
     try {
       setSaving(true);
       const saved = await updateTask(task.id, {
@@ -164,11 +172,14 @@ export function TaskDetailPage({
           value={title}
           onChange={(event) => setTitle(event.currentTarget.value)}
           className={classes.titleInput}
+          readOnly={!canWriteTasks}
         />
         <Group>
-          <Button loading={saving} onClick={save}>
-            Save
-          </Button>
+          {canWriteTasks && (
+            <Button loading={saving} onClick={save}>
+              Save
+            </Button>
+          )}
           <Button variant="light" onClick={onBack}>
             Back
           </Button>
@@ -187,6 +198,7 @@ export function TaskDetailPage({
           data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
           placeholder={status.label}
           searchable
+          disabled={!canWriteTasks}
         />
         {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
         <TextInput label="List" value={task.taskList?.name || task.taskListId || ''} readOnly />
@@ -206,6 +218,7 @@ export function TaskDetailPage({
           clearable
           maxValues={2}
           description="OpenProject stores one assignee and one responsible user."
+          disabled={!canWriteTasks}
         />
         <TextInput
           label="Start date"
@@ -215,6 +228,7 @@ export function TaskDetailPage({
           onChange={(event) => setStartDate(event.currentTarget.value)}
           onBlur={() => void updateAndRefresh({ startDate: startDate || null })}
           placeholder={start || 'No start'}
+          readOnly={!canWriteTasks}
         />
         <TextInput
           label="Due date"
@@ -224,6 +238,7 @@ export function TaskDetailPage({
           onChange={(event) => setDueDate(event.currentTarget.value)}
           onBlur={() => void updateAndRefresh({ dueDate: dueDate || null })}
           placeholder={due || 'No due'}
+          readOnly={!canWriteTasks}
         />
         <Select
           label="Priority"
@@ -235,6 +250,7 @@ export function TaskDetailPage({
             void updateAndRefresh({ priority: next });
           }}
           data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+          disabled={!canWriteTasks}
         />
         <TextInput label="Tags" value={task.tags.map(({ tag }) => tag.name).join(', ')} readOnly />
         <Stack gap="xs">
@@ -288,6 +304,7 @@ export function TaskDetailPage({
         value={description}
         onChange={(event) => setDescription(event.currentTarget.value)}
         mb="lg"
+        readOnly={!canWriteTasks}
       />
 
       <Tabs defaultValue="subtasks">
@@ -513,14 +530,16 @@ export function TaskDetailPage({
                   <Badge variant="light">{task.subtasks?.length || 0}</Badge>
                 </Tooltip>
               </Group>
-              <Button
-                size="xs"
-                variant="light"
-                leftSection={<IconPlus size="0.875rem" />}
-                onClick={() => setSubtaskModalOpen(true)}
-              >
-                Add subtask
-              </Button>
+              {canWriteTasks && (
+                <Button
+                  size="xs"
+                  variant="light"
+                  leftSection={<IconPlus size="0.875rem" />}
+                  onClick={() => setSubtaskModalOpen(true)}
+                >
+                  Add subtask
+                </Button>
+              )}
             </Group>
             <div className={classes.subtaskHead}>
               <Text>Name</Text>

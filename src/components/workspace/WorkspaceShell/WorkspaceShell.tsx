@@ -151,6 +151,14 @@ export function WorkspaceShell() {
   }, [refreshKey, workspaceId, location.pathname, navigate]);
 
   const workspace = workspaces.find((item) => item.id === workspaceId) || workspaces[0];
+  const currentMembership = workspace?.memberships.find(
+    (membership) => membership.user.id === 'local-user'
+  );
+  const currentPermissionSet = workspace?.permissionSets.find(
+    (set) => set.role === currentMembership?.role
+  );
+  const canWriteTasks = Boolean(currentPermissionSet?.manageTasks);
+  const canManageSpaces = Boolean(currentPermissionSet?.manageSpaces);
   const activeSpace = useMemo(
     () => workspace?.spaces.find((space) => space.id === spaceId) || workspace?.spaces[0],
     [workspace, spaceId]
@@ -217,11 +225,12 @@ export function WorkspaceShell() {
   }, [loadTasks]);
 
   const addTask = async (statusId: string) => {
-    if (!activeTaskList) return;
+    if (!activeTaskList || !canWriteTasks) return;
     setCreateTaskStatusId(statusId);
   };
 
   const moveTask = async (taskId: string, statusId: string) => {
+    if (!canWriteTasks) return;
     const task = tasks.find((item) => item.id === taskId);
     if (task?.statusId === statusId) return;
     await runAction(async () => {
@@ -295,21 +304,23 @@ export function WorkspaceShell() {
               {actionError}
             </Alert>
           )}
-          <Button
-            onClick={() =>
-              runAction(async () => {
-                await createSpace({
-                  workspaceId: workspace.id,
-                  name: 'General',
-                  color: '#4c6ef5',
-                  initials: 'G',
-                });
-                reload();
-              })
-            }
-          >
-            Create first space
-          </Button>
+          {canManageSpaces && (
+            <Button
+              onClick={() =>
+                runAction(async () => {
+                  await createSpace({
+                    workspaceId: workspace.id,
+                    name: 'General',
+                    color: '#4c6ef5',
+                    initials: 'G',
+                  });
+                  reload();
+                })
+              }
+            >
+              Create first space
+            </Button>
+          )}
         </Stack>
       </Box>
     );
@@ -328,6 +339,8 @@ export function WorkspaceShell() {
         onReload={reload}
         onCreateTask={() => setCreateTaskStatusId(statuses[0]?.id || null)}
         onError={setActionError}
+        canManageSpaces={canManageSpaces}
+        canWriteTasks={canWriteTasks}
       />
       <TaskCreateModal
         opened={Boolean(createTaskStatusId)}
@@ -354,30 +367,32 @@ export function WorkspaceShell() {
               </Text>
             </div>
           </Group>
-          <Tooltip label="Add space">
-            <ActionIcon
-              variant="light"
-              aria-label="Add space"
-              onClick={async () => {
-                const name = window.prompt('Space name');
-                if (!name) {
-                  return;
-                }
-                await runAction(async () => {
-                  await createSpace({
-                    workspaceId: workspace.id,
-                    name,
-                    color: '#4c6ef5',
-                    initials: name.slice(0, 1).toUpperCase(),
-                    locked: true,
+          {canManageSpaces && (
+            <Tooltip label="Add space">
+              <ActionIcon
+                variant="light"
+                aria-label="Add space"
+                onClick={async () => {
+                  const name = window.prompt('Space name');
+                  if (!name) {
+                    return;
+                  }
+                  await runAction(async () => {
+                    await createSpace({
+                      workspaceId: workspace.id,
+                      name,
+                      color: '#4c6ef5',
+                      initials: name.slice(0, 1).toUpperCase(),
+                      locked: true,
+                    });
+                    reload();
                   });
-                  reload();
-                });
-              }}
-            >
-              <IconPlus size="1.25rem" />
-            </ActionIcon>
-          </Tooltip>
+                }}
+              >
+                <IconPlus size="1.25rem" />
+              </ActionIcon>
+            </Tooltip>
+          )}
         </Group>
         <Text size="lg" fw={700} mb="md">
           Spaces
@@ -503,27 +518,29 @@ export function WorkspaceShell() {
               </Box>
             );
           })}
-          <button
-            className={classes.newSpaceRow}
-            type="button"
-            onClick={async () => {
-              const name = window.prompt('Space name');
-              if (!name) return;
-              await runAction(async () => {
-                await createSpace({
-                  workspaceId: workspace.id,
-                  name,
-                  color: '#4c6ef5',
-                  initials: name.slice(0, 1).toUpperCase(),
-                  locked: true,
+          {canManageSpaces && (
+            <button
+              className={classes.newSpaceRow}
+              type="button"
+              onClick={async () => {
+                const name = window.prompt('Space name');
+                if (!name) return;
+                await runAction(async () => {
+                  await createSpace({
+                    workspaceId: workspace.id,
+                    name,
+                    color: '#4c6ef5',
+                    initials: name.slice(0, 1).toUpperCase(),
+                    locked: true,
+                  });
+                  reload();
                 });
-                reload();
-              });
-            }}
-          >
-            <IconPlus size="1.125rem" />
-            New Space
-          </button>
+              }}
+            >
+              <IconPlus size="1.125rem" />
+              New Space
+            </button>
+          )}
         </ScrollArea>
       </AppShell.Navbar>
 
@@ -612,6 +629,7 @@ export function WorkspaceShell() {
                 }}
                 onOpenSubtask={openSubtask}
                 onError={setActionError}
+                canWriteTasks={canWriteTasks}
               />
             </Box>
           ) : (
@@ -676,13 +694,15 @@ export function WorkspaceShell() {
                           <IconSearch size="1.25rem" />
                         </ActionIcon>
                       </Tooltip>
-                      <Button
-                        color="teal"
-                        rightSection={<IconChevronDown size="1rem" />}
-                        onClick={() => statuses[0] && addTask(statuses[0].id)}
-                      >
-                        Add Task
-                      </Button>
+                      {canWriteTasks && (
+                        <Button
+                          color="teal"
+                          rightSection={<IconChevronDown size="1rem" />}
+                          onClick={() => statuses[0] && addTask(statuses[0].id)}
+                        >
+                          Add Task
+                        </Button>
+                      )}
                     </Group>
                   </Group>
                   {tasksError && (
@@ -707,6 +727,7 @@ export function WorkspaceShell() {
                       onMoveTask={moveTask}
                       onChanged={reload}
                       onError={setActionError}
+                      canWriteTasks={canWriteTasks}
                     />
                   )}
                   {nextCursor && (

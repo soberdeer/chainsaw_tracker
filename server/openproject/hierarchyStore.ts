@@ -87,7 +87,7 @@ export function listOpenProjectProjectId(listId: string) {
 
 export function openProjectStatusId(statusId?: string) {
   if (!statusId) return undefined;
-  const match = statusId.match(/^op-status:(\d+):clickup-status:/);
+  const match = statusId.match(/^op-status:(\d+):/);
   return match?.[1] || statusId;
 }
 

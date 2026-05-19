@@ -1,13 +1,4 @@
 import 'dotenv/config';
-import { clickUpRequest } from '../server/clickup/client.js';
-import type {
-  ClickUpFolder,
-  ClickUpList,
-  ClickUpSpace,
-  ClickUpStatus,
-  ClickUpTask,
-  ClickUpTeam,
-} from '../server/clickup/types.js';
 import { openProjectRequest } from '../server/openproject/client.js';
 import { seededHierarchyPath, type SeededWorkspace } from '../server/openproject/hierarchyStore.js';
 import type {
@@ -19,6 +10,15 @@ import type {
   OpenProjectWorkPackage,
 } from '../server/openproject/types.js';
 import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
+import { clickUpRequest } from './migration/clickup/client.js';
+import type {
+  ClickUpFolder,
+  ClickUpList,
+  ClickUpSpace,
+  ClickUpStatus,
+  ClickUpTask,
+  ClickUpTeam,
+} from './migration/clickup/types.js';
 import { mkdir, writeFile } from 'node:fs/promises';
 import { dirname } from 'node:path';
 
