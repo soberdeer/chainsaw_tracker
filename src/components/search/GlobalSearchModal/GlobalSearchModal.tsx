@@ -20,11 +20,9 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
-  createFolder,
   createSpace,
-  searchAll,
-  folderPath,
   getErrorMessage,
+  searchAll,
   type Folder,
   type SearchResult,
   type Space,
@@ -49,8 +47,8 @@ export interface GlobalSearchModalProps {
 export function GlobalSearchModal({
   opened,
   workspace,
-  activeSpace,
-  activeFolder,
+  activeSpace: _activeSpace,
+  activeFolder: _activeFolder,
   activeTaskList,
   onClose,
   onNavigate,
@@ -125,17 +123,6 @@ export function GlobalSearchModal({
           locked: true,
         });
         onReload();
-      }
-      if (result.action === 'create-folder' && activeSpace) {
-        const name = window.prompt('Folder name');
-        if (!name) {
-          return;
-        }
-        await createFolder(activeSpace.id, { name, kind: 'TEAM', locked: true });
-        onReload();
-      }
-      if (result.action === 'open-board' && activeSpace && activeFolder) {
-        onNavigate(folderPath(activeSpace.id, activeFolder.id));
       }
       onClose();
     } catch (error) {

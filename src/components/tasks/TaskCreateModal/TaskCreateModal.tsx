@@ -192,13 +192,14 @@ export function TaskCreateModal({
               className={classes.compactField}
             />
             <MultiSelect
-              placeholder="Assignee"
+              placeholder="Assignee / responsible"
               leftSection={<IconUsers size="1rem" />}
               value={assigneeIds}
               onChange={setAssigneeIds}
               data={users.map((user) => ({ value: user.id, label: user.name }))}
               searchable
               clearable
+              maxValues={2}
               className={classes.wideField}
             />
             <TextInput

@@ -44,25 +44,6 @@ export function createSpace(input: {
   return request('/api/openproject/spaces', { method: 'POST', body: JSON.stringify(input) });
 }
 
-export function createFolder(
-  spaceId: string,
-  input: { name: string; kind: 'DOCS' | 'TEAM' | 'GENERAL'; locked?: boolean }
-) {
-  return request(`/api/openproject/spaces/${spaceId}/folders`, {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
-}
-
-export function createTaskList(folderId: string, input: { name: string; icon?: string }) {
-  const folderless = folderId.endsWith(':folderless');
-  const parentId = folderless ? folderId.replace(':folderless', '') : folderId;
-  return request(`/api/openproject/folders/${parentId}/lists`, {
-    method: 'POST',
-    body: JSON.stringify({ ...input, folderless }),
-  });
-}
-
 export function createTask(input: {
   workspaceId?: string;
   departmentId?: string;
@@ -202,18 +183,6 @@ export function refreshTaskGitHub(taskId: string) {
     `/api/integrations/github/tasks/${taskId}/refresh`,
     { method: 'POST' }
   );
-}
-
-export function reorderTasks(input: {
-  listId: string;
-  taskId: string;
-  statusId: string;
-  orderedTaskIds: string[];
-}) {
-  return request<Task[]>('/api/openproject/tasks/reorder', {
-    method: 'POST',
-    body: JSON.stringify(input),
-  });
 }
 
 export function duplicateTask(taskId: string) {

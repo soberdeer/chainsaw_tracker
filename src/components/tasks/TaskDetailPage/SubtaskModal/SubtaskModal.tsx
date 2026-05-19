@@ -125,12 +125,13 @@ export function SubtaskModal({
             data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
           />
           <MultiSelect
-            label="Assignees"
+            label="Assignee / responsible"
             value={assigneeIds}
             onChange={setAssigneeIds}
             data={users.map((user) => ({ value: user.id, label: user.name }))}
             searchable
             clearable
+            maxValues={2}
           />
           <TextInput
             label="Start date"

@@ -10,20 +10,12 @@ import classes from './CompactTaskRow.module.css';
 export interface CompactTaskRowProps {
   task: Task;
   onOpen: (task: Task) => void;
-  onDragStart: (taskId: string) => void;
-  onDropOnTask: (targetTaskId: string) => void;
+  onMove?: (taskId: string) => void;
   onChanged: () => void;
   onError: (message: string) => void;
 }
 
-export function CompactTaskRow({
-  task,
-  onOpen,
-  onDragStart,
-  onDropOnTask,
-  onChanged,
-  onError,
-}: CompactTaskRowProps) {
+export function CompactTaskRow({ task, onOpen, onChanged, onError }: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
@@ -38,19 +30,8 @@ export function CompactTaskRow({
   return (
     <div
       className={classes.taskRow}
-      draggable
       role="button"
       tabIndex={0}
-      onDragStart={(event) => {
-        event.dataTransfer.setData('text/task-id', task.id);
-        onDragStart(task.id);
-      }}
-      onDragOver={(event) => event.preventDefault()}
-      onDrop={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        onDropOnTask(task.id);
-      }}
       onClick={() => onOpen(task)}
       onKeyDown={(event) => {
         if (event.key === 'Enter' || event.key === ' ') {

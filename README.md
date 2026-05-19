@@ -1,103 +1,103 @@
-# Compact Tracker
+# Compact OpenProject Tracker
 
-Compact task tracker built with React, Vite, Express, Prisma, Postgres and Mantine.
+Compact task tracker with a ClickUp-like React UI and OpenProject as the task runtime source of truth.
 
-The production task tracker runtime uses the real ClickUp API through backend adapter routes under `/api/clickup/*`. PostgreSQL is still used for local app features that remain outside the ClickUp task source of truth, such as documents, memberships/permissions scaffolding, and existing optional GitHub storage.
+## Source Of Truth
 
-## Local Setup
+OpenProject API is the source of truth for production task runtime data:
 
-1. Configure `.env`:
+- Projects -> UI spaces
+- Work packages -> tasks
+- Statuses -> task columns/groups
+- Types -> work package type for creation
+- Priorities -> task priority
+- Users -> assignee/responsible options
+- Parent links -> subtasks
+- Activities -> task activity timeline
+
+PostgreSQL/Prisma remains only for local scaffold features such as demo membership/permissions, optional GitHub storage, and local docs while docs are not migrated to OpenProject wiki pages.
+
+## Env
+
+Required runtime env:
 
 ```bash
-CLICKUP_TOKEN="pk_your_personal_clickup_token"
+OPENPROJECT_BASE_URL="http://localhost:8080"
+OPENPROJECT_API_TOKEN="opapi_..."
 DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
 CLIENT_URL="http://localhost:5173"
 PORT=4000
 ```
 
-`CLICKUP_TOKEN` is a personal API token. It is used only on the backend as the `Authorization` header for ClickUp API requests. Do not use the ClickUp OAuth token endpoint for this value.
-
-On server start the app creates only a small local permission record for `local-user`. It does not seed or cache ClickUp task data at runtime.
-
-2. Start Postgres and run migrations:
+Optional:
 
 ```bash
-npm run setup
+OPENPROJECT_TIMEOUT_MS=15000
+OPENPROJECT_AUTH_MODE=basic # basic or bearer
 ```
 
-3. Start the app:
+`OPENPROJECT_API_TOKEN` is used only by the backend. It is never sent to the frontend.
+
+`CLICKUP_TOKEN` is not required for runtime. It is used only by the optional one-time migration script:
 
 ```bash
+npm run seed:openproject:clickup
+```
+
+## Mapping
+
+The production runtime uses a stable OpenProject mapping:
+
+- UI workspace: virtual `openproject` workspace for the configured OpenProject instance
+- UI space: OpenProject project
+- UI folder: one system folder named `Work packages`
+- UI list: one system list named after the OpenProject project
+- UI task: OpenProject work package
+
+The optional ClickUp migration script can create OpenProject projects from ClickUp spaces/folders/lists, but the app does not need `server/openproject/seed-data/clickup-hierarchy.json` to run.
+
+## Permissions
+
+The app currently uses one OpenProject service token. To avoid letting every local demo user write through that token, write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD`, `MEMBER`, and `VIEWER` are read-only until per-user OpenProject auth is implemented.
+
+## Run
+
+```bash
+npm install
+npm run setup
 npm run dev
 ```
 
-The app runs at `http://localhost:5173`, API at `http://localhost:4000`.
+Frontend: `http://localhost:5173`  
+API: `http://localhost:4000`
 
-If you already have Postgres running, make sure `.env` points to an existing database:
+## Runtime Routes
 
-```bash
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
-```
+Frontend task runtime uses `/api/openproject/*`:
 
-## Email Invites
+- `GET /api/openproject/workspaces`
+- `GET /api/openproject/projects`
+- `GET /api/openproject/task-lists`
+- `GET /api/openproject/task-statuses`
+- `GET /api/openproject/tasks?listId=<projectId>&limit=50`
+- `POST /api/openproject/tasks`
+- `GET /api/openproject/tasks/:taskId`
+- `PATCH /api/openproject/tasks/:taskId`
+- `DELETE /api/openproject/tasks/:taskId`
+- `POST /api/openproject/tasks/:taskId/duplicate`
+- `GET /api/openproject/tasks/:taskId/activity`
+- `GET /api/openproject/search?q=...`
 
-Invites are sent through SMTP when these env vars are configured:
+Unsupported OpenProject adapter actions are disabled in the UI. Folder/list creation is not active because OpenProject has no direct folder/list equivalent in this mapping.
 
-```bash
-SMTP_HOST=smtp.example.com
-SMTP_PORT=587
-SMTP_SECURE=false
-SMTP_USER=...
-SMTP_PASS=...
-MAIL_FROM="Compact Tracker <no-reply@example.com>"
-CLIENT_URL=http://localhost:5173
-```
+## Current Limitations
 
-Without SMTP, the API logs the invite email to the console and still returns the invite link for local development.
+- Board view and drag reorder are disabled for MVP. List view is the production task view.
+- Reordering inside a status is not saved locally because OpenProject is the source of truth and this adapter does not map order to a supported OpenProject field.
+- Docs are still local docs, not OpenProject wiki pages. The UI should treat them as Local Docs.
+- Tags, attachments, dependencies, time entries, and custom fields are hidden or read-only unless wired to OpenProject.
+- GitHub integration is optional and isolated from OpenProject task runtime.
 
-Then run:
+## Optional ClickUp Migration
 
-```bash
-npm run setup:local
-```
-
-## ClickUp API Task Runtime
-
-Runtime task data comes from ClickUp API v2:
-
-- Workspaces: `GET /team`
-- Spaces: `GET /team/{team_id}/space`
-- Folders: `GET /space/{space_id}/folder`
-- Lists: `GET /folder/{folder_id}/list` and `GET /space/{space_id}/list`
-- Tasks: `GET/POST /list/{list_id}/task`, `GET/PUT/DELETE /task/{task_id}`
-- Comments/activity view: `GET /task/{task_id}/comment`
-
-The frontend calls only the backend adapter and never receives `CLICKUP_TOKEN`.
-
-Unsupported by design in this scope:
-
-- ClickUp Chats
-- ClickUp Guests
-- Fake chat/guest UI
-
-See `README.manual-test.md` for the verification checklist and the list of adapter endpoints.
-
-## Legacy ClickUp CSV Import
-
-Use the `Import CSV` button or `POST /api/imports/clickup-csv`. The importer upserts ClickUp tasks by `externalSource=CLICKUP` and `externalId`, keeps `externalUrl`, `syncedAt`, and the raw external snapshot, and does not duplicate tasks on repeat imports.
-
-Sync conflict rule: ClickUp imports update local editable fields only when the task has not been changed locally after its last sync. Otherwise the importer refreshes `externalTitle`, `externalDescription`, and `externalStatus` without silently overwriting local edits.
-
-## Optional Existing GitHub Code
-
-GitHub integration is not required for the core tracker and is not part of the current task scope. Existing GitHub-related code is optional and should not block task list, task detail, ClickUp import, CRUD, or Activity.
-
-Optional env vars:
-
-```bash
-GITHUB_INTEGRATION_ENABLED=false
-GITHUB_WEBHOOK_SECRET=...
-GITHUB_TOKEN=...
-```
-
-When GitHub is disabled or env is missing, GitHub-dependent routes return disabled/empty responses and the production task UI does not show fake GitHub data.
+`npm run seed:openproject:clickup` is a one-time migration helper. It can read ClickUp data and create/reuse OpenProject projects/work packages. It is not part of runtime and should not be required to start the tracker.

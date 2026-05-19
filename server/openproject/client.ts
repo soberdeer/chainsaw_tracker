@@ -14,7 +14,9 @@ function token() {
 }
 
 function authHeader() {
-  return `Basic ${Buffer.from(`apikey:${token()}`).toString('base64')}`;
+  const value = token();
+  if (process.env.OPENPROJECT_AUTH_MODE === 'bearer') return `Bearer ${value}`;
+  return `Basic ${Buffer.from(`apikey:${value}`).toString('base64')}`;
 }
 
 function buildUrl(
@@ -38,6 +40,7 @@ export async function openProjectRequest<T>(
   } = {}
 ): Promise<T> {
   const method = options.method || 'GET';
+  const start = Date.now();
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const url = buildUrl(path, options.query);
@@ -55,11 +58,22 @@ export async function openProjectRequest<T>(
     });
 
     const text = await response.text();
-    const payload = text ? JSON.parse(text) : null;
+    const payload = text
+      ? (() => {
+          try {
+            return JSON.parse(text);
+          } catch {
+            return { message: response.ok ? text : response.statusText, raw: text.slice(0, 500) };
+          }
+        })()
+      : null;
+    const duration = Date.now() - start;
+    console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
     if (!response.ok) {
       const message =
-        payload?.message || payload?._embedded?.errors?.[0]?.message || response.statusText;
-      console.warn(`OpenProject API ${method} ${url.pathname} failed with ${response.status}`);
+        payload?.message ||
+        payload?._embedded?.errors?.[0]?.message ||
+        statusMessage(response.status, response.statusText);
       throw new OpenProjectApiError(response.status, String(message), payload);
     }
     return payload as T;
@@ -69,10 +83,19 @@ export async function openProjectRequest<T>(
     if ((error as Error).name === 'AbortError') {
       throw new OpenProjectApiError(504, 'OpenProject API request timed out');
     }
-    throw new OpenProjectApiError(502, 'OpenProject API request failed');
+    throw new OpenProjectApiError(502, 'OpenProject API is unavailable');
   } finally {
     clearTimeout(timeout);
   }
+}
+
+function statusMessage(status: number, fallback: string) {
+  if (status === 401) return 'OpenProject authentication failed';
+  if (status === 403) return 'OpenProject permission denied';
+  if (status === 404) return 'OpenProject resource not found';
+  if (status === 409) return 'OpenProject conflict: the item was changed by someone else';
+  if (status === 422) return 'OpenProject validation failed';
+  return fallback || 'OpenProject API request failed';
 }
 
 export function openProjectWebUrl(path: string) {

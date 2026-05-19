@@ -17,9 +17,22 @@ function req(userId = 'local-user') {
   return { header: (name: string) => (name === 'x-user-id' ? userId : undefined) } as Request;
 }
 
-test('OpenProject task writes allow workspace members with write roles', async () => {
+test('OpenProject task writes allow owner/admin in service-token mode', async () => {
   prisma.membership.findFirst = (async () => ({ id: 'm1' })) as typeof prisma.membership.findFirst;
   await assert.doesNotReject(() => requireOpenProjectTaskWrite(req()));
+});
+
+test('OpenProject task writes reject non-admin roles in service-token mode', async () => {
+  prisma.membership.findFirst = (async (args: unknown) => {
+    const roles = (args as { where?: { role?: { in?: string[] } } })?.where?.role?.in || [];
+    assert.deepEqual(roles, ['OWNER', 'ADMIN']);
+    return null;
+  }) as typeof prisma.membership.findFirst;
+  await assert.rejects(
+    () => requireOpenProjectTaskWrite(req('member')),
+    (error: unknown) =>
+      error instanceof Error && (error as { statusCode?: number }).statusCode === 403
+  );
 });
 
 test('OpenProject task writes reject users without an allowed membership', async () => {

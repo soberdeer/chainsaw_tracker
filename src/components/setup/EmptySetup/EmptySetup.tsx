@@ -13,9 +13,10 @@ export function EmptySetup({ onCreated }: EmptySetupProps) {
     <Box className={`${classes.center} ${classes.setupScreen}`}>
       <Paper withBorder p="xl" maw="32.5rem">
         <Stack>
-          <Title order={2}>No ClickUp workspace found</Title>
+          <Title order={2}>No OpenProject projects found</Title>
           <Text c="dimmed">
-            Set `CLICKUP_TOKEN` to a personal token that can access at least one ClickUp Workspace.
+            Check `OPENPROJECT_BASE_URL` and `OPENPROJECT_API_TOKEN`, then create or grant access to
+            at least one OpenProject project.
           </Text>
         </Stack>
       </Paper>

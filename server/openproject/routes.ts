@@ -25,17 +25,15 @@ openProjectRouter.post('/spaces', async (req, res) => {
 });
 
 openProjectRouter.patch('/spaces/:spaceId', async (_req, res) => {
-  res
-    .status(501)
-    .json({ error: 'OpenProject project update is not wired in this tracker adapter yet' });
+  res.status(405).json({ error: 'Rename the OpenProject project in OpenProject settings' });
 });
 
 openProjectRouter.post('/spaces/:spaceId/folders', async (_req, res) => {
-  res.status(501).json({ error: 'OpenProject has no folder equivalent in this tracker adapter' });
+  res.status(405).json({ error: 'Folders are not supported by the OpenProject adapter' });
 });
 
 openProjectRouter.post('/folders/:folderId/lists', async (_req, res) => {
-  res.status(501).json({ error: 'OpenProject has no list equivalent in this tracker adapter' });
+  res.status(405).json({ error: 'Lists are not supported by the OpenProject adapter' });
 });
 
 openProjectRouter.get('/task-lists', async (_req, res) => {
@@ -124,19 +122,6 @@ openProjectRouter.patch('/tasks/:taskId', async (req, res) => {
     })
     .parse(req.body);
   res.json(await service.updateTask(req.params.taskId, body));
-});
-
-openProjectRouter.post('/tasks/reorder', async (req, res) => {
-  await requireOpenProjectTaskWrite(req);
-  const body = z
-    .object({
-      listId: z.string(),
-      taskId: z.string(),
-      statusId: z.string(),
-      orderedTaskIds: z.array(z.string()),
-    })
-    .parse(req.body);
-  res.json(await service.reorderTask(body));
 });
 
 openProjectRouter.delete('/tasks/:taskId', async (req, res) => {

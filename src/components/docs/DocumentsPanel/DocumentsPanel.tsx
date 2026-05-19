@@ -72,7 +72,7 @@ export function DocumentsPanel({
     <Stack gap="md">
       <Group justify="space-between" align="flex-end">
         <Box>
-          <Title order={3}>Docs</Title>
+          <Title order={3}>Local Docs</Title>
           <Text size="sm" c="dimmed">
             Images stay as files; text, docx and spreadsheets become Markdown.
           </Text>

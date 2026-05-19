@@ -25,8 +25,6 @@ import {
   IconChevronDown,
   IconDots,
   IconFolder,
-  IconFolderOpen,
-  IconLayoutKanban,
   IconList,
   IconLock,
   IconPlus,
@@ -39,8 +37,6 @@ import {
   getTask,
   getTasks,
   getWorkspaces,
-  reorderTasks,
-  updateSpace,
   updateTask,
   firstTaskFolder,
   firstTaskList,
@@ -54,7 +50,7 @@ import {
   type Workspace,
 } from '@/lib';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
-import { GroupedTaskList, TaskBoard } from '../../tasks/StatusIcon';
+import { GroupedTaskList } from '../../tasks/StatusIcon';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
 import classes from './WorkspaceShell.module.css';
@@ -69,7 +65,6 @@ export function WorkspaceShell() {
   const [spaceId, setSpaceId] = useState<string>();
   const [folderId, setFolderId] = useState<string>();
   const [taskListId, setTaskListId] = useState<string>();
-  const [view] = useState<'list' | 'board'>('list');
   const [refreshKey, setRefreshKey] = useState(0);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -232,34 +227,6 @@ export function WorkspaceShell() {
     await runAction(async () => {
       await updateTask(taskId, { statusId });
       reload();
-    });
-  };
-
-  const reorderTaskGroup = async (taskId: string, statusId: string, orderedTaskIds: string[]) => {
-    if (!activeTaskList?.id) return;
-    const movingTask = tasks.find((task) => task.id === taskId);
-    const nextTasks = tasks
-      .filter((task) => task.id !== taskId)
-      .map((task) => {
-        const nextPosition = orderedTaskIds.indexOf(task.id);
-        if (nextPosition >= 0 && (task.statusId === statusId || task.status === statusId)) {
-          return { ...task, position: nextPosition };
-        }
-        return task;
-      });
-    if (movingTask) {
-      const nextPosition = orderedTaskIds.indexOf(taskId);
-      nextTasks.push({
-        ...movingTask,
-        statusId,
-        status: statuses.find((status) => status.id === statusId)?.name || movingTask.status,
-        position: nextPosition >= 0 ? nextPosition : orderedTaskIds.length,
-      });
-      setTasks(nextTasks);
-    }
-    await runAction(async () => {
-      await reorderTasks({ listId: activeTaskList.id, taskId, statusId, orderedTaskIds });
-      await loadTasks();
     });
   };
 
@@ -464,19 +431,7 @@ export function WorkspaceShell() {
                         className={classes.menuDropdown}
                         onClick={(event) => event.stopPropagation()}
                       >
-                        <Menu.Item
-                          onClick={() => {
-                            const name = window.prompt('Space name', space.name);
-                            if (name) {
-                              runAction(async () => {
-                                await updateSpace(space.id, { name });
-                                reload();
-                              });
-                            }
-                          }}
-                        >
-                          Rename
-                        </Menu.Item>
+                        <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
                         <Menu.Item
                           onClick={() =>
                             navigator.clipboard?.writeText(
@@ -510,8 +465,6 @@ export function WorkspaceShell() {
                 {isActiveSpace && (
                   <Box className={classes.folderTree}>
                     {space.folders.map((folder) => {
-                      const isDocs = folder.kind === 'DOCS';
-                      const isActiveFolder = folder.id === activeFolder?.id;
                       return (
                         <Box key={folder.id}>
                           {folder.taskLists?.map((taskList) => (
@@ -619,7 +572,7 @@ export function WorkspaceShell() {
                   {activeFolder.name}
                 </Button>
               ) : (
-                <Text fw={700}>Docs</Text>
+                <Text fw={700}>Local Docs</Text>
               )}
               {activeFolder?.locked && (
                 <Tooltip label={`${activeFolder.name} is private`}>
@@ -664,9 +617,6 @@ export function WorkspaceShell() {
           ) : (
             <Tabs defaultValue="tasks" keepMounted={false} className={classes.contentTabs}>
               <Tabs.List className={classes.viewTabs}>
-                <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>
-                  Board
-                </Tabs.Tab>
                 <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>
                   List
                 </Tabs.Tab>
@@ -748,16 +698,6 @@ export function WorkspaceShell() {
                     <Box p="xl">
                       <Text c="dimmed">No tasks match these filters.</Text>
                     </Box>
-                  ) : view === 'board' ? (
-                    <TaskBoard
-                      tasks={tasks}
-                      statuses={statuses}
-                      onAddTask={addTask}
-                      onOpenTask={openTask}
-                      onReorderTasks={reorderTaskGroup}
-                      onChanged={reload}
-                      onError={setActionError}
-                    />
                   ) : (
                     <GroupedTaskList
                       tasks={tasks}
@@ -765,7 +705,6 @@ export function WorkspaceShell() {
                       onAddTask={addTask}
                       onOpenTask={openTask}
                       onMoveTask={moveTask}
-                      onReorderTasks={reorderTaskGroup}
                       onChanged={reload}
                       onError={setActionError}
                     />
@@ -780,17 +719,6 @@ export function WorkspaceShell() {
                     </Button>
                   )}
                 </Stack>
-              </Tabs.Panel>
-              <Tabs.Panel value="board" p="lg">
-                <TaskBoard
-                  tasks={tasks}
-                  statuses={statuses}
-                  onAddTask={addTask}
-                  onOpenTask={openTask}
-                  onReorderTasks={reorderTaskGroup}
-                  onChanged={reload}
-                  onError={setActionError}
-                />
               </Tabs.Panel>
             </Tabs>
           )}

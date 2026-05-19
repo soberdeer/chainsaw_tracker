@@ -1,7 +1,7 @@
 import type { Request } from 'express';
 import { prisma } from '../db.js';
 
-const writeRoles = new Set(['OWNER', 'ADMIN', 'LEAD', 'MEMBER']);
+const writeRoles = new Set(['OWNER', 'ADMIN']);
 const projectRoles = new Set(['OWNER', 'ADMIN']);
 
 function userId(req: Request) {

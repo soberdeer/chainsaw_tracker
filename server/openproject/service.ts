@@ -17,7 +17,6 @@ import {
   mapWorkspace,
   priorityHref,
 } from './mappers.js';
-import { positionTasks, saveTaskOrder } from './orderStore.js';
 import type {
   HalCollection,
   OpenProjectActivity,
@@ -38,6 +37,10 @@ type PageQuery = {
   priority?: string;
 };
 
+function useSeededHierarchy() {
+  return process.env.OPENPROJECT_USE_CLICKUP_HIERARCHY === 'true';
+}
+
 function href(path: string) {
   return path;
 }
@@ -54,6 +57,10 @@ function toUserHref(userId?: string) {
 function toMillisDate(value?: string | null) {
   if (!value) return undefined;
   return value.slice(0, 10);
+}
+
+function linkTail(href?: string | null) {
+  return href?.split('/').filter(Boolean).at(-1);
 }
 
 function seededListSpaceId(
@@ -113,7 +120,7 @@ async function usersByHref() {
 
 export async function getWorkspaceTree() {
   const [projects, statuses, users] = await Promise.all([getProjects(), getStatuses(), getUsers()]);
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   if (seeded) {
     return [
       {
@@ -144,7 +151,7 @@ export async function createProject(input: { name: string }) {
 }
 
 export async function getTaskListOptions() {
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   if (seeded) return seededLists(seeded);
   const [projects, statuses] = await Promise.all([getProjects(), getStatuses()]);
   return projects.map((project) => ({
@@ -158,7 +165,7 @@ export async function getTaskListOptions() {
 }
 
 export async function getTaskStatuses(listId?: string) {
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   if (seeded) {
     if (listId) return findSeededListById(seeded, listId)?.statuses || [];
     return seededLists(seeded).flatMap((list) => list.statuses);
@@ -167,7 +174,7 @@ export async function getTaskStatuses(listId?: string) {
 }
 
 export async function getTasks(projectId: string, query: PageQuery) {
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   const seededList = findSeededListById(seeded, projectId);
   const openProjectProjectId = listOpenProjectProjectId(projectId);
   const offset = Math.max(1, Number(query.offset || 1));
@@ -179,11 +186,11 @@ export async function getTasks(projectId: string, query: PageQuery) {
       query: {
         pageSize,
         offset,
-        filters: JSON.stringify([{ status: { operator: '*', values: [] } }]),
+        filters: JSON.stringify(await buildWorkPackageFilters(query)),
       },
     }
   );
-  let items = (page._embedded?.elements || [])
+  const items = (page._embedded?.elements || [])
     .filter((item) => matchesImportFilter(item, seededList))
     .map((item) => {
       const taskList = seededList || findSeededListByProjectId(seeded, openProjectProjectId);
@@ -199,24 +206,6 @@ export async function getTasks(projectId: string, query: PageQuery) {
         users
       );
     });
-  items = await positionTasks(projectId, items);
-  if (query.status) items = items.filter((task) => task.statusId === query.status);
-  if (query.assignees?.length) {
-    items = items.filter((task) =>
-      task.assignees.some((user) => query.assignees?.includes(user.id))
-    );
-  }
-  if (query.search) {
-    const search = query.search.toLowerCase();
-    items = items.filter(
-      (task) =>
-        task.title.toLowerCase().includes(search) ||
-        (task.description || '').toLowerCase().includes(search) ||
-        (task.taskKey || '').toLowerCase().includes(search) ||
-        task.id.includes(search)
-    );
-  }
-  if (query.priority) items = items.filter((task) => task.priority === query.priority);
   const total = Number(page.total || 0);
   const nextOffset = offset + pageSize;
   return {
@@ -226,21 +215,38 @@ export async function getTasks(projectId: string, query: PageQuery) {
 }
 
 export async function getTask(taskId: string) {
-  const [workPackage, users, seeded] = await Promise.all([
+  const [workPackage, users, seeded, childPage] = await Promise.all([
     openProjectRequest<OpenProjectWorkPackage>(`/api/v3/work_packages/${taskId}`),
     usersByHref(),
-    loadSeededHierarchy(),
+    useSeededHierarchy() ? loadSeededHierarchy() : Promise.resolve(null),
+    openProjectRequest<HalCollection<OpenProjectWorkPackage>>('/api/v3/work_packages', {
+      query: {
+        pageSize: 100,
+        filters: JSON.stringify([
+          { parent: { operator: '=', values: [taskId] } },
+          { status: { operator: '*', values: [] } },
+        ]),
+      },
+    }).catch(() => ({ _embedded: { elements: [] } })),
   ]);
   const projectId = workPackage._links.project?.href?.split('/').filter(Boolean).at(-1);
   const taskList =
     findSeededListByImportedDescription(seeded, workPackage.description?.raw || '') ||
     (projectId ? findSeededListByProjectId(seeded, projectId) : undefined);
   const spaceId = seededListSpaceId(seeded, taskList);
-  return mapWorkPackage(
+  const mapped = mapWorkPackage(
     workPackage,
     { projectId, projectName: taskList?.name, taskList, folderId: taskList?.folderId, spaceId },
     users
   );
+  mapped.subtasks = (childPage._embedded?.elements || []).map((child) =>
+    mapWorkPackage(
+      child,
+      { projectId, projectName: taskList?.name, taskList, folderId: taskList?.folderId, spaceId },
+      users
+    )
+  );
+  return mapped;
 }
 
 async function firstTaskType(projectId: string) {
@@ -261,6 +267,33 @@ async function priorities() {
   return page._embedded?.elements || [];
 }
 
+export async function buildWorkPackageFilters(query: PageQuery) {
+  const filters: Array<Record<string, { operator: string; values: string[] }>> = [];
+  if (query.status) {
+    const statusId = openProjectStatusId(query.status);
+    if (statusId) filters.push({ status: { operator: '=', values: [statusId] } });
+  } else {
+    filters.push({ status: { operator: '*', values: [] } });
+  }
+
+  if (query.assignees?.length) {
+    filters.push({ assignee: { operator: '=', values: query.assignees } });
+  }
+
+  if (query.priority) {
+    const priorityItems = await priorities();
+    const href = priorityHref(priorityItems, query.priority);
+    const priorityId = linkTail(href);
+    if (priorityId) filters.push({ priority: { operator: '=', values: [priorityId] } });
+  }
+
+  if (query.search?.trim()) {
+    filters.push({ subject: { operator: '~', values: [query.search.trim()] } });
+  }
+
+  return filters;
+}
+
 export async function createTask(
   projectId: string,
   input: {
@@ -274,7 +307,7 @@ export async function createTask(
     dueDate?: string;
   }
 ) {
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   const taskList = findSeededListById(seeded, projectId);
   const openProjectProjectId = listOpenProjectProjectId(projectId);
   const [type, priorityItems] = await Promise.all([
@@ -356,7 +389,10 @@ export async function updateTask(
     `/api/v3/work_packages/${taskId}`,
     { method: 'PATCH', body }
   );
-  const [users, seeded] = await Promise.all([usersByHref(), loadSeededHierarchy()]);
+  const [users, seeded] = await Promise.all([
+    usersByHref(),
+    useSeededHierarchy() ? loadSeededHierarchy() : Promise.resolve(null),
+  ]);
   const projectId = updated._links.project?.href?.split('/').filter(Boolean).at(-1);
   const taskList =
     findSeededListByImportedDescription(seeded, updated.description?.raw || '') ||
@@ -374,15 +410,11 @@ export async function updateTask(
   );
 }
 
-export async function reorderTask(input: {
-  listId: string;
-  taskId: string;
-  statusId: string;
-  orderedTaskIds: string[];
-}) {
-  const updated = await updateTask(input.taskId, { statusId: input.statusId });
-  await saveTaskOrder(input);
-  return [updated];
+export async function renameProject(projectId: string, input: { name: string }) {
+  return openProjectRequest<OpenProjectProject>(`/api/v3/projects/${projectId}`, {
+    method: 'PATCH',
+    body: { name: input.name },
+  });
 }
 
 export async function deleteTask(taskId: string) {
@@ -412,7 +444,7 @@ export async function getTaskActivities(taskId: string, limit: number) {
 
 export async function searchTasks(query: string) {
   if (!query.trim()) return [];
-  const seeded = await loadSeededHierarchy();
+  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   const lists = seeded ? seededLists(seeded) : undefined;
   const projects: Array<{ id: string | number }> = lists || (await getProjects());
   const pages = await Promise.all(

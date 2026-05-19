@@ -184,7 +184,7 @@ export function TaskDetailPage({
         {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
         <TextInput label="List" value={task.taskList?.name || task.taskListId || ''} readOnly />
         <MultiSelect
-          label="Assignees"
+          label="Assignee / responsible"
           leftSection={<IconUsers size="1rem" />}
           value={assigneeIds}
           onChange={(value) => {
@@ -197,6 +197,8 @@ export function TaskDetailPage({
           }))}
           searchable
           clearable
+          maxValues={2}
+          description="OpenProject stores one assignee and one responsible user."
         />
         <TextInput
           label="Start date"
