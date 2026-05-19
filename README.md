@@ -49,6 +49,16 @@ GITHUB_TOKEN=""
 npm run seed:openproject:clickup
 ```
 
+Optional migration-only user env:
+
+```bash
+OPENPROJECT_IMPORTED_USER_PASSWORD="clickup!2026"
+OP_IMPORTED_ADMIN_EMAILS=""
+CLICKUP_IMPORTED_USER_PASSWORD="clickup!2026"
+```
+
+`OPENPROJECT_IMPORTED_USER_PASSWORD` is the temporary password for real OpenProject users created from ClickUp users. Existing OpenProject users are reused and their passwords are not reset.
+
 ## Mapping
 
 The production runtime uses a stable OpenProject mapping:
@@ -129,4 +139,12 @@ Search is a subject/title contains filter, not a global full-text search across 
 
 ## Optional ClickUp Migration
 
-`npm run seed:openproject:clickup` is a one-time migration helper. It can read ClickUp data and create/reuse OpenProject projects/work packages. It is not part of runtime and should not be required to start the tracker.
+`npm run seed:openproject:clickup` is a one-time migration helper. It can read ClickUp data and create/reuse OpenProject projects/work packages, OpenProject users, and project memberships. It is not part of runtime and should not be required to start the tracker.
+
+The migration maps ClickUp access conservatively:
+
+- `team.members` -> workspace-wide OpenProject project memberships.
+- explicit list members -> membership on the mapped list project.
+- task assignees -> at least Member access on the mapped list project.
+- known inherited grants are applied Space -> Folder -> List.
+- private Space/Folder explicit access emits a warning if ClickUp does not return explicit members through the available API response.

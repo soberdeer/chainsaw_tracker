@@ -1,4 +1,4 @@
-import { buildWorkPackageFilters, getTasks } from '../server/openproject/service.js';
+import { buildWorkPackageFilters, getProjects, getTasks } from '../server/openproject/service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -98,4 +98,29 @@ test('getTasks sends OpenProject filters to the work package request', async () 
     { priority: { operator: '=', values: ['9'] } },
     { subject: { operator: '~', values: ['prototype'] } },
   ]);
+});
+
+test('getProjects hides migration and demo OpenProject projects from runtime', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+  globalThis.fetch = (async () =>
+    new Response(
+      JSON.stringify({
+        _embedded: {
+          elements: [
+            { id: 1, identifier: 'clickupimport', name: 'ClickUpImport', _links: {} },
+            { id: 2, identifier: 'scrumproject', name: 'ScrumProject', _links: {} },
+            { id: 3, identifier: 'demo-project', name: 'Demo Project', _links: {} },
+            { id: 4, identifier: 'real-space', name: 'Real Space', _links: {} },
+          ],
+        },
+      }),
+      { status: 200 }
+    )) as typeof fetch;
+
+  const projects = await getProjects();
+
+  assert.deepEqual(
+    projects.map((project) => project.name),
+    ['Real Space']
+  );
 });

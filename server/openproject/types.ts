@@ -51,11 +51,25 @@ export type OpenProjectPriority = {
 
 export type OpenProjectUser = {
   id: number;
-  name: string;
   login?: string;
+  firstName?: string;
+  lastName?: string;
+  name: string;
   email?: string;
   avatar?: string;
+  status?: string;
   _links: Record<string, HalLink>;
+};
+
+export type OpenProjectRole = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectMembership = {
+  id: number;
+  _links: Record<string, HalLink | HalLink[]>;
 };
 
 export type OpenProjectWorkPackage = {

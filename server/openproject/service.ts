@@ -37,8 +37,21 @@ type PageQuery = {
   priority?: string;
 };
 
+const hiddenRuntimeProjectKeys = new Set(['clickupimport', 'scrumproject', 'demoproject']);
+
 function useSeededHierarchy() {
   return process.env.OPENPROJECT_USE_CLICKUP_HIERARCHY === 'true';
+}
+
+function projectRuntimeKey(value?: string | null) {
+  return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+}
+
+function isHiddenRuntimeProject(project: OpenProjectProject) {
+  return (
+    hiddenRuntimeProjectKeys.has(projectRuntimeKey(project.identifier)) ||
+    hiddenRuntimeProjectKeys.has(projectRuntimeKey(project.name))
+  );
 }
 
 function href(path: string) {
@@ -87,7 +100,7 @@ export async function getProjects() {
   const page = await openProjectRequest<HalCollection<OpenProjectProject>>('/api/v3/projects', {
     query: { pageSize: 200 },
   });
-  return page._embedded?.elements || [];
+  return (page._embedded?.elements || []).filter((project) => !isHiddenRuntimeProject(project));
 }
 
 export async function getStatuses() {

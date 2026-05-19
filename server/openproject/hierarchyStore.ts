@@ -28,7 +28,14 @@ export type SeededTaskList = Omit<TaskList, 'statuses'> & {
   openProjectProjectId: string;
   importFilter?: {
     spaceName?: string;
+    folderName?: string;
     listName?: string;
+
+    clickUpSpaceId?: string;
+    clickUpFolderId?: string;
+    clickUpListId?: string;
+
+    originalClickUpPath?: string;
   };
   statuses: SeededStatus[];
 };

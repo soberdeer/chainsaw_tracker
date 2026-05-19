@@ -210,6 +210,51 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 
 This script may use `CLICKUP_TOKEN`, but the tracker runtime does not.
 
+### Verify ClickUp Users And Permissions Migration
+
+Use an OpenProject admin/API token with permission to manage users and memberships. If the token cannot create users or memberships, the seed should continue importing projects/tasks and print clear `openProjectUserErrors`, `openProjectMembershipErrors`, and `permissionWarnings`.
+
+1. Set migration env values:
+
+   ```bash
+   CLICKUP_TOKEN="..."
+   OPENPROJECT_API_TOKEN="admin-or-manage-user-token"
+   OPENPROJECT_IMPORTED_USER_PASSWORD="clickup!2026"
+   CLICKUP_IMPORTED_USER_PASSWORD="clickup!2026"
+   OP_IMPORTED_ADMIN_EMAILS=""
+   ```
+
+2. Run the one-time migration:
+
+   ```bash
+   npm run seed:openproject:clickup
+   ```
+
+3. In OpenProject administration, verify users from ClickUp exist.
+4. Log in to OpenProject as one imported user:
+   - login/email: the ClickUp email, or `clickup-<id>@local.clickup.invalid` if ClickUp had no email
+   - password: `OPENPROJECT_IMPORTED_USER_PASSWORD`, default `clickup!2026`
+5. Check project memberships:
+   - ClickUp workspace members are applied to mapped Space/Folder/List projects.
+   - Explicit ClickUp list members from `GET /list/{list_id}/member` are applied to the mapped list project.
+   - Task assignees get at least Member access to the mapped list project.
+6. Check inheritance:
+   - Space-level grants are applied to folder/list subprojects.
+   - Explicit list access does not grant access to unrelated top-level spaces.
+7. Run the seed twice:
+   - no duplicate OpenProject users
+   - no duplicate memberships
+   - existing stronger roles are not downgraded
+   - weaker roles are upgraded when ClickUp access requires it
+
+Current ClickUp permission source limitations:
+
+- `team.members` is treated as workspace-wide membership.
+- Explicit list members are read through `GET /list/{list_id}/member` when available.
+- Space/folder explicit member APIs are not available in the current migration adapter response; private spaces/folders emit warnings and inherit known workspace/list/assignee grants.
+
+`OPENPROJECT_IMPORTED_USER_PASSWORD` is only for real OpenProject users created during migration. `CLICKUP_IMPORTED_USER_PASSWORD` is only for local tracker users created for the local auth scaffold.
+
 ## Final Verification
 
 ```bash
