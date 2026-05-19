@@ -144,20 +144,31 @@ export async function getWorkspaceTree() {
   return [mapWorkspace(projects, statuses, users)];
 }
 
-export async function createProject(input: { name: string }) {
+export async function createProject(input: {
+  name: string;
+  identifier?: string;
+  description?: string;
+  parentId?: string;
+  public?: boolean;
+}) {
   const identifier =
+    input.identifier ||
     input.name
       .toLowerCase()
       .replace(/[^a-z0-9]+/g, '-')
       .replace(/^-|-$/g, '')
-      .slice(0, 80) || `project-${Date.now()}`;
+      .slice(0, 80) ||
+    `project-${Date.now()}`;
   return openProjectRequest<OpenProjectProject>('/api/v3/projects', {
     method: 'POST',
     body: {
       name: input.name,
       identifier,
-      public: false,
-      description: { format: 'markdown', raw: 'Created from tracker UI.' },
+      public: Boolean(input.public),
+      description: { format: 'markdown', raw: input.description || 'Created from tracker UI.' },
+      ...(input.parentId
+        ? { _links: { parent: { href: `/api/v3/projects/${input.parentId}` } } }
+        : {}),
     },
   });
 }
@@ -452,6 +463,21 @@ export async function getTaskActivities(taskId: string, limit: number) {
     { query: { pageSize: limit } }
   );
   return (page._embedded?.elements || []).map((activity) => mapActivity(taskId, activity));
+}
+
+export async function addTaskComment(taskId: string, comment: string) {
+  const activity = await openProjectRequest<OpenProjectActivity>(
+    `/api/v3/work_packages/${taskId}/activities`,
+    {
+      method: 'POST',
+      body: {
+        comment: {
+          raw: comment,
+        },
+      },
+    }
+  );
+  return mapActivity(taskId, activity);
 }
 
 export async function searchTasks(query: string) {

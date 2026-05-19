@@ -1,5 +1,8 @@
 import type { Request } from 'express';
 import { prisma } from '../db.js';
+import { currentUserId as authCurrentUserId } from './auth.js';
+
+export { authCurrentUserId as currentUserId };
 
 type Permission =
   | 'manageWorkspace'
@@ -10,7 +13,7 @@ type Permission =
 type SpacePermissionKind = 'view' | 'edit' | 'manage';
 
 export async function can(req: Request, workspaceId: string, permission: Permission) {
-  const userId = req.header('x-user-id');
+  const userId = authCurrentUserId(req);
 
   if (!userId) {
     return false;
@@ -41,12 +44,8 @@ export async function requirePermission(req: Request, workspaceId: string, permi
   }
 }
 
-export function currentUserId(req: Request) {
-  return req.header('x-user-id') || null;
-}
-
 export async function workspaceMembership(req: Request, workspaceId: string) {
-  const userId = currentUserId(req);
+  const userId = authCurrentUserId(req);
   if (!userId) {
     return null;
   }
@@ -161,7 +160,7 @@ export async function canEditTask(
     return canAccessSpace(req, task.folder.spaceId, 'edit');
   }
   if (membership.role === 'MEMBER') {
-    const userId = currentUserId(req);
+    const userId = authCurrentUserId(req);
     return Boolean(
       userId &&
       (task.assigneeId === userId || task.createdById === userId) &&

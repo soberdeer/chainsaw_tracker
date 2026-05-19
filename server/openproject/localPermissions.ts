@@ -1,11 +1,8 @@
 import { prisma } from '../db.js';
+import { ensureDefaultOwner } from '../services/auth.js';
 
 export async function bootstrapOpenProjectLocalPermissions() {
-  const user = await prisma.user.upsert({
-    where: { id: 'local-user' },
-    update: {},
-    create: { id: 'local-user', email: 'owner@local.app', name: 'Workspace Owner' },
-  });
+  const user = await ensureDefaultOwner();
 
   const workspace = await prisma.workspace.upsert({
     where: { slug: 'openproject-runtime' },

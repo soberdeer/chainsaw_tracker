@@ -12,22 +12,48 @@ import type {
   WorkspaceRole,
 } from './types';
 
-const currentUserId = 'local-user';
-
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
-  headers.set('x-user-id', currentUserId);
   if (!(options.body instanceof FormData)) {
     headers.set('Content-Type', 'application/json');
   }
 
-  const response = await fetch(url, { ...options, headers });
+  const response = await fetch(url, { ...options, headers, credentials: 'include' });
   if (!response.ok) {
     const payload = await response.json().catch(() => ({ error: response.statusText }));
     const detail = payload.detail ? `: ${payload.detail}` : '';
     throw new Error(`${payload.error || response.statusText}${detail}`);
   }
   return response.json();
+}
+
+export type CurrentUser = {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+};
+
+export function getCurrentUser() {
+  return request<CurrentUser>('/api/auth/me');
+}
+
+export function login(input: { email: string; password: string }) {
+  return request<CurrentUser>('/api/auth/login', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function logout() {
+  return request<{ ok: true }>('/api/auth/logout', { method: 'POST' });
+}
+
+export function updateCurrentUser(input: { name?: string; avatarUrl?: string | null }) {
+  return request<CurrentUser>('/api/auth/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
 }
 
 export async function getWorkspaces(): Promise<Workspace[]> {
@@ -37,9 +63,13 @@ export async function getWorkspaces(): Promise<Workspace[]> {
 export function createSpace(input: {
   workspaceId: string;
   name: string;
-  color: string;
+  color?: string;
   initials?: string;
   locked?: boolean;
+  identifier?: string;
+  description?: string;
+  parentId?: string;
+  public?: boolean;
 }) {
   return request('/api/openproject/spaces', { method: 'POST', body: JSON.stringify(input) });
 }
@@ -100,6 +130,13 @@ export function getTaskActivity(taskId: string) {
   return request<{ items: ActivityLog[]; nextCursor?: string | null }>(
     `/api/openproject/tasks/${taskId}/activity`
   );
+}
+
+export function addTaskComment(taskId: string, comment: string) {
+  return request<ActivityLog>(`/api/openproject/tasks/${taskId}/activity`, {
+    method: 'POST',
+    body: JSON.stringify({ comment }),
+  });
 }
 
 export function updateTask(

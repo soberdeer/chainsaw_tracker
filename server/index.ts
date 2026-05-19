@@ -4,6 +4,7 @@ import express from 'express';
 import { toHttpError } from './errors.js';
 import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermissions.js';
 import { openProjectRouter } from './openproject/routes.js';
+import { authRouter } from './routes/auth.js';
 import { documentsRouter } from './routes/documents.js';
 import { integrationsRouter } from './routes/integrations.js';
 import { referencesRouter } from './routes/references.js';
@@ -13,7 +14,7 @@ import path from 'node:path';
 const app = express();
 const port = Number(process.env.PORT || 4000);
 
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
+app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173', credentials: true }));
 app.use(
   express.json({
     limit: '2mb',
@@ -29,6 +30,7 @@ app.get('/api/health', (_req, res) => {
 });
 
 app.use('/api/workspaces', workspacesRouter);
+app.use('/api/auth', authRouter);
 app.use('/api/openproject', openProjectRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api', referencesRouter);

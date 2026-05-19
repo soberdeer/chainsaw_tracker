@@ -1,9 +1,19 @@
 import { Router } from 'express';
 import { z } from 'zod';
+import { requireCurrentUser } from '../services/auth.js';
 import { requireOpenProjectProjectWrite, requireOpenProjectTaskWrite } from './permissions.js';
 import * as service from './service.js';
 
 export const openProjectRouter = Router();
+
+openProjectRouter.use(async (req, _res, next) => {
+  try {
+    await requireCurrentUser(req);
+    next();
+  } catch (error) {
+    next(error);
+  }
+});
 
 openProjectRouter.get('/workspaces', async (_req, res) => {
   res.json(await service.getWorkspaceTree());
@@ -20,7 +30,15 @@ openProjectRouter.get('/spaces', async (_req, res) => {
 
 openProjectRouter.post('/spaces', async (req, res) => {
   await requireOpenProjectProjectWrite(req);
-  const body = z.object({ name: z.string().min(1) }).parse(req.body);
+  const body = z
+    .object({
+      name: z.string().min(1),
+      identifier: z.string().optional(),
+      description: z.string().optional(),
+      parentId: z.string().optional(),
+      public: z.boolean().optional(),
+    })
+    .parse(req.body);
   res.status(201).json(await service.createProject(body));
 });
 
@@ -141,6 +159,12 @@ openProjectRouter.get('/tasks/:taskId/activity', async (req, res) => {
     .parse(req.query);
   const items = await service.getTaskActivities(req.params.taskId, query.limit);
   res.json({ items, nextCursor: null });
+});
+
+openProjectRouter.post('/tasks/:taskId/activity', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z.object({ comment: z.string().min(1) }).parse(req.body);
+  res.status(201).json(await service.addTaskComment(req.params.taskId, body.comment));
 });
 
 openProjectRouter.get('/search', async (req, res) => {

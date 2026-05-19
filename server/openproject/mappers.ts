@@ -25,6 +25,11 @@ function linkId(href?: string | null) {
   return href?.split('/').filter(Boolean).at(-1);
 }
 
+function link(project: OpenProjectProject, key: string) {
+  const value = project._links[key];
+  return Array.isArray(value) ? value[0] : value;
+}
+
 function priorityFromOpenProject(name?: string | null): TaskPriority {
   const value = (name || '').toLowerCase();
   if (value.includes('immediate')) return 'URGENT';
@@ -75,15 +80,40 @@ export function projectTaskList(project: OpenProjectProject, statuses: TaskStatu
   };
 }
 
+function mapProjectFolder(
+  project: OpenProjectProject,
+  statuses: TaskStatus[],
+  spaceId: string,
+  childFolders: Folder[] = []
+): Folder {
+  return {
+    id: `${project.id}:project`,
+    spaceId,
+    name: project.name,
+    kind: 'TEAM',
+    locked: !project.public,
+    taskLists: [projectTaskList(project, statuses)],
+    folders: childFolders,
+  };
+}
+
 export function mapProject(project: OpenProjectProject, statuses: TaskStatus[]): Space {
-  const list = projectTaskList(project, statuses);
-  const folder: Folder = {
+  return mapProjectTree(project, statuses, []);
+}
+
+export function mapProjectTree(
+  project: OpenProjectProject,
+  statuses: TaskStatus[],
+  childFolders: Folder[] = []
+): Space {
+  const ownList = projectTaskList(project, statuses);
+  const ownFolder: Folder = {
     id: `${project.id}:work-packages`,
     spaceId: String(project.id),
     name: 'Work packages',
     kind: 'TEAM',
     locked: !project.public,
-    taskLists: [list],
+    taskLists: [ownList],
   };
   return {
     id: String(project.id),
@@ -93,9 +123,43 @@ export function mapProject(project: OpenProjectProject, statuses: TaskStatus[]):
     color: '#228be6',
     initials: project.name.slice(0, 1).toUpperCase(),
     locked: !project.public,
-    folders: [folder],
+    folders: [ownFolder, ...childFolders],
     documents: [],
   };
+}
+
+export function buildProjectSpaces(
+  projects: OpenProjectProject[],
+  statuses: TaskStatus[]
+): Space[] {
+  const byId = new Map(projects.map((project) => [String(project.id), project]));
+  const children = new Map<string, OpenProjectProject[]>();
+  const roots: OpenProjectProject[] = [];
+
+  projects.forEach((project) => {
+    const parentId = linkId(link(project, 'parent')?.href);
+    if (parentId && byId.has(parentId)) {
+      children.set(parentId, [...(children.get(parentId) || []), project]);
+    } else {
+      roots.push(project);
+    }
+  });
+
+  const toFolder = (project: OpenProjectProject, spaceId: string): Folder =>
+    mapProjectFolder(
+      project,
+      statuses,
+      spaceId,
+      (children.get(String(project.id)) || []).map((child) => toFolder(child, spaceId))
+    );
+
+  return roots.map((project) =>
+    mapProjectTree(
+      project,
+      statuses,
+      (children.get(String(project.id)) || []).map((child) => toFolder(child, String(project.id)))
+    )
+  );
 }
 
 export function mapWorkspace(
@@ -107,7 +171,7 @@ export function mapWorkspace(
     id: 'openproject',
     name: 'OpenProject',
     slug: 'openproject',
-    spaces: projects.map((project) => mapProject(project, statuses)),
+    spaces: buildProjectSpaces(projects, statuses),
     memberships: [
       {
         id: 'openproject:local-user',

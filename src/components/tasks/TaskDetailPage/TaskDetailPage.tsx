@@ -26,6 +26,7 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
+  addTaskComment,
   getGitHubRepositories,
   getTask,
   getTaskActivity,
@@ -83,6 +84,8 @@ export function TaskDetailPage({
   const [saving, setSaving] = useState(false);
   const [subtaskModalOpen, setSubtaskModalOpen] = useState(false);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
+  const [comment, setComment] = useState('');
+  const [commentSaving, setCommentSaving] = useState(false);
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
   const [manualPr, setManualPr] = useState('');
@@ -153,6 +156,23 @@ export function TaskDetailPage({
       onError(getErrorMessage(error));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const submitComment = async () => {
+    if (!canWriteTasks || !comment.trim()) {
+      return;
+    }
+    try {
+      setCommentSaving(true);
+      await addTaskComment(task.id, comment.trim());
+      setComment('');
+      const page = await getTaskActivity(task.id);
+      setActivity(page.items);
+    } catch (error) {
+      onError(getErrorMessage(error));
+    } finally {
+      setCommentSaving(false);
     }
   };
 
@@ -592,6 +612,26 @@ export function TaskDetailPage({
         </Tabs.Panel>
         <Tabs.Panel value="activity" pt="md">
           <Stack gap="xs">
+            {canWriteTasks && (
+              <Paper withBorder p="sm">
+                <Textarea
+                  label="Add OpenProject comment"
+                  value={comment}
+                  onChange={(event) => setComment(event.currentTarget.value)}
+                  minRows={3}
+                  autosize
+                />
+                <Group justify="flex-end" mt="sm">
+                  <Button
+                    loading={commentSaving}
+                    disabled={!comment.trim()}
+                    onClick={submitComment}
+                  >
+                    Add comment
+                  </Button>
+                </Group>
+              </Paper>
+            )}
             {activity.map((item) => (
               <Paper key={item.id} withBorder p="sm">
                 <Group justify="space-between">

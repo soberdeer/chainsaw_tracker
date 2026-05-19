@@ -5,16 +5,26 @@ import {
   requireOpenProjectTaskWrite,
 } from '../server/openproject/permissions.js';
 import assert from 'node:assert/strict';
+import crypto from 'node:crypto';
 import test from 'node:test';
 
 const originalFindFirst = prisma.membership.findFirst;
+process.env.SESSION_SECRET = 'test-session-secret';
 
 test.afterEach(() => {
   prisma.membership.findFirst = originalFindFirst;
 });
 
 function req(userId = 'local-user') {
-  return { header: (name: string) => (name === 'x-user-id' ? userId : undefined) } as Request;
+  const payload = Buffer.from(JSON.stringify({ userId })).toString('base64url');
+  const signature = crypto
+    .createHmac('sha256', process.env.SESSION_SECRET || '')
+    .update(payload)
+    .digest('base64url');
+  return {
+    header: (name: string) =>
+      name.toLowerCase() === 'cookie' ? `tracker_session=${payload}.${signature}` : undefined,
+  } as Request;
 }
 
 test('OpenProject task writes allow owner/admin in service-token mode', async () => {

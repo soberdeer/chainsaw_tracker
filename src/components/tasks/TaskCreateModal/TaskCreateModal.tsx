@@ -57,6 +57,7 @@ export function TaskCreateModal({
   const [statusId, setStatusId] = useState('');
   const [priority, setPriority] = useState<TaskPriority>('NORMAL');
   const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
+  const [startDate, setStartDate] = useState('');
   const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -69,6 +70,7 @@ export function TaskCreateModal({
     setStatusId(initialStatusId || statuses[0]?.id || '');
     setPriority('NORMAL');
     setAssigneeIds([]);
+    setStartDate('');
     setDueDate('');
   }, [opened, initialStatusId, statuses]);
 
@@ -85,6 +87,7 @@ export function TaskCreateModal({
         statusId: statusId || undefined,
         priority,
         assigneeIds,
+        startDate: startDate || undefined,
         dueDate: dueDate || undefined,
       });
       onCreated(task as Task);
@@ -187,10 +190,19 @@ export function TaskCreateModal({
             />
             <TextInput
               type="date"
+              value={startDate}
+              onChange={(event) => setStartDate(event.currentTarget.value)}
+              leftSection={<IconCalendarDue size="1rem" />}
+              className={classes.dateField}
+              aria-label="Start date"
+            />
+            <TextInput
+              type="date"
               value={dueDate}
               onChange={(event) => setDueDate(event.currentTarget.value)}
               leftSection={<IconCalendarDue size="1rem" />}
               className={classes.dateField}
+              aria-label="Due date"
             />
             <Select
               value={priority}

@@ -23,8 +23,10 @@ import {
 import {
   IconCheck,
   IconChevronDown,
+  IconChevronRight,
   IconDots,
   IconFolder,
+  IconLayoutKanban,
   IconList,
   IconLock,
   IconPlus,
@@ -33,10 +35,10 @@ import {
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
-  createSpace,
   getTask,
   getTasks,
   getWorkspaces,
+  logout,
   updateTask,
   firstTaskFolder,
   firstTaskList,
@@ -46,16 +48,36 @@ import {
   taskPath,
   workspaceHasWork,
   type Task,
+  type CurrentUser,
+  type Folder,
   type User,
   type Workspace,
 } from '@/lib';
+import { ProfileModal } from '../../auth/ProfileModal/ProfileModal';
+import { AvatarStack } from '../../common/AvatarStack';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
 import { GroupedTaskList } from '../../tasks/StatusIcon';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
+import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
+import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
 import classes from './WorkspaceShell.module.css';
 
-export function WorkspaceShell() {
+export interface WorkspaceShellProps {
+  currentUser: CurrentUser;
+  onCurrentUserChange: (user: CurrentUser | null) => void;
+}
+
+function findFolderById(folders: Folder[], id?: string): Folder | undefined {
+  for (const folder of folders) {
+    if (folder.id === id) return folder;
+    const child = findFolderById(folder.folders || [], id);
+    if (child) return child;
+  }
+  return undefined;
+}
+
+export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
@@ -78,6 +100,17 @@ export function WorkspaceShell() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
   const [createTaskStatusId, setCreateTaskStatusId] = useState<string | null>(null);
+  const [profileOpen, setProfileOpen] = useState(false);
+  const [spaceCreateOpen, setSpaceCreateOpen] = useState(false);
+  const [taskView, setTaskView] = useState<string | null>('tasks');
+  const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => new Set());
+  const [expandedFolderIds, setExpandedFolderIds] = useState<Set<string>>(() => new Set());
+  const profileUser = {
+    id: currentUser.id,
+    email: currentUser.email,
+    name: currentUser.name,
+    avatarUrl: currentUser.avatarUrl || undefined,
+  };
 
   const reload = () => setRefreshKey((key) => key + 1);
   const runAction = async (action: () => Promise<void>) => {
@@ -130,6 +163,12 @@ export function WorkspaceShell() {
         setSpaceId(defaultSpace?.id);
         setFolderId(defaultFolder?.id);
         setTaskListId(defaultTaskList?.id);
+        setExpandedSpaceIds(
+          (current) => new Set([...current, ...(defaultSpace?.id ? [defaultSpace.id] : [])])
+        );
+        setExpandedFolderIds(
+          (current) => new Set([...current, ...(defaultFolder?.id ? [defaultFolder.id] : [])])
+        );
         setLoading(false);
 
         if (route.taskId) {
@@ -152,7 +191,7 @@ export function WorkspaceShell() {
 
   const workspace = workspaces.find((item) => item.id === workspaceId) || workspaces[0];
   const currentMembership = workspace?.memberships.find(
-    (membership) => membership.user.id === 'local-user'
+    (membership) => membership.user.id === currentUser.id
   );
   const currentPermissionSet = workspace?.permissionSets.find(
     (set) => set.role === currentMembership?.role
@@ -164,8 +203,7 @@ export function WorkspaceShell() {
     [workspace, spaceId]
   );
   const activeFolder = useMemo(
-    () =>
-      activeSpace?.folders.find((folder) => folder.id === folderId) || firstTaskFolder(activeSpace),
+    () => findFolderById(activeSpace?.folders || [], folderId) || firstTaskFolder(activeSpace),
     [activeSpace, folderId]
   );
   const activeTaskList = useMemo(
@@ -262,6 +300,94 @@ export function WorkspaceShell() {
     navigate(folderPath(activeSpace.id, activeFolder.id));
   };
 
+  const toggleSpace = (id: string) => {
+    setExpandedSpaceIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleFolder = (id: string) => {
+    setExpandedFolderIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
+  const openFolder = (spaceIdValue: string, folder: Folder) => {
+    setSpaceId(spaceIdValue);
+    setFolderId(folder.id);
+    setTaskListId(firstTaskList(folder)?.id);
+    setExpandedSpaceIds((current) => new Set([...current, spaceIdValue]));
+    setExpandedFolderIds((current) => new Set([...current, folder.id]));
+    navigate(folderPath(spaceIdValue, folder.id));
+  };
+
+  const renderFolder = (spaceIdValue: string, folder: Folder, depth = 0) => {
+    const isExpanded = expandedFolderIds.has(folder.id);
+    const hasChildren = Boolean(folder.folders?.length);
+    const list = firstTaskList(folder);
+    return (
+      <Box key={folder.id}>
+        <button
+          type="button"
+          className={
+            folder.id === activeFolder?.id
+              ? `${classes.folderTreeRow} ${classes.active}`
+              : classes.folderTreeRow
+          }
+          style={{ paddingLeft: `${0.5 + depth * 1.1}rem` }}
+          onClick={() => {
+            if (list) openFolder(spaceIdValue, folder);
+            else toggleFolder(folder.id);
+          }}
+        >
+          <span className={classes.treeCaret}>
+            {hasChildren ? (
+              isExpanded ? (
+                <IconChevronDown size="0.875rem" />
+              ) : (
+                <IconChevronRight size="0.875rem" />
+              )
+            ) : (
+              <IconFolder size="0.875rem" />
+            )}
+          </span>
+          <span>{folder.name}</span>
+          {folder.locked && <IconLock size="0.875rem" className={classes.mutedIcon} />}
+        </button>
+        {folder.taskLists?.map((taskList) => (
+          <button
+            key={taskList.id}
+            type="button"
+            className={
+              taskList.id === activeTaskList?.id
+                ? `${classes.taskListNav} ${classes.active}`
+                : classes.taskListNav
+            }
+            style={{ marginLeft: `${1.375 + depth * 1.1}rem` }}
+            onClick={() => openFolder(spaceIdValue, folder)}
+          >
+            <Tooltip label={`Task list: ${taskList.name}`}>
+              <span className={classes.taskListIcon}>{taskList.icon || '✓'}</span>
+            </Tooltip>
+            <span>{taskList.name}</span>
+            <Tooltip
+              label={`${taskList._count?.tasks ?? taskList.tasks?.length ?? 0} tasks in ${taskList.name}`}
+            >
+              <Badge variant="light">{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
+            </Tooltip>
+          </button>
+        ))}
+        {isExpanded && folder.folders?.map((child) => renderFolder(spaceIdValue, child, depth + 1))}
+      </Box>
+    );
+  };
+
   if (loading)
     return (
       <Box className={classes.center}>
@@ -291,6 +417,12 @@ export function WorkspaceShell() {
   if (!activeSpace) {
     return (
       <Box className={`${classes.center} ${classes.setupScreen}`}>
+        <SpaceCreateModal
+          opened={spaceCreateOpen}
+          workspace={workspace}
+          onClose={() => setSpaceCreateOpen(false)}
+          onCreated={reload}
+        />
         <Stack>
           <Title order={2}>{workspace.name}</Title>
           <Text c="dimmed">Workspace created. Add the first space to start working.</Text>
@@ -305,21 +437,7 @@ export function WorkspaceShell() {
             </Alert>
           )}
           {canManageSpaces && (
-            <Button
-              onClick={() =>
-                runAction(async () => {
-                  await createSpace({
-                    workspaceId: workspace.id,
-                    name: 'General',
-                    color: '#4c6ef5',
-                    initials: 'G',
-                  });
-                  reload();
-                })
-              }
-            >
-              Create first space
-            </Button>
+            <Button onClick={() => setSpaceCreateOpen(true)}>Create first space</Button>
           )}
         </Stack>
       </Box>
@@ -336,8 +454,8 @@ export function WorkspaceShell() {
         activeTaskList={activeTaskList}
         onClose={() => setSearchOpen(false)}
         onNavigate={(url) => navigate(url)}
-        onReload={reload}
         onCreateTask={() => setCreateTaskStatusId(statuses[0]?.id || null)}
+        onCreateSpace={() => setSpaceCreateOpen(true)}
         onError={setActionError}
         canManageSpaces={canManageSpaces}
         canWriteTasks={canWriteTasks}
@@ -352,6 +470,21 @@ export function WorkspaceShell() {
         onCreated={() => reload()}
         onError={setActionError}
       />
+      <ProfileModal
+        opened={profileOpen}
+        user={currentUser}
+        role={currentMembership?.role}
+        onClose={() => setProfileOpen(false)}
+        onSaved={onCurrentUserChange}
+      />
+      {workspace && (
+        <SpaceCreateModal
+          opened={spaceCreateOpen}
+          workspace={workspace}
+          onClose={() => setSpaceCreateOpen(false)}
+          onCreated={reload}
+        />
+      )}
       <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
         <Group mb="lg" gap="sm" justify="space-between">
           <Group gap="sm">
@@ -372,34 +505,46 @@ export function WorkspaceShell() {
               <ActionIcon
                 variant="light"
                 aria-label="Add space"
-                onClick={async () => {
-                  const name = window.prompt('Space name');
-                  if (!name) {
-                    return;
-                  }
-                  await runAction(async () => {
-                    await createSpace({
-                      workspaceId: workspace.id,
-                      name,
-                      color: '#4c6ef5',
-                      initials: name.slice(0, 1).toUpperCase(),
-                      locked: true,
-                    });
-                    reload();
-                  });
-                }}
+                onClick={() => setSpaceCreateOpen(true)}
               >
                 <IconPlus size="1.25rem" />
               </ActionIcon>
             </Tooltip>
           )}
         </Group>
+        <button
+          type="button"
+          className={classes.profileButton}
+          onClick={() => setProfileOpen(true)}
+        >
+          <AvatarStack users={[profileUser]} size="1.75rem" />
+          <span>
+            <Text size="sm" fw={700}>
+              {currentUser.name}
+            </Text>
+            <Text size="xs" c="dimmed">
+              {currentMembership?.role || 'No role'} • service-token mode
+            </Text>
+          </span>
+        </button>
+        <Button
+          variant="subtle"
+          size="compact-sm"
+          mb="md"
+          onClick={async () => {
+            await logout().catch(() => undefined);
+            onCurrentUserChange(null);
+          }}
+        >
+          Logout
+        </Button>
         <Text size="lg" fw={700} mb="md">
           Spaces
         </Text>
         <ScrollArea className={classes.spacesTree}>
           {workspace.spaces.map((space) => {
             const isActiveSpace = space.id === activeSpace.id;
+            const isExpanded = expandedSpaceIds.has(space.id);
             return (
               <Box key={space.id} className={classes.spaceTreeBlock}>
                 <Group wrap="nowrap" gap={0}>
@@ -411,13 +556,23 @@ export function WorkspaceShell() {
                         : classes.spaceTreeRow
                     }
                     onClick={() => {
-                      setSpaceId(space.id);
-                      const folder = firstTaskFolder(space);
-                      setFolderId(folder?.id);
-                      setTaskListId(firstTaskList(folder)?.id);
-                      if (folder) navigate(folderPath(space.id, folder.id));
+                      toggleSpace(space.id);
+                      if (!isActiveSpace) {
+                        setSpaceId(space.id);
+                        const folder = firstTaskFolder(space);
+                        setFolderId(folder?.id);
+                        setTaskListId(firstTaskList(folder)?.id);
+                        if (folder) navigate(folderPath(space.id, folder.id));
+                      }
                     }}
                   >
+                    <span className={classes.treeCaret}>
+                      {isExpanded ? (
+                        <IconChevronDown size="0.875rem" />
+                      ) : (
+                        <IconChevronRight size="0.875rem" />
+                      )}
+                    </span>
                     <span className={classes.spaceInitial} style={{ background: space.color }}>
                       {space.initials || space.name.slice(0, 1)}
                     </span>
@@ -477,42 +632,9 @@ export function WorkspaceShell() {
                   )}
                 </Group>
 
-                {isActiveSpace && (
+                {isExpanded && (
                   <Box className={classes.folderTree}>
-                    {space.folders.map((folder) => {
-                      return (
-                        <Box key={folder.id}>
-                          {folder.taskLists?.map((taskList) => (
-                            <button
-                              key={taskList.id}
-                              type="button"
-                              className={
-                                taskList.id === activeTaskList?.id
-                                  ? `${classes.taskListNav} ${classes.active}`
-                                  : classes.taskListNav
-                              }
-                              onClick={() => {
-                                setFolderId(folder.id);
-                                setTaskListId(taskList.id);
-                                navigate(folderPath(space.id, folder.id));
-                              }}
-                            >
-                              <Tooltip label={`Task list: ${folder.name}`}>
-                                <span className={classes.taskListIcon}>{taskList.icon || '☣'}</span>
-                              </Tooltip>
-                              <span>{folder.name}</span>
-                              <Tooltip
-                                label={`${taskList._count?.tasks ?? taskList.tasks?.length ?? 0} tasks in ${taskList.name}`}
-                              >
-                                <Badge variant="light">
-                                  {taskList._count?.tasks ?? taskList.tasks?.length ?? 0}
-                                </Badge>
-                              </Tooltip>
-                            </button>
-                          ))}
-                        </Box>
-                      );
-                    })}
+                    {space.folders.map((folder) => renderFolder(space.id, folder))}
                   </Box>
                 )}
               </Box>
@@ -523,18 +645,7 @@ export function WorkspaceShell() {
               className={classes.newSpaceRow}
               type="button"
               onClick={async () => {
-                const name = window.prompt('Space name');
-                if (!name) return;
-                await runAction(async () => {
-                  await createSpace({
-                    workspaceId: workspace.id,
-                    name,
-                    color: '#4c6ef5',
-                    initials: name.slice(0, 1).toUpperCase(),
-                    locked: true,
-                  });
-                  reload();
-                });
+                setSpaceCreateOpen(true);
               }}
             >
               <IconPlus size="1.125rem" />
@@ -633,10 +744,18 @@ export function WorkspaceShell() {
               />
             </Box>
           ) : (
-            <Tabs defaultValue="tasks" keepMounted={false} className={classes.contentTabs}>
+            <Tabs
+              value={taskView}
+              onChange={setTaskView}
+              keepMounted={false}
+              className={classes.contentTabs}
+            >
               <Tabs.List className={classes.viewTabs}>
                 <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>
                   List
+                </Tabs.Tab>
+                <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>
+                  Board
                 </Tabs.Tab>
               </Tabs.List>
 
@@ -738,6 +857,46 @@ export function WorkspaceShell() {
                     >
                       Load more
                     </Button>
+                  )}
+                </Stack>
+              </Tabs.Panel>
+
+              <Tabs.Panel value="board">
+                <Stack gap={0}>
+                  <Group className={classes.taskToolbar} justify="space-between">
+                    <Tooltip label="Board columns are OpenProject statuses. Dragging changes status only; card order is not persisted.">
+                      <Badge variant="light">OpenProject status board</Badge>
+                    </Tooltip>
+                    <Group gap="xs">
+                      {canWriteTasks && (
+                        <Button
+                          color="teal"
+                          rightSection={<IconChevronDown size="1rem" />}
+                          onClick={() => statuses[0] && addTask(statuses[0].id)}
+                        >
+                          Add Task
+                        </Button>
+                      )}
+                    </Group>
+                  </Group>
+                  {tasksError && (
+                    <Alert color="red" title="Could not load tasks">
+                      {tasksError}
+                    </Alert>
+                  )}
+                  {tasksLoading && !tasks.length ? (
+                    <Box className={classes.center} p="xl">
+                      <Loader />
+                    </Box>
+                  ) : (
+                    <TaskBoard
+                      tasks={tasks}
+                      statuses={statuses}
+                      onAddTask={addTask}
+                      onOpenTask={openTask}
+                      onMoveTask={moveTask}
+                      canWriteTasks={canWriteTasks}
+                    />
                   )}
                 </Stack>
               </Tabs.Panel>

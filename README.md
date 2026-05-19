@@ -7,13 +7,14 @@ Compact task tracker with a ClickUp-like React UI and OpenProject as the task ru
 OpenProject API is the source of truth for production task runtime data:
 
 - Projects -> UI spaces
+- Subprojects -> nested sidebar folders/projects
 - Work packages -> tasks
 - Statuses -> task columns/groups
 - Types -> work package type for creation
 - Priorities -> task priority
 - Users -> assignee/responsible options
 - Parent links -> subtasks
-- Activities -> task activity timeline
+- Activities/comments -> task activity timeline and comment writing
 
 PostgreSQL/Prisma remains only for local scaffold features such as demo membership/permissions, optional GitHub storage, and local docs while docs are not migrated to OpenProject wiki pages.
 
@@ -54,8 +55,8 @@ The production runtime uses a stable OpenProject mapping:
 
 - UI workspace: virtual `openproject` workspace for the configured OpenProject instance
 - UI space: OpenProject project
-- UI folder: one system folder named `Work packages`
-- UI list: one system list named after the OpenProject project
+- UI folder: OpenProject subproject, plus a system `Work packages` folder for each project
+- UI list: the default `Work packages` view for the OpenProject project/subproject
 - UI task: OpenProject work package
 
 The optional ClickUp migration script can create OpenProject projects from ClickUp spaces/folders/lists, but the app does not need `server/openproject/seed-data/clickup-hierarchy.json` to run.
@@ -64,7 +65,16 @@ The remaining ClickUp helper files live under `scripts/migration/clickup`. They 
 
 ## Permissions
 
-The app currently uses one OpenProject service token. To avoid letting every local demo user write through that token, write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD`, `MEMBER`, and `VIEWER` are read-only until per-user OpenProject auth is implemented.
+The app currently uses a local session cookie plus one OpenProject service token. A default local owner is created on first login:
+
+```text
+email: owner@local.app
+password: admin123
+```
+
+Set `DEV_ADMIN_PASSWORD` to override the development password.
+
+To avoid letting every local demo user write through the service token, OpenProject write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD`, `MEMBER`, and `VIEWER` are read-only until per-user OpenProject auth is implemented.
 
 ## Run
 
@@ -92,6 +102,7 @@ Frontend task runtime uses `/api/openproject/*`:
 - `DELETE /api/openproject/tasks/:taskId`
 - `POST /api/openproject/tasks/:taskId/duplicate`
 - `GET /api/openproject/tasks/:taskId/activity`
+- `POST /api/openproject/tasks/:taskId/activity`
 - `GET /api/openproject/search?q=...`
 
 Unsupported OpenProject adapter actions are disabled in the UI. Folder/list creation is not active because OpenProject has no direct folder/list equivalent in this mapping.
@@ -109,8 +120,8 @@ Search is a subject/title contains filter, not a global full-text search across 
 
 ## Current Limitations
 
-- Board view and drag reorder are disabled for MVP. List view is the production task view.
-- Reordering inside a status is not saved locally because OpenProject is the source of truth and this adapter does not map order to a supported OpenProject field.
+- Board view is available as a status board. Dragging a card between columns updates the OpenProject status.
+- Reordering inside a status is not persisted because OpenProject is the source of truth and this adapter does not map order to a supported OpenProject field.
 - Docs are still local docs, not OpenProject wiki pages. The UI should treat them as Local Docs.
 - Tags, attachments, dependencies, time entries, and custom fields are hidden or read-only unless wired to OpenProject.
 - GitHub integration is optional and isolated from OpenProject task runtime.

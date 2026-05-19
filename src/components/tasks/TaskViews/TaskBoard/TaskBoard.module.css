@@ -1,0 +1,75 @@
+.boardScroll {
+  width: 100%;
+}
+
+.board {
+  min-width: 100%;
+  padding: 1rem;
+}
+
+.column {
+  display: flex;
+  flex: 0 0 20rem;
+  min-height: 28rem;
+  flex-direction: column;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--mantine-color-body);
+}
+
+.columnHeader {
+  min-height: 3.5rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--mantine-color-default-border);
+}
+
+.iconButton {
+  display: inline-flex;
+  width: 1.75rem;
+  height: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: var(--mantine-radius-sm);
+  color: var(--mantine-color-dimmed);
+  background: transparent;
+  cursor: pointer;
+}
+
+.iconButton:hover {
+  background: var(--mantine-color-default-hover);
+}
+
+.cards {
+  flex: 1;
+  padding: 0.75rem;
+}
+
+.card {
+  width: 100%;
+  padding: 0.75rem;
+  border: 1px solid var(--mantine-color-default-border);
+  border-radius: var(--mantine-radius-md);
+  color: inherit;
+  background: var(--mantine-color-body);
+  text-align: left;
+  cursor: pointer;
+}
+
+.card:hover {
+  border-color: var(--mantine-primary-color-filled);
+}
+
+.dragIcon {
+  flex: 0 0 auto;
+  margin-top: 0.125rem;
+  color: var(--mantine-color-dimmed);
+}
+
+.cardBody {
+  min-width: 0;
+}
+
+.emptyColumn {
+  padding: 1rem 0.25rem;
+}

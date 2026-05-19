@@ -1,11 +1,12 @@
 import type { Request } from 'express';
 import { prisma } from '../db.js';
+import { currentUserId } from '../services/auth.js';
 
 const writeRoles = new Set(['OWNER', 'ADMIN']);
 const projectRoles = new Set(['OWNER', 'ADMIN']);
 
 function userId(req: Request) {
-  return req.header('x-user-id') || 'local-user';
+  return currentUserId(req) || '';
 }
 
 async function hasMembership(req: Request, allowedRoles: Set<string>) {

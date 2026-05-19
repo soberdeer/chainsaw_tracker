@@ -1,0 +1,14 @@
+.page {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  background: var(--app-bg);
+  color: var(--app-text);
+  padding: var(--mantine-spacing-xl);
+}
+
+.panel {
+  width: min(28rem, 100%);
+  padding: var(--mantine-spacing-xl);
+  background: var(--app-panel);
+}

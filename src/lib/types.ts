@@ -148,6 +148,7 @@ export type Folder = {
   name: string;
   kind?: 'DOCS' | 'TEAM' | 'LIST';
   locked?: boolean;
+  folders?: Folder[];
   taskLists?: TaskList[];
   tasks?: Task[];
   _count?: { tasks: number };

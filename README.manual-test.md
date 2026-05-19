@@ -42,6 +42,23 @@ npm run dev
 
 If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints should return a clear JSON error instead of an empty fake workspace.
 
+## Login / Session
+
+1. Open `http://localhost:5173`.
+2. Log in with the development owner account:
+
+   ```text
+   email: owner@local.app
+   password: admin123
+   ```
+
+3. If `DEV_ADMIN_PASSWORD` is set, use that password instead.
+4. Confirm the sidebar shows the current local user.
+5. Open the profile modal from the sidebar.
+6. Change display name or avatar URL.
+7. Refresh and confirm the local profile stays changed.
+8. Log out and confirm protected tracker UI is no longer available.
+
 ## Connection Check
 
 1. Open `http://localhost:5173`.
@@ -58,14 +75,19 @@ curl http://localhost:4000/api/openproject/workspaces
 ## Projects / Spaces
 
 1. Confirm sidebar spaces are real OpenProject projects.
-2. Confirm each project exposes the system list/view for work packages.
-3. Confirm project rename is disabled in the tracker and points users to OpenProject settings.
-4. Confirm Create Folder and Create List are hidden or disabled.
-5. In DevTools Network, these normal UI actions must not call:
+2. Confirm top-level OpenProject projects appear as spaces.
+3. Confirm OpenProject subprojects appear nested under their parent space/project.
+4. Expand and collapse spaces and nested projects with the caret.
+5. Confirm each project/subproject exposes a `Work packages` list.
+6. Confirm project rename is disabled in the tracker and points users to OpenProject settings.
+7. Confirm Create Folder and Create List are hidden or disabled.
+8. Create a new space/project from the modal, not a browser prompt.
+9. If OpenProject accepts the payload, confirm the new project appears in the sidebar tree.
+10. In DevTools Network, these normal UI actions must not call:
    - `PATCH /api/openproject/spaces/:spaceId`
    - `POST /api/openproject/spaces/:spaceId/folders`
    - `POST /api/openproject/folders/:folderId/lists`
-6. Disabled menu items must not be clickable and must not send API requests.
+11. Disabled menu items must not be clickable and must not send API requests.
 
 ## Task List
 
@@ -82,6 +104,15 @@ curl http://localhost:4000/api/openproject/workspaces
 7. Search is subject/title contains search, not a global full-text search across every field.
 8. Use Load more if `nextCursor` exists.
 9. Confirm loading, empty, and error states render honestly.
+
+## Board View
+
+1. Open the Board tab.
+2. Confirm columns are real OpenProject statuses.
+3. Drag a card from one status column to another.
+4. Confirm the app sends `PATCH /api/openproject/tasks/:taskId`.
+5. Refresh and confirm the new status remains in OpenProject.
+6. Do not expect manual ordering inside a column to persist. The board only persists status changes.
 
 ## Task Detail
 
@@ -103,10 +134,11 @@ curl http://localhost:4000/api/openproject/workspaces
 
 1. Click Add Task.
 2. Confirm the modal only creates a Task work package. It must not show active Doc, Reminder, Whiteboard, or Dashboard tabs.
-3. Create a task and confirm `POST /api/openproject/tasks`.
-4. Open the new task in OpenProject and confirm it exists.
-5. Update task fields and confirm `PATCH /api/openproject/tasks/:taskId`.
-6. Delete or duplicate through task actions if available and confirm the result in OpenProject.
+3. Select status, assignee/responsible, priority, start date, and due date when needed.
+4. Create a task and confirm `POST /api/openproject/tasks`.
+5. Open the new task in OpenProject and confirm it exists.
+6. Update task fields and confirm `PATCH /api/openproject/tasks/:taskId`.
+7. Delete or duplicate through task actions if available and confirm the result in OpenProject.
 
 In service-token mode, write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD` and `MEMBER` are read-only for OpenProject writes until per-user OpenProject auth exists.
 
@@ -128,13 +160,16 @@ In service-token mode, write actions are restricted to local `OWNER` and `ADMIN`
 
 ## Activity / Comments
 
-Activity is OpenProject-backed and read-only in this MVP.
+Activity and comments are OpenProject-backed.
 
 1. Open task detail.
 2. Open Activity.
 3. Confirm `GET /api/openproject/tasks/:taskId/activity`.
 4. Confirm real OpenProject activity entries are shown.
-5. Confirm there is no fake comment composer. Comment writing is unsupported until wired to OpenProject addComment.
+5. As an owner/admin, add a comment.
+6. Confirm `POST /api/openproject/tasks/:taskId/activity`.
+7. Refresh and confirm the comment remains visible in OpenProject activity.
+8. As a read-only user, confirm the comment composer is hidden or disabled.
 
 ## Local Docs Limitation
 
@@ -158,14 +193,13 @@ Existing GitHub code is optional and isolated.
 Currently unsupported or disabled:
 
 - OpenProject Wiki-backed docs.
-- Comment creation from the tracker UI.
 - Attachments upload.
 - Time entries/timer actions.
 - Dependencies/relations UI.
 - Custom fields editing.
 - Tags editing.
 - Folder/List creation inside the ClickUp-like hierarchy.
-- Board reorder/order persistence.
+- Board card order persistence inside a status column.
 - GitHub links for OpenProject-backed work packages until an explicit mapping exists.
 
 Unsupported features should be hidden or disabled with clear copy. They should not appear as active buttons.

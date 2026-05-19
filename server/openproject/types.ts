@@ -26,7 +26,7 @@ export type OpenProjectProject = {
   identifier: string;
   name: string;
   public?: boolean;
-  _links: Record<string, HalLink>;
+  _links: Record<string, HalLink | HalLink[]>;
 };
 
 export type OpenProjectStatus = {

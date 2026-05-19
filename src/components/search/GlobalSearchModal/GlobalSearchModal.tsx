@@ -20,7 +20,6 @@ import {
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
-  createSpace,
   getErrorMessage,
   searchAll,
   type Folder,
@@ -39,8 +38,8 @@ export interface GlobalSearchModalProps {
   activeTaskList?: TaskList;
   onClose: () => void;
   onNavigate: (url: string) => void;
-  onReload: () => void;
   onCreateTask: () => void;
+  onCreateSpace: () => void;
   onError: (message: string) => void;
   canManageSpaces: boolean;
   canWriteTasks: boolean;
@@ -54,8 +53,8 @@ export function GlobalSearchModal({
   activeTaskList,
   onClose,
   onNavigate,
-  onReload,
   onCreateTask,
+  onCreateSpace,
   onError,
   canManageSpaces,
   canWriteTasks,
@@ -118,18 +117,7 @@ export function GlobalSearchModal({
         if (!canManageSpaces) {
           return;
         }
-        const name = window.prompt('Space name');
-        if (!name) {
-          return;
-        }
-        await createSpace({
-          workspaceId: workspace.id,
-          name,
-          color: '#4c6ef5',
-          initials: name.slice(0, 1).toUpperCase(),
-          locked: true,
-        });
-        onReload();
+        onCreateSpace();
       }
       onClose();
     } catch (error) {

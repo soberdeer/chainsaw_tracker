@@ -1,0 +1,6 @@
+.note {
+  padding: var(--mantine-spacing-sm);
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--app-hover);
+}

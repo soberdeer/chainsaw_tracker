@@ -15,7 +15,27 @@
 }
 
 .spacesTree {
-  height: calc(100vh - 7.5rem);
+  height: calc(100vh - 13.5rem);
+}
+
+.profileButton {
+  width: 100%;
+  border: 1px solid var(--app-border);
+  border-radius: var(--mantine-radius-md);
+  background: var(--app-panel-2);
+  color: var(--app-text);
+  display: flex;
+  align-items: center;
+  gap: var(--mantine-spacing-sm);
+  margin-bottom: var(--mantine-spacing-xs);
+  padding: var(--mantine-spacing-xs);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.profileButton:hover {
+  background: var(--app-hover);
 }
 
 .spaceTreeBlock {
@@ -33,7 +53,7 @@
   color: var(--app-muted);
   display: grid;
   align-items: center;
-  grid-template-columns: 2.5rem minmax(0, 1fr) auto auto;
+  grid-template-columns: 1.25rem 2rem minmax(0, 1fr) auto auto;
   gap: var(--mantine-spacing-xs);
   padding: 0.25rem var(--mantine-spacing-xs);
   border-radius: var(--mantine-radius-md);
@@ -79,7 +99,7 @@
 }
 
 .folderTreeRow {
-  grid-template-columns: 1.75rem minmax(0, 1fr) auto auto auto;
+  grid-template-columns: 1.25rem minmax(0, 1fr) auto auto auto;
   min-height: 2.375rem;
 }
 
@@ -95,6 +115,12 @@
   color: #00c853;
   font-size: 1.375rem;
   line-height: 1;
+}
+
+.treeCaret {
+  color: var(--app-muted);
+  display: inline-grid;
+  place-items: center;
 }
 
 .rowAction {

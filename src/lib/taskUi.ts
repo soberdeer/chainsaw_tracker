@@ -25,16 +25,30 @@ export const priorityColor: Record<TaskPriority, string> = {
 };
 
 export function firstTaskFolder(space?: Space) {
-  return (
-    space?.folders.find(
-      (folder) =>
-        folder.taskLists?.length || (folder.tasks?.length || folder._count?.tasks || 0) > 0
-    ) || space?.folders[0]
-  );
+  return findFirstTaskFolder(space?.folders || []) || space?.folders[0];
 }
 
 export function firstTaskList(folder?: Folder) {
-  return folder?.taskLists?.[0];
+  return folder?.taskLists?.[0] || findFirstTaskList(folder?.folders || []);
+}
+
+function findFirstTaskFolder(folders: Folder[]): Folder | undefined {
+  for (const folder of folders) {
+    if (folder.taskLists?.length || (folder.tasks?.length || folder._count?.tasks || 0) > 0) {
+      return folder;
+    }
+    const child = findFirstTaskFolder(folder.folders || []);
+    if (child) return child;
+  }
+  return undefined;
+}
+
+function findFirstTaskList(folders: Folder[]): TaskList | undefined {
+  for (const folder of folders) {
+    const list = folder.taskLists?.[0] || findFirstTaskList(folder.folders || []);
+    if (list) return list;
+  }
+  return undefined;
 }
 
 export function tasksWithList(taskList?: TaskList) {
@@ -85,13 +99,7 @@ export function parseAppPath(pathname: string) {
 }
 
 export function workspaceHasWork(workspace: Workspace) {
-  return workspace.spaces.some((space) =>
-    space.folders.some(
-      (folder) =>
-        (folder.taskLists?.length || 0) > 0 ||
-        (folder.tasks?.length || folder._count?.tasks || 0) > 0
-    )
-  );
+  return workspace.spaces.some((space) => Boolean(findFirstTaskFolder(space.folders)));
 }
 
 export function formatDueDate(value?: string) {
