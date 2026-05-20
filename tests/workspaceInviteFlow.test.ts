@@ -5,6 +5,8 @@ import {
   resolveInviteAcceptancePlan,
 } from '../server/routes/workspaces.js';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import test from 'node:test';
 
 test('invite role schema accepts LEAD', () => {
@@ -48,6 +50,15 @@ test('resolveInviteAcceptancePlan rejects logged-in users with a different email
       }),
     /does not match/
   );
+});
+
+test('workspace routes do not fall back to local-user during invite acceptance or workspace creation', () => {
+  const source = fs.readFileSync(
+    path.resolve('/Users/telsehush/Documents/Codex/2026-05-11/tracker/server/routes/workspaces.ts'),
+    'utf8'
+  );
+
+  assert.doesNotMatch(source, /currentUserId\(req\)\s*\|\|\s*'local-user'/);
 });
 
 test('assertWorkspaceOwnerMutationAllowed protects the last owner', () => {

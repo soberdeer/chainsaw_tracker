@@ -1,6 +1,5 @@
-import { Avatar, Group, Tooltip } from '@mantine/core';
+import { Avatar, Tooltip } from '@mantine/core';
 import type { User } from '@/lib';
-import classes from './AvatarStack.module.css';
 
 function initialsFor(user: User) {
   const parts = user.name.trim().split(/\s+/).filter(Boolean);
@@ -16,7 +15,7 @@ export interface AvatarStackProps {
   max?: number;
 }
 
-export function AvatarStack({ users, size = '2.125rem', max = 4 }: AvatarStackProps) {
+export function AvatarStack({ users, size = "md", max = 4 }: AvatarStackProps) {
   const visible = users.slice(0, max);
   const rest = users.length - visible.length;
 
@@ -24,24 +23,30 @@ export function AvatarStack({ users, size = '2.125rem', max = 4 }: AvatarStackPr
     return null;
   }
 
-  return <Avatar.Group>
-    {visible.map((a, i) => <Avatar key={i} src={a.avatarUrl}
-                                   size={size}
-                                   radius="xl"
-                                   className={classes.avatar}
-                                   color="initials">{initialsFor(a)}</Avatar>)}
-    {rest > 0 && (
-      <Tooltip label={`${rest} more assignees`}>
+  return (
+    <Avatar.Group>
+      {visible.map((a, i) => (
         <Avatar
+          key={i}
+          src={a.avatarUrl}
           size={size}
           radius="xl"
-          className={`${classes.avatar} ${classes.rest}`}
           color="initials"
         >
-          +{rest}
+          {initialsFor(a)}
         </Avatar>
-      </Tooltip>
-    )}
-  </Avatar.Group>
-
+      ))}
+      {rest > 0 && (
+        <Tooltip label={`${rest} more assignees`}>
+          <Avatar
+            size={size}
+            radius="xl"
+            color="initials"
+          >
+            +{rest}
+          </Avatar>
+        </Tooltip>
+      )}
+    </Avatar.Group>
+  );
 }

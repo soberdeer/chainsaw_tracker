@@ -14,7 +14,6 @@ import {
   requireCurrentUser,
   setSessionCookie,
 } from '../services/auth.js';
-import { sendInviteEmail } from '../services/email.js';
 import { accessibleSpaceIds, requirePermission, currentUserId } from '../services/permissions.js';
 import crypto from 'node:crypto';
 
@@ -242,6 +241,72 @@ async function ensureOpenProjectUserForInvite(input: { email: string; name?: str
   };
 }
 
+async function provisionWorkspaceMember(input: {
+  workspaceId: string;
+  email: string;
+  name?: string;
+  role: 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+  createOpenProjectUser?: boolean;
+}) {
+  const temporaryPassword = `tracker-${crypto.randomBytes(6).toString('base64url')}`;
+  const existing = await prisma.user.findUnique({ where: { email: input.email } });
+
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          ...(input.name !== undefined ? { name: input.name } : {}),
+          source: existing.source || 'MANUALLY_INVITED',
+          ...(existing.passwordHash ? {} : { passwordHash: hashPassword(temporaryPassword) }),
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          email: input.email,
+          name: input.name || '',
+          passwordHash: hashPassword(temporaryPassword),
+          source: 'MANUALLY_INVITED',
+        },
+      });
+
+  let openProjectLink:
+    | { id: number | string; login?: string; temporaryPassword?: string }
+    | undefined;
+  if (input.createOpenProjectUser) {
+    openProjectLink = await ensureOpenProjectUserForInvite({
+      email: user.email,
+      name: input.name ?? user.name,
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        openProjectUserId: String(openProjectLink.id),
+        openProjectLogin: openProjectLink.login || user.email,
+      },
+    });
+  }
+
+  const membership = await prisma.membership.upsert({
+    where: { userId_workspaceId: { userId: user.id, workspaceId: input.workspaceId } },
+    update: { role: input.role },
+    create: {
+      userId: user.id,
+      workspaceId: input.workspaceId,
+      role: input.role,
+    },
+    include: { user: true },
+  });
+
+  return {
+    membership: serializeWorkspaceMember(membership),
+    temporaryPassword: existing?.passwordHash ? null : temporaryPassword,
+    openProjectTemporaryPassword:
+      input.createOpenProjectUser && openProjectLink?.temporaryPassword
+        ? openProjectLink.temporaryPassword
+        : null,
+  };
+}
+
 workspacesRouter.get('/', async (req, res) => {
   try {
     const userId = currentUserId(req);
@@ -370,63 +435,15 @@ workspacesRouter.post('/:workspaceId/members/invite', async (req, res) => {
     })
     .parse(req.body);
 
-  const temporaryPassword = `tracker-${crypto.randomBytes(6).toString('base64url')}`;
-  const existing = await prisma.user.findUnique({ where: { email: body.email } });
-
-  const user = existing
-    ? await prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          ...(body.name !== undefined ? { name: body.name } : {}),
-          source: existing.source || 'MANUALLY_INVITED',
-          ...(existing.passwordHash ? {} : { passwordHash: hashPassword(temporaryPassword) }),
-        },
-      })
-    : await prisma.user.create({
-        data: {
-          email: body.email,
-          name: body.name || '',
-          passwordHash: hashPassword(temporaryPassword),
-          source: 'MANUALLY_INVITED',
-        },
-      });
-
-  let openProjectLink:
-    | { id: number | string; login?: string; temporaryPassword?: string }
-    | undefined;
-  if (body.createOpenProjectUser) {
-    openProjectLink = await ensureOpenProjectUserForInvite({
-      email: user.email,
-      name: body.name ?? user.name,
-    });
-    await prisma.user.update({
-      where: { id: user.id },
-      data: {
-        openProjectUserId: String(openProjectLink.id),
-        openProjectLogin: openProjectLink.login || user.email,
-      },
-    });
-  }
-
-  const membership = await prisma.membership.upsert({
-    where: { userId_workspaceId: { userId: user.id, workspaceId: workspace.id } },
-    update: { role: body.role },
-    create: {
-      userId: user.id,
+  res.status(201).json(
+    await provisionWorkspaceMember({
       workspaceId: workspace.id,
+      email: body.email,
+      name: body.name,
       role: body.role,
-    },
-    include: { user: true },
-  });
-
-  res.status(201).json({
-    membership: serializeWorkspaceMember(membership),
-    temporaryPassword: existing?.passwordHash ? null : temporaryPassword,
-    openProjectTemporaryPassword:
-      body.createOpenProjectUser && openProjectLink?.temporaryPassword
-        ? openProjectLink.temporaryPassword
-        : null,
-  });
+      createOpenProjectUser: body.createOpenProjectUser,
+    })
+  );
 });
 
 workspacesRouter.patch('/:workspaceId/members/:userId', async (req, res) => {
@@ -539,7 +556,7 @@ workspacesRouter.post('/', async (req, res) => {
     })
     .parse(req.body);
 
-  const userId = currentUserId(req) || 'local-user';
+  const user = await requireCurrentUser(req);
   const workspace = await prisma.$transaction(async (tx) => {
     const createdWorkspace = await tx.workspace.create({
       data: {
@@ -589,12 +606,6 @@ workspacesRouter.post('/', async (req, res) => {
           },
         },
       },
-    });
-
-    const user = await tx.user.upsert({
-      where: { id: userId },
-      create: { id: userId, email: 'owner@local.app', name: 'Workspace Owner' },
-      update: {},
     });
 
     await tx.membership.create({
@@ -677,32 +688,21 @@ workspacesRouter.post('/:workspaceId/invites', async (req, res) => {
   const body = z
     .object({
       email: z.string().email(),
+      name: z.string().max(120).optional(),
       role: inviteRoleSchema.default('MEMBER'),
+      createOpenProjectUser: z.boolean().default(false),
     })
     .parse(req.body);
 
-  const invite = await prisma.invite.create({
-    data: {
+  res.status(201).json(
+    await provisionWorkspaceMember({
       workspaceId: workspace.id,
       email: body.email,
+      name: body.name,
       role: body.role,
-      token: crypto.randomUUID(),
-      expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 7),
-    },
-  });
-  const inviteUrl = `${process.env.CLIENT_URL || 'http://localhost:5173'}/accept-invite/${invite.token}`;
-  const delivery = await sendInviteEmail({
-    to: invite.email,
-    role: invite.role,
-    inviteUrl,
-    workspaceName: workspace.name,
-  });
-
-  res.status(201).json({
-    ...invite,
-    inviteUrl,
-    delivery,
-  });
+      createOpenProjectUser: body.createOpenProjectUser,
+    })
+  );
 });
 
 workspacesRouter.post('/invites/:token/accept', async (req, res) => {

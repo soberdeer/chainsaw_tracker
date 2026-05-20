@@ -2,12 +2,6 @@
   min-width: 0;
 }
 
-.avatar {
-  font-weight: 800;
-  letter-spacing: 0;
-  margin-left: -0.45rem;
-}
-
 .avatar:first-child {
   margin-left: 0;
 }
