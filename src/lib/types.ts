@@ -171,7 +171,7 @@ export type OpenProjectCustomFieldItem = {
   key: string;
   label: string;
   value: string;
-  editable: false;
+  editable: boolean;
 };
 
 export type Tag = {
@@ -259,6 +259,43 @@ export type Workspace = {
     organization?: string;
     repository?: string;
   };
+};
+
+export type SavedView = {
+  id: string;
+  workspaceId: string;
+  ownerUserId?: string | null;
+  projectId?: string | null;
+  listId?: string | null;
+  name: string;
+  filters: Record<string, unknown>;
+  sort?: Record<string, unknown> | null;
+  visibility: 'PRIVATE' | 'WORKSPACE';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationItem = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message?: string | null;
+  taskId?: string | null;
+  workPackageId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type MigrationRun = {
+  id: string;
+  source: string;
+  startedAt: string;
+  finishedAt?: string | null;
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  summary?: unknown;
+  warnings?: unknown;
+  errors?: unknown;
 };
 
 export type SearchResultType = 'action' | 'task' | 'doc' | 'space' | 'folder' | 'list';

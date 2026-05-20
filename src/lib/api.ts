@@ -3,13 +3,16 @@ import type {
   DocumentItem,
   GitHubPullRequest,
   GitHubRepository,
+  MigrationRun,
   Membership,
+  NotificationItem,
   OpenProjectAttachmentItem,
   OpenProjectCustomFieldItem,
   OpenProjectRelationItem,
   OpenProjectTimeEntryItem,
   PermissionSet,
   SearchResult,
+  SavedView,
   Task,
   TaskList,
   Workspace,
@@ -205,6 +208,16 @@ export function getTaskCustomFields(taskId: string) {
   );
 }
 
+export function updateTaskCustomField(taskId: string, fieldKey: string, value: unknown) {
+  return request<{ items: OpenProjectCustomFieldItem[] }>(
+    `/api/openproject/tasks/${taskId}/custom-fields/${fieldKey}`,
+    {
+      method: 'PATCH',
+      body: JSON.stringify({ value }),
+    }
+  );
+}
+
 export function updateTask(
   taskId: string,
   input: Partial<Pick<Task, 'title' | 'description' | 'statusId' | 'priority'>> & {
@@ -225,6 +238,62 @@ export function updateTask(
     method: 'PATCH',
     body: JSON.stringify(input),
   });
+}
+
+export function bulkUpdateTasks(input: {
+  taskIds: string[];
+  statusId?: string;
+  priority?: string;
+  assigneeIds?: string[];
+}) {
+  return request<{
+    updated: number;
+    skipped: number;
+    failed: number;
+    results: Array<{ taskId: string; status: string; reason?: string }>;
+  }>('/api/openproject/tasks/bulk-update', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getSavedViews(workspaceId: string) {
+  return request<SavedView[]>(`/api/saved-views?workspaceId=${encodeURIComponent(workspaceId)}`);
+}
+
+export function createSavedView(input: {
+  workspaceId: string;
+  projectId?: string | null;
+  listId?: string | null;
+  name: string;
+  filters: Record<string, unknown>;
+  sort?: Record<string, unknown>;
+  visibility?: 'PRIVATE' | 'WORKSPACE';
+}) {
+  return request<SavedView>('/api/saved-views', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteSavedView(id: string) {
+  return request<void>(`/api/saved-views/${id}`, { method: 'DELETE' });
+}
+
+export function getNotifications() {
+  return request<{ items: NotificationItem[]; unread: number }>('/api/notifications');
+}
+
+export function markNotificationRead(id: string) {
+  return request<NotificationItem>(`/api/notifications/${id}/read`, { method: 'POST' });
+}
+
+export function markAllNotificationsRead() {
+  return request<{ ok: true }>('/api/notifications/read-all', { method: 'POST' });
+}
+
+export function getImportReports() {
+  return request<MigrationRun[]>('/api/import-reports');
 }
 
 export function getTaskLists(workspaceId: string, teamId?: string) {

@@ -42,6 +42,7 @@ type PageQuery = {
 };
 
 const relationTypes = new Set(['relates', 'blocks', 'blocked', 'precedes', 'follows']);
+const reverseRelationTypes = new Set(['blockedBy']);
 
 const hiddenRuntimeProjectKeys = new Set(['clickupimport', 'scrumproject', 'demoproject']);
 
@@ -380,19 +381,51 @@ export async function createTaskRelation(
     (error as Error & { statusCode?: number }).statusCode = 400;
     throw error;
   }
-  const type = relationTypes.has(input.type) ? input.type : 'relates';
+  const isReverse = reverseRelationTypes.has(input.type);
+  const type = isReverse ? 'blocks' : relationTypes.has(input.type) ? input.type : 'relates';
+  const fromId = isReverse ? input.targetTaskId : taskId;
+  const toId = isReverse ? taskId : input.targetTaskId;
   const relation = await openProjectRequest<OpenProjectRelation>(
-    `/api/v3/work_packages/${taskId}/relations`,
+    `/api/v3/work_packages/${fromId}/relations`,
     {
       method: 'POST',
       body: {
         type,
         description: input.description || undefined,
-        _links: { to: { href: `/api/v3/work_packages/${input.targetTaskId}` } },
+        _links: { to: { href: `/api/v3/work_packages/${toId}` } },
       },
     }
   );
   return mapRelation(relation);
+}
+
+export async function bulkUpdateTasks(
+  taskIds: string[],
+  input: {
+    statusId?: string;
+    priority?: string;
+    assigneeIds?: string[];
+  }
+) {
+  const results = [];
+  for (const taskId of taskIds) {
+    try {
+      const task = await updateTask(taskId, input);
+      results.push({ taskId, status: 'updated', task });
+    } catch (error) {
+      results.push({
+        taskId,
+        status: 'failed',
+        reason: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return {
+    updated: results.filter((item) => item.status === 'updated').length,
+    failed: results.filter((item) => item.status === 'failed').length,
+    skipped: 0,
+    results,
+  };
 }
 
 export async function deleteTaskRelation(relationId: string) {
@@ -562,9 +595,28 @@ export async function getTaskCustomFields(taskId: string) {
       key,
       label: customFieldLabel(key),
       value: customFieldValue(value),
-      editable: false as const,
+      editable: true,
     }))
     .filter((item) => item.value);
+}
+
+export async function updateTaskCustomField(taskId: string, key: string, value: unknown) {
+  if (!/^customField\d+$/.test(key)) {
+    const error = new Error('Unsupported custom field key');
+    (error as Error & { statusCode?: number }).statusCode = 400;
+    throw error;
+  }
+  const existing = await openProjectRequest<OpenProjectWorkPackage>(
+    `/api/v3/work_packages/${taskId}`
+  );
+  await openProjectRequest<OpenProjectWorkPackage>(`/api/v3/work_packages/${taskId}`, {
+    method: 'PATCH',
+    body: {
+      lockVersion: existing.lockVersion,
+      [key]: value,
+    },
+  });
+  return getTaskCustomFields(taskId);
 }
 
 export async function createTask(

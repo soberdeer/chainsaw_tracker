@@ -128,6 +128,12 @@ type Summary = {
   tasksUpdated: number;
   tasksSkipped: number;
   statusTransitionsSkipped: number;
+  clickUpCustomFieldsSeen: number;
+  clickUpDependenciesSeen: number;
+  clickUpTagsSeen: number;
+  clickUpAttachmentsSeen: number;
+  clickUpCommentsSeen: number;
+  clickUpTimeEntriesSeen: number;
   fallbackRecoveredTasks: number;
   fallbackSkippedTasks: number;
   errors: string[];
@@ -857,6 +863,30 @@ function taskAssigneePermissionGrants(task: ClickUpTask, summary: Summary): Perm
   return assignees.map((user) => ({ user, level: 'member', source: 'taskAssignees' }));
 }
 
+function countArrayField(value: unknown) {
+  return Array.isArray(value) ? value.length : 0;
+}
+
+function recordUnsupportedClickUpTaskData(task: ClickUpTask, summary: Summary) {
+  const taskData = task as ClickUpTask & {
+    custom_fields?: unknown[];
+    attachments?: unknown[];
+    comments?: unknown[];
+    time_entries?: unknown[];
+    time_estimate?: unknown;
+    time_spent?: unknown;
+  };
+  summary.clickUpCustomFieldsSeen += countArrayField(taskData.custom_fields);
+  summary.clickUpDependenciesSeen +=
+    countArrayField(task.dependencies) + countArrayField(task.linked_tasks);
+  summary.clickUpTagsSeen += countArrayField(task.tags);
+  summary.clickUpAttachmentsSeen += countArrayField(taskData.attachments);
+  summary.clickUpCommentsSeen += countArrayField(taskData.comments);
+  summary.clickUpTimeEntriesSeen +=
+    countArrayField(taskData.time_entries) +
+    (taskData.time_estimate || taskData.time_spent ? 1 : 0);
+}
+
 async function getClickUpListMembers(listId: string, summary: Summary): Promise<PermissionGrant[]> {
   const payload = await clickUpRequest<{ members?: unknown[]; users?: unknown[] }>(
     `/list/${listId}/member`
@@ -1473,6 +1503,7 @@ async function syncClickUpTasksIntoProject(params: {
   const { byClickUpTaskId, bySubject } = indexExistingWorkPackages(existingWorkPackages);
 
   for (const task of clickUpTasks) {
+    recordUnsupportedClickUpTaskData(task, params.summary);
     const assigneeGrants = taskAssigneePermissionGrants(task, params.summary);
     await syncPermissionGrantUsersIntoLocalWorkspace(assigneeGrants, params.userSync);
     await applyOpenProjectMemberships(params.project, assigneeGrants, params.openProjectUserSync);
@@ -1956,6 +1987,25 @@ async function writeSeededHierarchy(workspace: SeededWorkspace) {
   return path;
 }
 
+function addUnsupportedFeatureWarnings(summary: Summary) {
+  const unsupported = [
+    ['ClickUp custom fields', summary.clickUpCustomFieldsSeen],
+    ['ClickUp dependencies/linked tasks', summary.clickUpDependenciesSeen],
+    ['ClickUp tags', summary.clickUpTagsSeen],
+    ['ClickUp attachments', summary.clickUpAttachmentsSeen],
+    ['ClickUp comments', summary.clickUpCommentsSeen],
+    ['ClickUp time entries/estimates', summary.clickUpTimeEntriesSeen],
+  ] as const;
+
+  unsupported.forEach(([label, count]) => {
+    if (count > 0) {
+      summary.warnings.push(
+        `${label} were present (${count}) but were not imported yet; OpenProject runtime support exists where applicable, migration mapping is pending.`
+      );
+    }
+  });
+}
+
 async function main() {
   const summary: Summary = {
     teams: 0,
@@ -1996,11 +2046,24 @@ async function main() {
     tasksUpdated: 0,
     tasksSkipped: 0,
     statusTransitionsSkipped: 0,
+    clickUpCustomFieldsSeen: 0,
+    clickUpDependenciesSeen: 0,
+    clickUpTagsSeen: 0,
+    clickUpAttachmentsSeen: 0,
+    clickUpCommentsSeen: 0,
+    clickUpTimeEntriesSeen: 0,
     fallbackRecoveredTasks: 0,
     fallbackSkippedTasks: 0,
     errors: [],
     warnings: [],
   };
+
+  const migrationRun = await prisma.migrationRun.create({
+    data: {
+      source: 'CLICKUP',
+      status: 'RUNNING',
+    },
+  });
 
   const openProjectStatuses = await getOpenProjectStatuses();
   const openProjectPriorities = await getOpenProjectPriorities();
@@ -2049,6 +2112,16 @@ async function main() {
     );
 
     const path = await writeSeededHierarchy(workspace);
+    await prisma.migrationRun.update({
+      where: { id: migrationRun.id },
+      data: {
+        status: 'SUCCESS',
+        finishedAt: new Date(),
+        summary: summary as unknown as object,
+        warnings: summary.warnings,
+        errors: summary.errors,
+      },
+    });
 
     console.log(
       JSON.stringify(
@@ -2199,6 +2272,22 @@ async function main() {
   }
 
   const path = await writeSeededHierarchy(workspace);
+  addUnsupportedFeatureWarnings(summary);
+  await prisma.migrationRun.update({
+    where: { id: migrationRun.id },
+    data: {
+      status: summary.errors.length ? 'FAILED' : 'SUCCESS',
+      finishedAt: new Date(),
+      workspaceId: localWorkspace.id,
+      summary: summary as unknown as object,
+      warnings: [...summary.warnings, ...summary.permissionWarnings],
+      errors: [
+        ...summary.errors,
+        ...summary.openProjectUserErrors,
+        ...summary.openProjectMembershipErrors,
+      ],
+    },
+  });
 
   console.log(
     JSON.stringify(

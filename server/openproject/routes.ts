@@ -1,12 +1,49 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
+import { prisma } from '../db.js';
 import { requireCurrentUser } from '../services/auth.js';
 import { requireOpenProjectProjectWrite, requireOpenProjectTaskWrite } from './permissions.js';
 import * as service from './service.js';
 
 export const openProjectRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
+
+async function notifyAssignedUsers(task: {
+  id: string;
+  title: string;
+  assignees?: Array<{ email?: string; id?: string }>;
+}) {
+  const emails = (task.assignees || []).map((user) => user.email).filter(Boolean) as string[];
+  if (!emails.length) return;
+  const users = await prisma.user.findMany({ where: { email: { in: emails } } });
+  await prisma.notification.createMany({
+    data: users.map((user) => ({
+      userId: user.id,
+      type: 'TASK_ASSIGNED',
+      title: `Assigned: ${task.title}`,
+      message: 'You are assigned or responsible on this OpenProject work package.',
+      workPackageId: task.id,
+    })),
+    skipDuplicates: false,
+  });
+}
+
+async function notifyCommentOnAssignedTask(taskId: string, comment: string) {
+  const task = await service.getTask(taskId).catch(() => null);
+  if (!task?.assignees?.length) return;
+  const emails = task.assignees.map((user) => user.email).filter(Boolean);
+  const users = await prisma.user.findMany({ where: { email: { in: emails } } });
+  await prisma.notification.createMany({
+    data: users.map((user) => ({
+      userId: user.id,
+      type: 'TASK_COMMENTED',
+      title: `Comment: ${task.title}`,
+      message: comment.slice(0, 240),
+      workPackageId: task.id,
+    })),
+  });
+}
 
 openProjectRouter.use(async (req, _res, next) => {
   try {
@@ -121,7 +158,22 @@ openProjectRouter.post('/tasks', async (req, res) => {
     res.status(400).json({ error: 'listId/projectId is required' });
     return;
   }
-  res.status(201).json(await service.createTask(projectId, body));
+  const task = await service.createTask(projectId, body);
+  await notifyAssignedUsers(task);
+  res.status(201).json(task);
+});
+
+openProjectRouter.post('/tasks/bulk-update', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      taskIds: z.array(z.string().min(1)).min(1),
+      statusId: z.string().optional(),
+      priority: z.string().optional(),
+      assigneeIds: z.array(z.string()).optional(),
+    })
+    .parse(req.body);
+  res.json(await service.bulkUpdateTasks(body.taskIds, body));
 });
 
 openProjectRouter.get('/tasks/:taskId', async (req, res) => {
@@ -141,7 +193,9 @@ openProjectRouter.patch('/tasks/:taskId', async (req, res) => {
       dueDate: z.string().nullable().optional(),
     })
     .parse(req.body);
-  res.json(await service.updateTask(req.params.taskId, body));
+  const task = await service.updateTask(req.params.taskId, body);
+  await notifyAssignedUsers(task);
+  res.json(task);
 });
 
 openProjectRouter.delete('/tasks/:taskId', async (req, res) => {
@@ -166,7 +220,9 @@ openProjectRouter.get('/tasks/:taskId/activity', async (req, res) => {
 openProjectRouter.post('/tasks/:taskId/activity', async (req, res) => {
   await requireOpenProjectTaskWrite(req);
   const body = z.object({ comment: z.string().min(1) }).parse(req.body);
-  res.status(201).json(await service.addTaskComment(req.params.taskId, body.comment));
+  const activity = await service.addTaskComment(req.params.taskId, body.comment);
+  await notifyCommentOnAssignedTask(req.params.taskId, body.comment);
+  res.status(201).json(activity);
 });
 
 openProjectRouter.get('/tasks/:taskId/relations', async (req, res) => {
@@ -178,7 +234,7 @@ openProjectRouter.post('/tasks/:taskId/relations', async (req, res) => {
   const body = z
     .object({
       targetTaskId: z.string().min(1),
-      type: z.enum(['relates', 'blocks', 'blocked', 'precedes', 'follows']).default('relates'),
+      type: z.enum(['relates', 'blocks', 'blockedBy', 'precedes', 'follows']).default('relates'),
       description: z.string().optional(),
     })
     .parse(req.body);
@@ -225,6 +281,14 @@ openProjectRouter.post('/tasks/:taskId/attachments', upload.single('file'), asyn
 
 openProjectRouter.get('/tasks/:taskId/custom-fields', async (req, res) => {
   res.json({ items: await service.getTaskCustomFields(req.params.taskId) });
+});
+
+openProjectRouter.patch('/tasks/:taskId/custom-fields/:fieldKey', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z.object({ value: z.unknown() }).parse(req.body);
+  res.json({
+    items: await service.updateTaskCustomField(req.params.taskId, req.params.fieldKey, body.value),
+  });
 });
 
 openProjectRouter.get('/search', async (req, res) => {

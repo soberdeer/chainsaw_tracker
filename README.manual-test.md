@@ -194,14 +194,9 @@ Currently unsupported or disabled:
 
 - OpenProject Wiki-backed docs.
 - Tags editing.
-- Custom fields editing. Custom fields are shown read-only from OpenProject work package data.
 - Folder/List creation inside the ClickUp-like hierarchy.
 - Board card order persistence inside a status column.
 - GitHub links for OpenProject-backed work packages until an explicit mapping exists.
-- Saved views.
-- Bulk actions.
-- In-app notifications.
-- Import report UI.
 
 Unsupported features should be hidden or disabled with clear copy. They should not appear as active buttons.
 
@@ -218,7 +213,8 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 9. Upload a small attachment.
 10. Refresh and confirm the attachment remains visible and can be opened.
 11. If upload fails, verify the error comes from OpenProject permissions/API and not from fake UI.
-12. If the task has OpenProject custom fields, confirm the `Custom fields` tab shows them read-only.
+12. If the task has OpenProject custom fields, edit a text-like field and blur the input.
+13. Confirm OpenProject accepts the PATCH or returns a validation error in the UI.
 
 ## Verify Assigned To Me
 
@@ -227,6 +223,18 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 3. Click `Assigned to me`.
 4. Confirm the assignee filter is set to the matching OpenProject user.
 5. Confirm the task query is sent backend-side to `/api/openproject/tasks`.
+
+## Verify Saved Views, Bulk Actions, Notifications, Import Reports
+
+1. Set filters in the task list.
+2. Enter a view name and click `Save view`.
+3. Refresh and confirm the saved view is still in the Saved views select.
+4. Select tasks with the row checkboxes.
+5. Use bulk status/priority/assignee controls.
+6. Confirm OpenProject updates tasks and partial failures are shown.
+7. Assign a task to a user whose email exists as a local tracker user.
+8. Confirm the bell shows a real notification.
+9. As an owner/admin, open the Import Reports menu and download the latest JSON report.
 
 ## Optional ClickUp Migration
 

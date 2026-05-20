@@ -15,6 +15,8 @@ export interface GroupedTaskListProps {
   onChanged: () => void;
   onError: (message: string) => void;
   canWriteTasks: boolean;
+  selectedTaskIds?: Set<string>;
+  onSelectedTaskChange?: (taskId: string, selected: boolean) => void;
 }
 
 export function GroupedTaskList({
@@ -26,6 +28,8 @@ export function GroupedTaskList({
   onChanged,
   onError,
   canWriteTasks,
+  selectedTaskIds,
+  onSelectedTaskChange,
 }: GroupedTaskListProps) {
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
   const orderedStatuses = useMemo(
@@ -114,6 +118,8 @@ export function GroupedTaskList({
                     onChanged={onChanged}
                     onError={onError}
                     canWriteTasks={canWriteTasks}
+                    selected={selectedTaskIds?.has(task.id)}
+                    onSelectedChange={onSelectedTaskChange}
                   />
                 ))}
                 {canWriteTasks && (

@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Checkbox, Text, Tooltip } from '@mantine/core';
 import { IconCalendarDue, IconChevronRight, IconFlag, IconList } from '@tabler/icons-react';
 import { useState } from 'react';
 import { displayStatus, formatDueDate, type Task } from '@/lib';
@@ -14,6 +14,8 @@ export interface CompactTaskRowProps {
   onChanged: () => void;
   onError: (message: string) => void;
   canWriteTasks: boolean;
+  selected?: boolean;
+  onSelectedChange?: (taskId: string, selected: boolean) => void;
 }
 
 export function CompactTaskRow({
@@ -22,6 +24,8 @@ export function CompactTaskRow({
   onChanged,
   onError,
   canWriteTasks,
+  selected,
+  onSelectedChange,
 }: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
@@ -37,6 +41,13 @@ export function CompactTaskRow({
   return (
     <div className={classes.taskRow}>
       <div className={classes.nameCell}>
+        {onSelectedChange && (
+          <Checkbox
+            aria-label={`Select ${task.title}`}
+            checked={Boolean(selected)}
+            onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}
+          />
+        )}
         {(task.subtasks?.length || 0) > 0 && (
           <Tooltip label="Expand subtasks">
             <ActionIcon onClick={toggleSubtasks}>

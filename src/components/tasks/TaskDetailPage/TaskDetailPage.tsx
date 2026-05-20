@@ -47,6 +47,7 @@ import {
   refreshTaskGitHub,
   uploadTaskAttachment,
   unlinkTaskPullRequest,
+  updateTaskCustomField,
   updateTask,
   displayStatus,
   formatDueDate,
@@ -786,7 +787,7 @@ export function TaskDetailPage({
                     data={[
                       { value: 'relates', label: 'Relates' },
                       { value: 'blocks', label: 'Blocks' },
-                      { value: 'blocked', label: 'Blocked by' },
+                      { value: 'blockedBy', label: 'Blocked by' },
                       { value: 'precedes', label: 'Precedes' },
                       { value: 'follows', label: 'Follows' },
                     ]}
@@ -937,13 +938,31 @@ export function TaskDetailPage({
           <Tabs.Panel value="custom-fields" pt="md">
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               {customFields.map((field) => (
-                <TextInput
-                  key={field.key}
-                  label={field.label}
-                  value={field.value}
-                  readOnly
-                  description="Read-only OpenProject custom field"
-                />
+                <Group key={field.key} align="end" wrap="nowrap">
+                  <TextInput
+                    label={field.label}
+                    defaultValue={field.value}
+                    readOnly={!canWriteTasks}
+                    description={
+                      canWriteTasks
+                        ? 'Saved through OpenProject custom field PATCH'
+                        : 'Read-only OpenProject custom field'
+                    }
+                    onBlur={async (event) => {
+                      if (!canWriteTasks || event.currentTarget.value === field.value) return;
+                      try {
+                        const page = await updateTaskCustomField(
+                          task.id,
+                          field.key,
+                          event.currentTarget.value
+                        );
+                        setCustomFields(page.items);
+                      } catch (error) {
+                        onError(getErrorMessage(error));
+                      }
+                    }}
+                  />
+                </Group>
               ))}
             </SimpleGrid>
           </Tabs.Panel>

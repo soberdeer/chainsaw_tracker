@@ -6,8 +6,11 @@ import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermiss
 import { openProjectRouter } from './openproject/routes.js';
 import { authRouter } from './routes/auth.js';
 import { documentsRouter } from './routes/documents.js';
+import { importReportsRouter } from './routes/importReports.js';
 import { integrationsRouter } from './routes/integrations.js';
+import { notificationsRouter } from './routes/notifications.js';
 import { referencesRouter } from './routes/references.js';
+import { savedViewsRouter } from './routes/savedViews.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import path from 'node:path';
 
@@ -33,6 +36,9 @@ app.use('/api/workspaces', workspacesRouter);
 app.use('/api/auth', authRouter);
 app.use('/api/openproject', openProjectRouter);
 app.use('/api/documents', documentsRouter);
+app.use('/api/saved-views', savedViewsRouter);
+app.use('/api/notifications', notificationsRouter);
+app.use('/api/import-reports', importReportsRouter);
 app.use('/api', referencesRouter);
 app.use('/api/integrations', integrationsRouter);
 app.use('/integrations', integrationsRouter);
