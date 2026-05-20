@@ -62,6 +62,14 @@ openProjectRouter.get('/projects', async (_req, res) => {
   res.json(await service.getProjects());
 });
 
+openProjectRouter.get('/connection-status', async (_req, res) => {
+  res.json(await service.getOpenProjectConnectionStatus());
+});
+
+openProjectRouter.get('/projects/:projectId/members', async (req, res) => {
+  res.json(await service.getOpenProjectProjectMembers(req.params.projectId));
+});
+
 openProjectRouter.get('/spaces', async (_req, res) => {
   const [workspace] = await service.getWorkspaceTree();
   res.json(workspace?.spaces || []);

@@ -12,6 +12,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
 
+type FetchInput = Parameters<typeof fetch>[0];
+
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
 
@@ -139,7 +141,7 @@ test('runResetOpenProject dry-run never sends DELETE', async () => {
   process.env.OPENPROJECT_API_TOKEN = 'token';
 
   const requests: string[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: FetchInput, init?: RequestInit) => {
     const url = new URL(String(input));
     requests.push(`${init?.method || 'GET'} ${url.pathname}`);
     if (url.pathname === '/api/v3/work_packages') {
@@ -185,7 +187,7 @@ test('runResetOpenProject continues after delete failures and reports them', asy
   process.env.OPENPROJECT_BASE_URL = 'http://localhost:8080';
   process.env.OPENPROJECT_API_TOKEN = 'token';
 
-  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+  globalThis.fetch = (async (input: FetchInput, init?: RequestInit) => {
     const url = new URL(String(input));
     const method = init?.method || 'GET';
 

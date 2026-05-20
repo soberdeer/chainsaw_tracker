@@ -14,7 +14,7 @@ import type {
   OpenProjectUser,
   OpenProjectWorkPackage,
 } from '../server/openproject/types.js';
-import type { PermissionSet, WorkspaceRole } from '../src/lib';
+import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
   ClickUpFolder,
@@ -35,6 +35,7 @@ import {
   extractSpacePermissionGrants,
   isRoleAtLeast,
   pickOpenProjectRoleForClickUpPermission,
+  type OpenProjectRoleLike,
   type ImportedPermissionLevel,
 } from './migration/openprojectPermissions.js';
 import { randomBytes, scryptSync } from 'node:crypto';
@@ -143,6 +144,8 @@ type Summary = {
   responsibleMapped: number;
   additionalAssigneesStored: number;
   assigneeMappingErrors: string[];
+  assigneeRejectedByOpenProject: number;
+  assigneeFallbackStored: number;
   fallbackRecoveredTasks: number;
   fallbackSkippedTasks: number;
   errors: string[];
@@ -276,8 +279,8 @@ function roleLinks(membership: OpenProjectMembership) {
   return (Array.isArray(roles) ? roles : roles ? [roles] : []) as HalLink[];
 }
 
-function roleHref(role: OpenProjectRole) {
-  return role._links.self?.href || `/api/v3/roles/${role.id}`;
+function roleHref(role: OpenProjectRole | OpenProjectRoleLike) {
+  return role._links?.self?.href || `/api/v3/roles/${role.id}`;
 }
 
 function projectHref(projectId: number | string) {
@@ -763,6 +766,9 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
           where: { id: existing.id },
           data: {
             name,
+            avatarUrl:
+              existing.avatarUrl || user.profilePicture || user.profile_picture || undefined,
+            source: existing.source || 'CLICKUP_IMPORTED',
             ...(existing.passwordHash
               ? {}
               : { passwordHash: hashPassword(importedUserDefaultPassword) }),
@@ -780,6 +786,8 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
       data: {
         email,
         name,
+        avatarUrl: user.profilePicture || user.profile_picture || undefined,
+        source: 'CLICKUP_IMPORTED',
         passwordHash: hashPassword(importedUserDefaultPassword),
       },
     });
@@ -811,6 +819,21 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
   return localUser;
 }
 
+async function linkLocalUserToOpenProjectUser(
+  localUserId: string,
+  openProjectUser: OpenProjectUser
+) {
+  return prisma.user.update({
+    where: { id: localUserId },
+    data: {
+      openProjectUserId: String(openProjectUser.id),
+      openProjectLogin:
+        openProjectUser.login || openProjectUser.email || String(openProjectUser.id),
+      source: 'CLICKUP_IMPORTED',
+    },
+  });
+}
+
 async function syncClickUpTeamUsersIntoLocalWorkspace(
   team: ClickUpTeam,
   context: UserSyncContext,
@@ -825,17 +848,28 @@ async function syncClickUpTeamUsersIntoLocalWorkspace(
       continue;
     }
 
-    await syncClickUpUserIntoLocalWorkspace(clickUpUser, context);
-    await ensureOpenProjectUserFromClickUp(clickUpUser, openProjectUserSync);
+    const localUser = await syncClickUpUserIntoLocalWorkspace(clickUpUser, context);
+    const openProjectUser = await ensureOpenProjectUserFromClickUp(
+      clickUpUser,
+      openProjectUserSync
+    );
+    if (localUser && openProjectUser) {
+      await linkLocalUserToOpenProjectUser(localUser.id, openProjectUser);
+    }
   }
 }
 
 async function syncPermissionGrantUsersIntoLocalWorkspace(
   grants: PermissionGrant[],
-  context: UserSyncContext
+  context: UserSyncContext,
+  openProjectUserSync: OpenProjectUserSyncContext
 ) {
   for (const grant of grants) {
-    await syncClickUpUserIntoLocalWorkspace(grant.user, context);
+    const localUser = await syncClickUpUserIntoLocalWorkspace(grant.user, context);
+    const openProjectUser = await ensureOpenProjectUserFromClickUp(grant.user, openProjectUserSync);
+    if (localUser && openProjectUser) {
+      await linkLocalUserToOpenProjectUser(localUser.id, openProjectUser);
+    }
   }
 }
 
@@ -1392,7 +1426,7 @@ function buildTaskBody(params: {
   additionalAssignees?: ClickUpAssigneeLike[];
 }) {
   const links: Record<string, { href: string | undefined }> = {
-    type: { href: params.type?._links.self.href },
+    type: { href: params.type?._links.self.href || undefined },
   };
 
   if (params.includeStatus !== false && params.task.status) {
@@ -1512,6 +1546,7 @@ async function createOpenProjectWorkPackage(params: {
       }
       if (assigneeMapping.additionalAssignees.length) {
         params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
+        params.summary.assigneeFallbackStored += assigneeMapping.additionalAssignees.length;
       }
 
       return created;
@@ -1527,6 +1562,7 @@ async function createOpenProjectWorkPackage(params: {
 
       if (includeAssignments && isAssigneeMappingError(error)) {
         includeAssignments = false;
+        params.summary.assigneeRejectedByOpenProject += 1;
         params.summary.assigneeMappingErrors.push(
           `task ${params.task.id}: OpenProject rejected assignee/responsible mapping: ${openProjectErrorMessage(
             error
@@ -1592,12 +1628,14 @@ async function updateOpenProjectWorkPackage(params: {
       }
       if (assigneeMapping.additionalAssignees.length) {
         params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
+        params.summary.assigneeFallbackStored += assigneeMapping.additionalAssignees.length;
       }
 
       return updated;
     } catch (error) {
       if (includeAssignments && isAssigneeMappingError(error)) {
         includeAssignments = false;
+        params.summary.assigneeRejectedByOpenProject += 1;
         params.summary.assigneeMappingErrors.push(
           `task ${params.task.id}: OpenProject rejected assignee/responsible update: ${openProjectErrorMessage(
             error
@@ -1635,7 +1673,11 @@ async function syncClickUpTasksIntoProject(params: {
   for (const task of clickUpTasks) {
     recordUnsupportedClickUpTaskData(task, params.summary);
     const assigneeGrants = taskAssigneePermissionGrants(task, params.summary);
-    await syncPermissionGrantUsersIntoLocalWorkspace(assigneeGrants, params.userSync);
+    await syncPermissionGrantUsersIntoLocalWorkspace(
+      assigneeGrants,
+      params.userSync,
+      params.openProjectUserSync
+    );
     await applyOpenProjectMemberships(params.project, assigneeGrants, params.openProjectUserSync);
 
     const existingById = byClickUpTaskId.get(task.id);
@@ -1776,7 +1818,11 @@ async function seedFolderedLists(params: {
     }
   }
 
-  await syncPermissionGrantUsersIntoLocalWorkspace(params.inheritedGrants, params.userSync);
+  await syncPermissionGrantUsersIntoLocalWorkspace(
+    params.inheritedGrants,
+    params.userSync,
+    params.openProjectUserSync
+  );
   await applyOpenProjectMemberships(
     folderProject,
     params.inheritedGrants,
@@ -1813,7 +1859,11 @@ async function seedFolderedLists(params: {
 
     const listGrants = await getClickUpListMembers(list.id, params.summary);
     const effectiveGrants = [...params.inheritedGrants, ...listGrants];
-    await syncPermissionGrantUsersIntoLocalWorkspace(effectiveGrants, params.userSync);
+    await syncPermissionGrantUsersIntoLocalWorkspace(
+      effectiveGrants,
+      params.userSync,
+      params.openProjectUserSync
+    );
     await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
 
     const context: ClickUpTaskContext = {
@@ -1892,7 +1942,11 @@ async function seedFolderlessLists(params: {
 
     const listGrants = await getClickUpListMembers(list.id, params.summary);
     const effectiveGrants = [...params.inheritedGrants, ...listGrants];
-    await syncPermissionGrantUsersIntoLocalWorkspace(effectiveGrants, params.userSync);
+    await syncPermissionGrantUsersIntoLocalWorkspace(
+      effectiveGrants,
+      params.userSync,
+      params.openProjectUserSync
+    );
     await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
 
     const seededListFolder = createSeededFolder({
@@ -2188,6 +2242,8 @@ async function main() {
     responsibleMapped: 0,
     additionalAssigneesStored: 0,
     assigneeMappingErrors: [],
+    assigneeRejectedByOpenProject: 0,
+    assigneeFallbackStored: 0,
     fallbackRecoveredTasks: 0,
     fallbackSkippedTasks: 0,
     errors: [],
@@ -2347,7 +2403,7 @@ async function main() {
       );
     }
 
-    await syncPermissionGrantUsersIntoLocalWorkspace(spaceGrants, userSync);
+    await syncPermissionGrantUsersIntoLocalWorkspace(spaceGrants, userSync, openProjectUserSync);
     await applyOpenProjectMemberships(spaceProject, spaceGrants, openProjectUserSync);
 
     const folders = await getClickUpFolders(space.id).catch((error) => {

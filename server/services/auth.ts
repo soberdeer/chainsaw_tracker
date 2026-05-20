@@ -42,14 +42,26 @@ export function verifyPassword(password: string, stored?: string | null) {
 
 export async function ensureDefaultOwner() {
   const passwordHash = hashPassword(defaultPassword);
-  return prisma.user.upsert({
-    where: { email: 'owner@local.app' },
-    update: { passwordHash },
-    create: {
+  const existing = await prisma.user.findUnique({ where: { email: 'owner@local.app' } });
+  if (existing) {
+    if (!existing.passwordHash) {
+      return prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          passwordHash,
+          source: existing.source || 'OWNER_SEED',
+        },
+      });
+    }
+    return existing;
+  }
+  return prisma.user.create({
+    data: {
       id: 'local-user',
       email: 'owner@local.app',
       name: 'Workspace Owner',
       passwordHash,
+      source: 'OWNER_SEED',
     },
   });
 }

@@ -5,8 +5,11 @@ import type {
   GitHubRepository,
   MigrationRun,
   Membership,
+  MyWorkSummary,
   NotificationItem,
   OpenProjectAttachmentItem,
+  OpenProjectConnectionStatus,
+  OpenProjectProjectMember,
   OpenProjectCustomFieldItem,
   OpenProjectRelationItem,
   OpenProjectTimeEntryItem,
@@ -15,6 +18,9 @@ import type {
   SavedView,
   Task,
   TaskList,
+  UserProfile,
+  WorkspaceMemberItem,
+  WorkspaceSettings,
   Workspace,
   WorkspaceRole,
 } from './types';
@@ -47,6 +53,10 @@ export type CurrentUser = {
   email: string;
   name: string;
   avatarUrl?: string | null;
+  source?: string | null;
+  openProjectUserId?: string | null;
+  openProjectLogin?: string | null;
+  lastLoginAt?: string | null;
 };
 
 export function getCurrentUser() {
@@ -69,6 +79,32 @@ export function updateCurrentUser(input: { name?: string; avatarUrl?: string | n
     method: 'PATCH',
     body: JSON.stringify(input),
   });
+}
+
+export function getUserProfile() {
+  return request<UserProfile>('/api/users/me');
+}
+
+export function updateUserProfile(input: { name?: string; avatarUrl?: string | null }) {
+  return request<CurrentUser>('/api/users/me', {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function changePassword(input: {
+  currentPassword: string;
+  newPassword: string;
+  confirmPassword: string;
+}) {
+  return request<{ ok: true }>('/api/users/me/change-password', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getMyWorkSummary() {
+  return request<MyWorkSummary>('/api/users/me/my-work');
 }
 
 export async function getWorkspaces(): Promise<Workspace[]> {
@@ -438,6 +474,78 @@ export function updateMembership(workspaceId: string, membershipId: string, role
     method: 'PATCH',
     body: JSON.stringify({ role }),
   });
+}
+
+export function getWorkspaceSettings(workspaceId: string) {
+  return request<WorkspaceSettings>(`/api/workspaces/${workspaceId}/settings`);
+}
+
+export function updateWorkspaceSettings(
+  workspaceId: string,
+  input: Partial<Pick<WorkspaceSettings, 'name' | 'slug' | 'description' | 'avatarUrl' | 'color'>>
+) {
+  return request<WorkspaceSettings>(`/api/workspaces/${workspaceId}/settings`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getWorkspaceMembers(workspaceId: string) {
+  return request<{ items: WorkspaceMemberItem[] }>(`/api/workspaces/${workspaceId}/members`);
+}
+
+export function inviteWorkspaceMember(
+  workspaceId: string,
+  input: {
+    email: string;
+    name?: string;
+    role: WorkspaceRole;
+    createOpenProjectUser?: boolean;
+  }
+) {
+  return request<{
+    membership: WorkspaceMemberItem;
+    temporaryPassword?: string | null;
+    openProjectTemporaryPassword?: string | null;
+  }>(`/api/workspaces/${workspaceId}/members/invite`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateWorkspaceMemberRole(
+  workspaceId: string,
+  userId: string,
+  role: WorkspaceRole
+) {
+  return request<WorkspaceMemberItem>(`/api/workspaces/${workspaceId}/members/${userId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ role }),
+  });
+}
+
+export function removeWorkspaceMember(workspaceId: string, userId: string) {
+  return request<void>(`/api/workspaces/${workspaceId}/members/${userId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getWorkspacePermissionSets(workspaceId: string) {
+  return request<{ items: PermissionSet[] }>(`/api/workspaces/${workspaceId}/permissions`);
+}
+
+export function getWorkspaceOpenProjectStatus(workspaceId: string) {
+  return request<OpenProjectConnectionStatus>(`/api/workspaces/${workspaceId}/openproject`);
+}
+
+export function getWorkspaceImportReports(workspaceId: string) {
+  return request<{ items: MigrationRun[] }>(`/api/workspaces/${workspaceId}/imports`);
+}
+
+export function getOpenProjectProjectMembers(workspaceId: string, projectId: string) {
+  return request<{ items: OpenProjectProjectMember[]; settingsUrl: string }>(
+    `/api/workspaces/${workspaceId}/projects/${projectId}/members`
+  );
 }
 
 export function updateWorkspacePermissions(

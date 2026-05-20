@@ -57,7 +57,35 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 5. Open the profile modal from the sidebar.
 6. Change display name or avatar URL.
 7. Refresh and confirm the local profile stays changed.
-8. Log out and confirm protected tracker UI is no longer available.
+8. Open `Security` and change the password.
+9. Log out and confirm the old password no longer works.
+10. Log in again with the new password.
+11. Log out and confirm protected tracker UI is no longer available.
+
+Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
+
+## Workspace Settings
+
+1. Open `Workspace settings` from the workspace header.
+2. In `General`, rename the workspace and refresh.
+3. Confirm the new workspace name persists.
+4. In `Members`, invite a user by email with a local role.
+5. Optionally enable `Create linked OpenProject user`.
+6. Confirm the response shows a temporary password once for the new account.
+7. Change the invited user role.
+8. Confirm you cannot remove or downgrade the last `OWNER`.
+9. Open `Roles & Permissions` and confirm it explains local tracker roles versus OpenProject memberships.
+10. Open `OpenProject` and confirm the connection status loads without exposing the token.
+11. Open `Imports` and confirm recent migration runs appear when they exist.
+12. Open `Danger Zone` as owner and confirm destructive reset is described as a guarded CLI-only action in this MVP.
+
+## Space / Project Access
+
+1. Open a space menu in the sidebar.
+2. Click `OpenProject access`.
+3. Confirm the modal shows real OpenProject project memberships.
+4. Confirm linked local users are shown when `openProjectUserId` exists.
+5. Confirm the modal links to OpenProject settings instead of showing fake invite/edit controls.
 
 ## Connection Check
 
@@ -227,6 +255,13 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 4. Confirm the assignee filter is set to the matching OpenProject user.
 5. Confirm the task query is sent backend-side to `/api/openproject/tasks`.
 
+You can also verify the same link from the profile modal:
+
+1. Open `My work`.
+2. Confirm the assigned summary loads when the local account is linked to an OpenProject user.
+3. Click `Open Assigned to me`.
+4. Confirm it reuses the existing assignee filter rather than opening a separate fake module.
+
 ## Verify Saved Views, Bulk Actions, Notifications, Import Reports
 
 1. Set filters in the task list.
@@ -278,6 +313,16 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - Explicit ClickUp list members from `GET /list/{list_id}/member` are applied to the mapped list project.
    - Task assignees get at least Member access to the mapped list project.
    - The first ClickUp assignee becomes the OpenProject assignee when OpenProject accepts the mapping.
+   - The second ClickUp assignee becomes the OpenProject responsible when available.
+   - Additional ClickUp assignees are preserved in the imported metadata block when watcher mapping is not available yet.
+6. Open the same imported user in the tracker UI and confirm:
+   - the local tracker account exists;
+   - it can log in with `CLICKUP_IMPORTED_USER_PASSWORD` if newly created;
+   - the profile shows the linked OpenProject user.
+7. Open an imported task that had ClickUp assignees and confirm:
+   - primary assignee is set on the OpenProject work package;
+   - second assignee is set as responsible or stored in fallback metadata;
+   - additional assignees are not silently lost.
    - The second ClickUp assignee becomes the OpenProject responsible user when available.
    - Additional assignees are preserved in the task description metadata block until watcher mapping is implemented.
 6. Check inheritance:

@@ -11,6 +11,7 @@ import { integrationsRouter } from './routes/integrations.js';
 import { notificationsRouter } from './routes/notifications.js';
 import { referencesRouter } from './routes/references.js';
 import { savedViewsRouter } from './routes/savedViews.js';
+import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import path from 'node:path';
 
@@ -34,6 +35,7 @@ app.get('/api/health', (_req, res) => {
 
 app.use('/api/workspaces', workspacesRouter);
 app.use('/api/auth', authRouter);
+app.use('/api/users', usersRouter);
 app.use('/api/openproject', openProjectRouter);
 app.use('/api/documents', documentsRouter);
 app.use('/api/saved-views', savedViewsRouter);

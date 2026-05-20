@@ -7,6 +7,8 @@ import {
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+type FetchInput = Parameters<typeof fetch>[0];
+
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.OPENPROJECT_API_TOKEN;
 
@@ -54,7 +56,7 @@ test('buildWorkPackageFilters includes all statuses by default', async () => {
 test('getTasks sends OpenProject filters to the work package request', async () => {
   process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
   const requests: URL[] = [];
-  globalThis.fetch = (async (input: RequestInfo | URL) => {
+  globalThis.fetch = (async (input: FetchInput) => {
     const url = new URL(String(input));
     requests.push(url);
 

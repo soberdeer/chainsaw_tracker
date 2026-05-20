@@ -34,6 +34,7 @@ import {
   IconPlus,
   IconReport,
   IconSearch,
+  IconSettings,
   IconTableOptions,
 } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
@@ -76,7 +77,9 @@ import { GroupedTaskList } from '../../tasks/StatusIcon';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
 import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
+import { ProjectAccessModal } from '../ProjectAccessModal/ProjectAccessModal';
 import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
+import { WorkspaceSettingsModal } from '../WorkspaceSettingsModal/WorkspaceSettingsModal';
 import classes from './WorkspaceShell.module.css';
 
 export interface WorkspaceShellProps {
@@ -117,6 +120,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [searchOpen, setSearchOpen] = useState(false);
   const [createTaskStatusId, setCreateTaskStatusId] = useState<string | null>(null);
   const [profileOpen, setProfileOpen] = useState(false);
+  const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false);
+  const [projectAccessOpen, setProjectAccessOpen] = useState(false);
   const [spaceCreateOpen, setSpaceCreateOpen] = useState(false);
   const [taskView, setTaskView] = useState<string | null>('tasks');
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => new Set());
@@ -221,6 +226,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   );
   const canWriteTasks = Boolean(currentPermissionSet?.manageTasks);
   const canManageSpaces = Boolean(currentPermissionSet?.manageSpaces);
+  const canManageWorkspace = Boolean(currentPermissionSet?.manageWorkspace);
   const activeSpace = useMemo(
     () => workspace?.spaces.find((space) => space.id === spaceId) || workspace?.spaces[0],
     [workspace, spaceId]
@@ -238,7 +244,17 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const statuses = activeTaskList?.statuses || [];
   const availableAssignees = useMemo(() => {
     const users = new Map<string, User>();
-    workspace?.memberships.forEach((membership) => users.set(membership.user.id, membership.user));
+    (workspace?.openProjectUsers || []).forEach((user) => users.set(user.id, user));
+    workspace?.memberships.forEach((membership) => {
+      if (membership.user.openProjectUserId) {
+        users.set(membership.user.openProjectUserId, {
+          ...membership.user,
+          id: membership.user.openProjectUserId,
+          name: membership.user.name,
+        });
+      }
+      users.set(membership.user.id, membership.user);
+    });
     tasks.forEach((task) => {
       (task.assignees || (task.assignee ? [task.assignee] : [])).forEach((user) =>
         users.set(user.id, user)
@@ -247,8 +263,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [workspace, tasks]);
   const currentOpenProjectUser = useMemo(
-    () => availableAssignees.find((user) => user.email === currentUser.email),
-    [availableAssignees, currentUser.email]
+    () =>
+      availableAssignees.find(
+        (user) =>
+          (currentUser.openProjectUserId && user.id === currentUser.openProjectUserId) ||
+          user.email === currentUser.email
+      ),
+    [availableAssignees, currentUser.email, currentUser.openProjectUserId]
   );
   const assignedToMeActive = Boolean(
     currentOpenProjectUser && assigneeFilter.includes(currentOpenProjectUser.id)
@@ -591,7 +612,34 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           role={currentMembership?.role}
           onClose={() => setProfileOpen(false)}
           onSaved={onCurrentUserChange}
+          onOpenAssignedToMe={() => {
+            if (!currentOpenProjectUser) {
+              setActionError('This account is not linked to an OpenProject user yet.');
+              return;
+            }
+            setAssigneeFilter([currentOpenProjectUser.id]);
+            setProfileOpen(false);
+          }}
         />
+        {workspace && (
+          <WorkspaceSettingsModal
+            opened={workspaceSettingsOpen}
+            workspaceId={workspace.id}
+            currentRole={currentMembership?.role}
+            canManageWorkspace={canManageWorkspace}
+            onClose={() => setWorkspaceSettingsOpen(false)}
+            onUpdated={() => reload()}
+          />
+        )}
+        {workspace && activeSpace && (
+          <ProjectAccessModal
+            opened={projectAccessOpen}
+            workspaceId={workspace.id}
+            projectId={activeSpace.id}
+            projectName={activeSpace.name}
+            onClose={() => setProjectAccessOpen(false)}
+          />
+        )}
         {workspace && (
           <SpaceCreateModal
             opened={spaceCreateOpen}
@@ -615,17 +663,28 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                 </Text>
               </div>
             </Group>
-            {canManageSpaces && (
-              <Tooltip label="Add space">
+            <Group gap="xs">
+              <Tooltip label="Workspace settings">
                 <ActionIcon
                   variant="light"
-                  aria-label="Add space"
-                  onClick={() => setSpaceCreateOpen(true)}
+                  aria-label="Workspace settings"
+                  onClick={() => setWorkspaceSettingsOpen(true)}
                 >
-                  <IconPlus size="1.25rem" />
+                  <IconSettings size="1.25rem" />
                 </ActionIcon>
               </Tooltip>
-            )}
+              {canManageSpaces && (
+                <Tooltip label="Add space">
+                  <ActionIcon
+                    variant="light"
+                    aria-label="Add space"
+                    onClick={() => setSpaceCreateOpen(true)}
+                  >
+                    <IconPlus size="1.25rem" />
+                  </ActionIcon>
+                </Tooltip>
+              )}
+            </Group>
           </Group>
           <button
             type="button"
@@ -717,6 +776,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                           onClick={(event) => event.stopPropagation()}
                         >
                           <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
+                          <Menu.Item onClick={() => setProjectAccessOpen(true)}>
+                            OpenProject access
+                          </Menu.Item>
                           <Menu.Item
                             onClick={() =>
                               navigator.clipboard?.writeText(

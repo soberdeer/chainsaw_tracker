@@ -1,4 +1,5 @@
-import { openProjectMultipartRequest, openProjectRequest } from './client.js';
+import { prisma } from '../db.js';
+import { openProjectMultipartRequest, openProjectRequest, openProjectWebUrl } from './client.js';
 import {
   findSeededListById,
   findSeededListByImportedDescription,
@@ -9,6 +10,10 @@ import {
   seededLists,
   type SeededTaskList,
 } from './hierarchyStore.js';
+import {
+  getOpenProjectRuntimeWorkspace,
+  openProjectRuntimeWorkspaceSlug,
+} from './localPermissions.js';
 import {
   mapActivity,
   mapStatus,
@@ -40,6 +45,68 @@ type PageQuery = {
   search?: string;
   priority?: string;
 };
+
+function mapLocalUser(user: {
+  id: string;
+  email: string;
+  name: string;
+  avatarUrl?: string | null;
+  source?: string | null;
+  openProjectUserId?: string | null;
+  openProjectLogin?: string | null;
+  lastLoginAt?: Date | null;
+}) {
+  return {
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl || undefined,
+    source: user.source || undefined,
+    openProjectUserId: user.openProjectUserId || undefined,
+    openProjectLogin: user.openProjectLogin || undefined,
+    lastLoginAt: user.lastLoginAt?.toISOString(),
+  };
+}
+
+function applyRuntimeWorkspaceState(
+  workspace: Awaited<ReturnType<typeof mapWorkspace>>,
+  runtimeWorkspace: Awaited<ReturnType<typeof getOpenProjectRuntimeWorkspace>> | null,
+  openProjectUsers: Awaited<ReturnType<typeof getUsers>>
+) {
+  if (!runtimeWorkspace) {
+    return {
+      ...workspace,
+      openProjectUsers,
+    };
+  }
+
+  return {
+    ...workspace,
+    id: 'openproject',
+    name: runtimeWorkspace.name,
+    slug: runtimeWorkspace.slug,
+    description: runtimeWorkspace.description || undefined,
+    avatarUrl: runtimeWorkspace.avatarUrl || undefined,
+    color: runtimeWorkspace.color || '#228be6',
+    memberships: runtimeWorkspace.memberships.map((membership) => ({
+      id: membership.id,
+      role: membership.role,
+      user: mapLocalUser(membership.user),
+    })),
+    permissionSets: runtimeWorkspace.permissionSets.map((set) => ({
+      role: set.role,
+      manageWorkspace: set.manageWorkspace,
+      manageSpaces: set.manageSpaces,
+      manageDocs: set.manageDocs,
+      manageTasks: set.manageTasks,
+      inviteMembers: set.inviteMembers,
+      manageIntegrations: set.manageIntegrations,
+      manageImports: set.manageImports,
+      viewReports: set.viewReports,
+    })),
+    openProjectUsers,
+  };
+}
 
 const relationTypes = new Set(['relates', 'blocks', 'blocked', 'precedes', 'follows']);
 const reverseRelationTypes = new Set(['blockedBy']);
@@ -126,6 +193,39 @@ export async function getUsers() {
   return (page._embedded?.elements || []).map(mapUser);
 }
 
+export async function getOpenProjectConnectionStatus() {
+  try {
+    const [projectsPage, usersPage, runtimeWorkspace] = await Promise.all([
+      openProjectRequest<HalCollection<OpenProjectProject>>('/api/v3/projects', {
+        query: { pageSize: 1 },
+      }),
+      openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
+        query: { pageSize: 1 },
+      }),
+      getOpenProjectRuntimeWorkspace(),
+    ]);
+
+    return {
+      ok: true,
+      baseUrl: process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080',
+      authMode: process.env.OPENPROJECT_AUTH_MODE === 'bearer' ? 'bearer' : 'basic',
+      apiUser: null,
+      projectsVisible: Number(projectsPage.total || projectsPage.count || 0),
+      usersVisible: Number(usersPage.total || usersPage.count || 0),
+      runtimeWorkspaceId: runtimeWorkspace?.id || null,
+      lastImportReportId: runtimeWorkspace?.migrationRuns?.[0]?.id || null,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      baseUrl: process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080',
+      authMode: process.env.OPENPROJECT_AUTH_MODE === 'bearer' ? 'bearer' : 'basic',
+      apiUser: null,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+}
+
 async function usersByHref() {
   const page = await openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
     query: { pageSize: 200 },
@@ -139,29 +239,40 @@ async function usersByHref() {
 }
 
 export async function getWorkspaceTree() {
-  const [projects, statuses, users] = await Promise.all([getProjects(), getStatuses(), getUsers()]);
+  const [projects, statuses, users, runtimeWorkspace] = await Promise.all([
+    getProjects(),
+    getStatuses(),
+    getUsers(),
+    getOpenProjectRuntimeWorkspace(),
+  ]);
   const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   if (seeded) {
     return [
-      {
-        ...seeded,
-        memberships: [
-          {
-            id: 'openproject:local-user',
-            role: 'OWNER' as const,
-            user: { id: 'local-user', email: 'owner@local.app', name: 'Workspace Owner' },
-          },
-          ...users
-            .filter((user) => user.id !== 'local-user')
-            .map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER' as const, user })),
-        ],
-        permissionSets: seeded.permissionSets.map((set) =>
-          set.role === 'LEAD' || set.role === 'MEMBER' ? { ...set, manageTasks: false } : set
-        ),
-      },
+      applyRuntimeWorkspaceState(
+        {
+          ...seeded,
+          permissionSets: seeded.permissionSets.map((set) =>
+            set.role === 'LEAD' || set.role === 'MEMBER' ? { ...set, manageTasks: false } : set
+          ),
+        },
+        runtimeWorkspace,
+        users
+      ),
     ];
   }
-  return [mapWorkspace(projects, statuses, users)];
+  return [
+    applyRuntimeWorkspaceState(mapWorkspace(projects, statuses, users), runtimeWorkspace, users),
+  ];
+}
+
+export async function getRuntimeWorkspaceSettings() {
+  const runtimeWorkspace = await getOpenProjectRuntimeWorkspace();
+  if (!runtimeWorkspace) {
+    const error = new Error(`Missing runtime workspace ${openProjectRuntimeWorkspaceSlug}`);
+    (error as Error & { statusCode?: number }).statusCode = 404;
+    throw error;
+  }
+  return runtimeWorkspace;
 }
 
 export async function createProject(input: {
@@ -639,6 +750,157 @@ export async function updateTaskCustomField(taskId: string, key: string, value: 
     },
   });
   return getTaskCustomFields(taskId);
+}
+
+function membershipRoles(membership: { _links: Record<string, unknown> }) {
+  const value = membership._links.roles;
+  const list = Array.isArray(value) ? value : value ? [value] : [];
+  return list
+    .map((role) => {
+      if (!role || typeof role !== 'object') return '';
+      const typed = role as { title?: string | null; href?: string | null };
+      return typed.title || linkTail(typed.href) || '';
+    })
+    .filter(Boolean);
+}
+
+export async function getOpenProjectProjectMembers(projectId: string) {
+  const [membershipsPage, usersPage, localUsers, projects] = await Promise.all([
+    openProjectRequest<HalCollection<{ id: number; _links: Record<string, unknown> }>>(
+      '/api/v3/memberships',
+      {
+        query: {
+          pageSize: 1000,
+          filters: JSON.stringify([{ project: { operator: '=', values: [projectId] } }]),
+        },
+      }
+    ),
+    openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
+      query: { pageSize: 1000 },
+    }),
+    prisma.user.findMany(),
+    getProjects(),
+  ]);
+
+  const usersByHref = new Map(
+    (usersPage._embedded?.elements || []).map((user) => [
+      user._links.self.href || `/api/v3/users/${user.id}`,
+      user,
+    ])
+  );
+  const localByOpenProjectUserId = new Map(
+    localUsers
+      .filter((user) => user.openProjectUserId)
+      .map((user) => [user.openProjectUserId as string, mapLocalUser(user)])
+  );
+  const project = projects.find((item) => String(item.id) === String(projectId));
+
+  const items = (membershipsPage._embedded?.elements || []).flatMap((membership) => {
+    const principal = membership._links.principal;
+    const principalLink =
+      Array.isArray(principal) || !principal || typeof principal !== 'object'
+        ? null
+        : (principal as { href?: string | null; title?: string | null });
+    const principalHref = principalLink?.href || null;
+    const openProjectUser = principalHref ? usersByHref.get(principalHref) : undefined;
+    if (!openProjectUser) return [];
+    return [
+      {
+        membershipId: String(membership.id),
+        openProjectUserId: String(openProjectUser.id),
+        openProjectLogin: openProjectUser.login || undefined,
+        openProjectName:
+          openProjectUser.name || openProjectUser.login || String(openProjectUser.id),
+        openProjectEmail: openProjectUser.email || undefined,
+        roles: membershipRoles(membership),
+        linkedLocalUser: localByOpenProjectUserId.get(String(openProjectUser.id)),
+        source: localByOpenProjectUserId.get(String(openProjectUser.id))?.source,
+      },
+    ];
+  });
+
+  return {
+    items,
+    settingsUrl: project
+      ? openProjectWebUrl(`/projects/${project.identifier}/settings`)
+      : openProjectWebUrl(`/projects/${projectId}`),
+  };
+}
+
+export async function getOpenProjectUserMemberships(openProjectUserId: string) {
+  const [membershipsPage, projects] = await Promise.all([
+    openProjectRequest<HalCollection<{ id: number; _links: Record<string, unknown> }>>(
+      '/api/v3/memberships',
+      {
+        query: {
+          pageSize: 1000,
+          filters: JSON.stringify([{ principal: { operator: '=', values: [openProjectUserId] } }]),
+        },
+      }
+    ),
+    getProjects(),
+  ]);
+  const projectsById = new Map(projects.map((project) => [String(project.id), project]));
+
+  return (membershipsPage._embedded?.elements || []).map((membership) => {
+    const projectLink = membership._links.project;
+    const projectInfo =
+      Array.isArray(projectLink) || !projectLink || typeof projectLink !== 'object'
+        ? null
+        : (projectLink as { href?: string | null; title?: string | null });
+    const projectId = linkTail(projectInfo?.href);
+    const project = projectId ? projectsById.get(projectId) : undefined;
+    return {
+      membershipId: String(membership.id),
+      projectId: projectId || '',
+      projectName: project?.name || projectInfo?.title || 'OpenProject project',
+      projectIdentifier: project?.identifier || undefined,
+      roles: membershipRoles(membership),
+      projectUrl: project
+        ? openProjectWebUrl(`/projects/${project.identifier}`)
+        : projectId
+          ? openProjectWebUrl(`/projects/${projectId}`)
+          : openProjectWebUrl('/projects'),
+    };
+  });
+}
+
+export async function getMyWorkSummary(openProjectUserId: string) {
+  const [page, users] = await Promise.all([
+    openProjectRequest<HalCollection<OpenProjectWorkPackage>>('/api/v3/work_packages', {
+      query: {
+        pageSize: 200,
+        filters: JSON.stringify([
+          { assignee: { operator: '=', values: [openProjectUserId] } },
+          { status: { operator: '*', values: [] } },
+        ]),
+      },
+    }),
+    usersByHref(),
+  ]);
+
+  const items = (page._embedded?.elements || []).map((item) =>
+    mapWorkPackage(item, undefined, users)
+  );
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const weekEnd = new Date(today);
+  weekEnd.setDate(weekEnd.getDate() + 7);
+
+  return {
+    assignedCount: items.length,
+    overdueCount: items.filter((task) => task.dueDate && new Date(task.dueDate) < today).length,
+    dueThisWeekCount: items.filter(
+      (task) => task.dueDate && new Date(task.dueDate) >= today && new Date(task.dueDate) <= weekEnd
+    ).length,
+    recentlyUpdated: items
+      .sort((a, b) => {
+        const left = a.updatedAt ? new Date(a.updatedAt).getTime() : 0;
+        const right = b.updatedAt ? new Date(b.updatedAt).getTime() : 0;
+        return right - left;
+      })
+      .slice(0, 5),
+  };
 }
 
 export async function createTask(

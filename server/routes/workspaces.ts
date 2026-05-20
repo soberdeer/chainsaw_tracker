@@ -1,11 +1,178 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { openProjectRequest } from '../openproject/client.js';
+import {
+  getOpenProjectConnectionStatus,
+  getOpenProjectProjectMembers,
+  getRuntimeWorkspaceSettings,
+  getUsers as getOpenProjectUsers,
+} from '../openproject/service.js';
+import { hashPassword, requireCurrentUser } from '../services/auth.js';
 import { sendInviteEmail } from '../services/email.js';
 import { accessibleSpaceIds, requirePermission, currentUserId } from '../services/permissions.js';
 import crypto from 'node:crypto';
 
 export const workspacesRouter = Router();
+
+async function resolveWorkspaceRecord(workspaceId: string) {
+  if (workspaceId === 'openproject') {
+    const runtime = await getRuntimeWorkspaceSettings();
+    return prisma.workspace.findUniqueOrThrow({
+      where: { id: runtime.id },
+      include: {
+        memberships: { include: { user: true } },
+        permissionSets: true,
+        migrationRuns: { orderBy: { startedAt: 'desc' }, take: 10 },
+      },
+    });
+  }
+
+  return prisma.workspace.findUniqueOrThrow({
+    where: { id: workspaceId },
+    include: {
+      memberships: { include: { user: true } },
+      permissionSets: true,
+      migrationRuns: { orderBy: { startedAt: 'desc' }, take: 10 },
+    },
+  });
+}
+
+function serializePermissionSet(set: {
+  role: string;
+  manageWorkspace: boolean;
+  manageSpaces: boolean;
+  manageDocs: boolean;
+  manageTasks: boolean;
+  inviteMembers: boolean;
+  manageIntegrations?: boolean;
+  manageImports?: boolean;
+  viewReports?: boolean;
+}) {
+  return {
+    role: set.role,
+    manageWorkspace: set.manageWorkspace,
+    manageSpaces: set.manageSpaces,
+    manageDocs: set.manageDocs,
+    manageTasks: set.manageTasks,
+    inviteMembers: set.inviteMembers,
+    manageIntegrations: Boolean(set.manageIntegrations),
+    manageImports: Boolean(set.manageImports),
+    viewReports: Boolean(set.viewReports),
+  };
+}
+
+function serializeWorkspaceMember(member: {
+  id: string;
+  role: string;
+  createdAt: Date;
+  updatedAt?: Date;
+  user: {
+    id: string;
+    email: string;
+    name: string;
+    avatarUrl?: string | null;
+    source?: string | null;
+    openProjectUserId?: string | null;
+    openProjectLogin?: string | null;
+    lastLoginAt?: Date | null;
+  };
+}) {
+  return {
+    id: member.id,
+    role: member.role,
+    createdAt: member.createdAt.toISOString(),
+    updatedAt: member.updatedAt?.toISOString(),
+    user: {
+      id: member.user.id,
+      email: member.user.email,
+      name: member.user.name,
+      avatarUrl: member.user.avatarUrl,
+      source: member.user.source,
+      openProjectUserId: member.user.openProjectUserId,
+      openProjectLogin: member.user.openProjectLogin,
+      lastLoginAt: member.user.lastLoginAt?.toISOString() || null,
+    },
+  };
+}
+
+async function ownerCount(workspaceId: string) {
+  return prisma.membership.count({
+    where: {
+      workspaceId,
+      role: 'OWNER',
+    },
+  });
+}
+
+async function requireWorkspaceMemberAccess(
+  req: Parameters<typeof requireCurrentUser>[0],
+  workspaceId: string
+) {
+  const user = await requireCurrentUser(req);
+  const membership = await prisma.membership.findUnique({
+    where: {
+      userId_workspaceId: {
+        userId: user.id,
+        workspaceId,
+      },
+    },
+  });
+  if (!membership) {
+    const error = new Error('Workspace access is required');
+    Object.assign(error, { statusCode: 403 });
+    throw error;
+  }
+  return membership;
+}
+
+function splitDisplayName(name: string, email: string) {
+  const trimmed = name.trim();
+  const fallback = email.split('@')[0] || 'User';
+  if (!trimmed) {
+    return {
+      firstName: fallback.slice(0, 100),
+      lastName: 'User',
+    };
+  }
+  const [firstName, ...rest] = trimmed.split(/\s+/);
+  return {
+    firstName: (firstName || fallback).slice(0, 100),
+    lastName: (rest.join(' ') || 'User').slice(0, 100),
+  };
+}
+
+async function ensureOpenProjectUserForInvite(input: { email: string; name?: string }) {
+  const users = await getOpenProjectUsers();
+  const existing = users.find((user) => user.email?.toLowerCase() === input.email.toLowerCase());
+  if (existing) {
+    return {
+      id: existing.id,
+      login: input.email,
+    };
+  }
+
+  const { firstName, lastName } = splitDisplayName(input.name || '', input.email);
+  const temporaryPassword = `tracker-${crypto.randomBytes(6).toString('base64url')}`;
+  const created = await openProjectRequest<{ id: number; login?: string }>(`/api/v3/users`, {
+    method: 'POST',
+    body: {
+      login: input.email,
+      firstName,
+      lastName,
+      email: input.email,
+      status: 'active',
+      password: temporaryPassword,
+      admin: false,
+    },
+  });
+
+  return {
+    id: created.id,
+    login: created.login || input.email,
+    temporaryPassword,
+  };
+}
 
 workspacesRouter.get('/', async (req, res) => {
   try {
@@ -53,6 +220,231 @@ workspacesRouter.get('/', async (req, res) => {
   } catch {
     res.json([]);
   }
+});
+
+workspacesRouter.get('/:workspaceId/settings', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requireWorkspaceMemberAccess(req, workspace.id);
+
+  res.json({
+    id: req.params.workspaceId,
+    persistedId: workspace.id,
+    name: workspace.name,
+    slug: workspace.slug,
+    description: workspace.description,
+    avatarUrl: workspace.avatarUrl,
+    color: workspace.color,
+    createdAt: workspace.createdAt.toISOString(),
+    updatedAt: workspace.updatedAt.toISOString(),
+  });
+});
+
+workspacesRouter.patch('/:workspaceId/settings', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
+  const body = z
+    .object({
+      name: z.string().min(2).max(120).optional(),
+      slug: z
+        .string()
+        .min(2)
+        .max(120)
+        .regex(/^[a-z0-9-]+$/)
+        .optional(),
+      description: z.string().max(2000).nullable().optional(),
+      avatarUrl: z.string().url().nullable().optional(),
+      color: z.string().max(20).nullable().optional(),
+    })
+    .parse(req.body);
+
+  const updated = await prisma.workspace.update({
+    where: { id: workspace.id },
+    data: {
+      ...(body.name !== undefined ? { name: body.name } : {}),
+      ...(body.slug !== undefined ? { slug: body.slug } : {}),
+      ...(body.description !== undefined ? { description: body.description } : {}),
+      ...(body.avatarUrl !== undefined ? { avatarUrl: body.avatarUrl } : {}),
+      ...(body.color !== undefined ? { color: body.color } : {}),
+    },
+  });
+
+  res.json({
+    id: req.params.workspaceId,
+    persistedId: updated.id,
+    name: updated.name,
+    slug: updated.slug,
+    description: updated.description,
+    avatarUrl: updated.avatarUrl,
+    color: updated.color,
+    createdAt: updated.createdAt.toISOString(),
+    updatedAt: updated.updatedAt.toISOString(),
+  });
+});
+
+workspacesRouter.get('/:workspaceId/members', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requireWorkspaceMemberAccess(req, workspace.id);
+
+  res.json({
+    items: workspace.memberships.map(serializeWorkspaceMember),
+  });
+});
+
+workspacesRouter.post('/:workspaceId/members/invite', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'inviteMembers');
+  const body = z
+    .object({
+      email: z.string().email(),
+      name: z.string().max(120).optional(),
+      role: z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']).default('MEMBER'),
+      createOpenProjectUser: z.boolean().default(false),
+    })
+    .parse(req.body);
+
+  const temporaryPassword = `tracker-${crypto.randomBytes(6).toString('base64url')}`;
+  const existing = await prisma.user.findUnique({ where: { email: body.email } });
+
+  const user = existing
+    ? await prisma.user.update({
+        where: { id: existing.id },
+        data: {
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          source: existing.source || 'MANUALLY_INVITED',
+          ...(existing.passwordHash ? {} : { passwordHash: hashPassword(temporaryPassword) }),
+        },
+      })
+    : await prisma.user.create({
+        data: {
+          email: body.email,
+          name: body.name || '',
+          passwordHash: hashPassword(temporaryPassword),
+          source: 'MANUALLY_INVITED',
+        },
+      });
+
+  let openProjectLink:
+    | { id: number | string; login?: string; temporaryPassword?: string }
+    | undefined;
+  if (body.createOpenProjectUser) {
+    openProjectLink = await ensureOpenProjectUserForInvite({
+      email: user.email,
+      name: body.name ?? user.name,
+    });
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        openProjectUserId: String(openProjectLink.id),
+        openProjectLogin: openProjectLink.login || user.email,
+      },
+    });
+  }
+
+  const membership = await prisma.membership.upsert({
+    where: { userId_workspaceId: { userId: user.id, workspaceId: workspace.id } },
+    update: { role: body.role },
+    create: {
+      userId: user.id,
+      workspaceId: workspace.id,
+      role: body.role,
+    },
+    include: { user: true },
+  });
+
+  res.status(201).json({
+    membership: serializeWorkspaceMember(membership),
+    temporaryPassword: existing?.passwordHash ? null : temporaryPassword,
+    openProjectTemporaryPassword:
+      body.createOpenProjectUser && openProjectLink?.temporaryPassword
+        ? openProjectLink.temporaryPassword
+        : null,
+  });
+});
+
+workspacesRouter.patch('/:workspaceId/members/:userId', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
+  const body = z
+    .object({
+      role: z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']),
+    })
+    .parse(req.body);
+
+  const membership = await prisma.membership.findUniqueOrThrow({
+    where: {
+      userId_workspaceId: {
+        userId: req.params.userId,
+        workspaceId: workspace.id,
+      },
+    },
+    include: { user: true },
+  });
+
+  if (
+    membership.role === 'OWNER' &&
+    body.role !== 'OWNER' &&
+    (await ownerCount(workspace.id)) <= 1
+  ) {
+    res.status(400).json({ error: 'Cannot downgrade the last owner' });
+    return;
+  }
+
+  const updated = await prisma.membership.update({
+    where: { id: membership.id },
+    data: { role: body.role },
+    include: { user: true },
+  });
+
+  res.json(serializeWorkspaceMember(updated));
+});
+
+workspacesRouter.delete('/:workspaceId/members/:userId', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
+  const membership = await prisma.membership.findUniqueOrThrow({
+    where: {
+      userId_workspaceId: {
+        userId: req.params.userId,
+        workspaceId: workspace.id,
+      },
+    },
+  });
+
+  if (membership.role === 'OWNER' && (await ownerCount(workspace.id)) <= 1) {
+    res.status(400).json({ error: 'Cannot remove the last owner' });
+    return;
+  }
+
+  await prisma.membership.delete({ where: { id: membership.id } });
+  res.status(204).send();
+});
+
+workspacesRouter.get('/:workspaceId/permissions', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requireWorkspaceMemberAccess(req, workspace.id);
+  res.json({
+    items: workspace.permissionSets.map(serializePermissionSet),
+  });
+});
+
+workspacesRouter.get('/:workspaceId/openproject', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
+  res.json(await getOpenProjectConnectionStatus());
+});
+
+workspacesRouter.get('/:workspaceId/imports', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
+  res.json({
+    items: workspace.migrationRuns,
+  });
+});
+
+workspacesRouter.get('/:workspaceId/projects/:projectId/members', async (req, res) => {
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requireWorkspaceMemberAccess(req, workspace.id);
+  res.json(await getOpenProjectProjectMembers(req.params.projectId));
 });
 
 workspacesRouter.post('/', async (req, res) => {
@@ -260,10 +652,22 @@ workspacesRouter.post('/invites/:token/accept', async (req, res) => {
 });
 
 workspacesRouter.patch('/:workspaceId/memberships/:membershipId', async (req, res) => {
-  await requirePermission(req, req.params.workspaceId, 'manageWorkspace');
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
   const body = z
     .object({ role: z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']) })
     .parse(req.body);
+  const existing = await prisma.membership.findUniqueOrThrow({
+    where: { id: req.params.membershipId },
+  });
+  if (existing.workspaceId !== workspace.id) {
+    res.status(404).json({ error: 'Membership not found in this workspace' });
+    return;
+  }
+  if (existing.role === 'OWNER' && body.role !== 'OWNER' && (await ownerCount(workspace.id)) <= 1) {
+    res.status(400).json({ error: 'Cannot downgrade the last owner' });
+    return;
+  }
   const membership = await prisma.membership.update({
     where: { id: req.params.membershipId },
     data: { role: body.role },
@@ -273,7 +677,8 @@ workspacesRouter.patch('/:workspaceId/memberships/:membershipId', async (req, re
 });
 
 workspacesRouter.put('/:workspaceId/permissions/:role', async (req, res) => {
-  await requirePermission(req, req.params.workspaceId, 'manageWorkspace');
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
   const role = z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']).parse(req.params.role);
   const body = z
     .object({
@@ -286,8 +691,8 @@ workspacesRouter.put('/:workspaceId/permissions/:role', async (req, res) => {
     .parse(req.body);
 
   const permissionSet = await prisma.permissionSet.upsert({
-    where: { workspaceId_role: { workspaceId: req.params.workspaceId, role } },
-    create: { workspaceId: req.params.workspaceId, role, ...body },
+    where: { workspaceId_role: { workspaceId: workspace.id, role } },
+    create: { workspaceId: workspace.id, role, ...body },
     update: body,
   });
 
@@ -295,7 +700,8 @@ workspacesRouter.put('/:workspaceId/permissions/:role', async (req, res) => {
 });
 
 workspacesRouter.put('/:workspaceId/github', async (req, res) => {
-  await requirePermission(req, req.params.workspaceId, 'manageWorkspace');
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'manageWorkspace');
   const body = z
     .object({
       organization: z.string().optional(),
@@ -304,8 +710,8 @@ workspacesRouter.put('/:workspaceId/github', async (req, res) => {
     .parse(req.body);
 
   const integration = await prisma.githubIntegration.upsert({
-    where: { workspaceId: req.params.workspaceId },
-    create: { workspaceId: req.params.workspaceId, ...body },
+    where: { workspaceId: workspace.id },
+    create: { workspaceId: workspace.id, ...body },
     update: body,
   });
 

@@ -17,6 +17,10 @@ export type User = {
   email: string;
   name: string;
   avatarUrl?: string;
+  source?: string;
+  openProjectUserId?: string;
+  openProjectLogin?: string;
+  lastLoginAt?: string | null;
 };
 
 export type PermissionSet = {
@@ -26,6 +30,9 @@ export type PermissionSet = {
   manageDocs: boolean;
   manageTasks: boolean;
   inviteMembers: boolean;
+  manageIntegrations?: boolean;
+  manageImports?: boolean;
+  viewReports?: boolean;
 };
 
 export type Task = {
@@ -254,13 +261,86 @@ export type Workspace = {
   id: string;
   name: string;
   slug: string;
+  description?: string;
+  avatarUrl?: string;
+  color?: string;
   spaces: Space[];
   memberships: Membership[];
   permissionSets: PermissionSet[];
+  openProjectUsers?: User[];
   githubIntegration?: {
     organization?: string;
     repository?: string;
   };
+};
+
+export type WorkspaceSettings = {
+  id: string;
+  persistedId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  color?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceMemberItem = {
+  id: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  updatedAt?: string;
+  user: User;
+};
+
+export type OpenProjectProjectMember = {
+  membershipId: string;
+  openProjectUserId: string;
+  openProjectLogin?: string;
+  openProjectName: string;
+  openProjectEmail?: string;
+  roles: string[];
+  linkedLocalUser?: User;
+  source?: string;
+};
+
+export type OpenProjectConnectionStatus = {
+  ok: boolean;
+  baseUrl: string;
+  authMode: 'basic' | 'bearer';
+  apiUser: null;
+  projectsVisible?: number;
+  usersVisible?: number;
+  runtimeWorkspaceId?: string | null;
+  lastImportReportId?: string | null;
+  error?: string;
+};
+
+export type UserProfile = User & {
+  memberships: Array<{
+    id: string;
+    workspaceId: string;
+    workspaceName: string;
+    workspaceSlug: string;
+    role: WorkspaceRole;
+    permissions?: PermissionSet | null;
+  }>;
+  openProjectMemberships: Array<{
+    membershipId: string;
+    projectId: string;
+    projectName: string;
+    projectIdentifier?: string;
+    roles: string[];
+    projectUrl: string;
+  }>;
+};
+
+export type MyWorkSummary = {
+  assignedCount: number;
+  overdueCount: number;
+  dueThisWeekCount: number;
+  recentlyUpdated: Task[];
 };
 
 export type SavedView = {

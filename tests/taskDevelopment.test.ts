@@ -11,7 +11,7 @@ const baseTask = {
   position: 0,
   createdAt: new Date(),
   updatedAt: new Date(),
-} as never;
+};
 
 test('computeTaskDevelopmentStatus reports code review and review results', () => {
   assert.equal(

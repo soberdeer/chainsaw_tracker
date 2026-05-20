@@ -18,6 +18,24 @@ OpenProject API is the source of truth for production task runtime data:
 
 PostgreSQL/Prisma remains only for local scaffold features such as demo membership/permissions, optional GitHub storage, and local docs while docs are not migrated to OpenProject wiki pages.
 
+## User Model
+
+The app now keeps two related user layers:
+
+- Local tracker user in Prisma:
+  - login/session
+  - workspace role
+  - local profile fields
+  - saved views
+  - notifications
+  - import reports access
+- OpenProject user:
+  - project memberships
+  - assignee / responsible on work packages
+  - OpenProject comments, files, time entries, workflow permissions
+
+Imported ClickUp users are created or reused in both places when possible. The local Prisma user stores the link to the matching OpenProject user through `openProjectUserId` and `openProjectLogin`.
+
 ## Env
 
 Required runtime env:
@@ -129,6 +147,30 @@ Set `DEV_ADMIN_PASSWORD` to override the development password.
 
 To avoid letting every local demo user write through the service token, OpenProject write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD`, `MEMBER`, and `VIEWER` are read-only until per-user OpenProject auth is implemented.
 
+## Workspace Settings And Account UI
+
+The tracker includes:
+
+- Workspace settings:
+  - General
+  - Members
+  - Roles & Permissions
+  - OpenProject connection
+  - Imports
+  - Danger Zone guidance
+- User account:
+  - Profile
+  - Security
+  - My work
+  - Access
+
+The UI explains the difference between:
+
+- Local tracker role:
+  controls access to the custom tracker UI and local app features
+- OpenProject membership:
+  controls access to OpenProject projects and work packages
+
 ## Run
 
 ```bash
@@ -214,5 +256,6 @@ The migration maps ClickUp access conservatively:
 - first ClickUp assignee -> OpenProject `assignee`.
 - second ClickUp assignee -> OpenProject `responsible`.
 - additional ClickUp assignees -> stored in the work package description metadata block until watcher mapping is implemented.
+- imported ClickUp users are linked back to the local tracker user so they can log in to the tracker UI.
 - known inherited grants are applied Space -> Folder -> List.
 - private Space/Folder explicit access emits a warning if ClickUp does not return explicit members through the available API response.

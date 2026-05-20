@@ -424,7 +424,11 @@ export function TaskDetailPage({
         opened={subtaskModalOpen}
         parentTask={task}
         statuses={statuses}
-        users={workspace.memberships.map((membership) => membership.user)}
+        users={
+          workspace.openProjectUsers?.length
+            ? workspace.openProjectUsers
+            : workspace.memberships.map((membership) => membership.user)
+        }
         onClose={() => setSubtaskModalOpen(false)}
         onCreated={onSaved}
         onError={onError}
@@ -472,9 +476,12 @@ export function TaskDetailPage({
             setAssigneeIds(value);
             void updateAndRefresh({ assigneeIds: value });
           }}
-          data={workspace.memberships.map((membership) => ({
-            value: membership.user.id,
-            label: membership.user.name,
+          data={(workspace.openProjectUsers?.length
+            ? workspace.openProjectUsers
+            : workspace.memberships.map((membership) => membership.user)
+          ).map((user) => ({
+            value: user.openProjectUserId || user.id,
+            label: user.name,
           }))}
           searchable
           clearable

@@ -23,19 +23,36 @@ authRouter.get('/me', async (req, res) => {
     email: user.email,
     name: user.name,
     avatarUrl: user.avatarUrl,
+    source: user.source,
+    openProjectUserId: user.openProjectUserId,
+    openProjectLogin: user.openProjectLogin,
+    lastLoginAt: user.lastLoginAt,
   });
 });
 
 authRouter.post('/login', async (req, res) => {
   const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body);
   await ensureDefaultOwner();
-  const user = await prisma.user.findUnique({ where: { email: body.email } });
-  if (!user || !verifyPassword(body.password, user.passwordHash)) {
+  const existing = await prisma.user.findUnique({ where: { email: body.email } });
+  if (!existing || !verifyPassword(body.password, existing.passwordHash)) {
     res.status(401).json({ error: 'Invalid email or password' });
     return;
   }
+  const user = await prisma.user.update({
+    where: { id: existing.id },
+    data: { lastLoginAt: new Date() },
+  });
   setSessionCookie(res, user.id);
-  res.json({ id: user.id, email: user.email, name: user.name, avatarUrl: user.avatarUrl });
+  res.json({
+    id: user.id,
+    email: user.email,
+    name: user.name,
+    avatarUrl: user.avatarUrl,
+    source: user.source,
+    openProjectUserId: user.openProjectUserId,
+    openProjectLogin: user.openProjectLogin,
+    lastLoginAt: user.lastLoginAt,
+  });
 });
 
 authRouter.post('/logout', (_req, res) => {
@@ -47,7 +64,7 @@ authRouter.patch('/me', async (req, res) => {
   const user = await requireCurrentUser(req);
   const body = z
     .object({
-      name: z.string().min(1).optional(),
+      name: z.string().max(120).optional(),
       avatarUrl: z.string().url().nullable().optional(),
     })
     .parse(req.body);
@@ -60,5 +77,9 @@ authRouter.patch('/me', async (req, res) => {
     email: updated.email,
     name: updated.name,
     avatarUrl: updated.avatarUrl,
+    source: updated.source,
+    openProjectUserId: updated.openProjectUserId,
+    openProjectLogin: updated.openProjectLogin,
+    lastLoginAt: updated.lastLoginAt,
   });
 });
