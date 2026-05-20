@@ -59,6 +59,49 @@ CLICKUP_IMPORTED_USER_PASSWORD="clickup!2026"
 
 `OPENPROJECT_IMPORTED_USER_PASSWORD` is the temporary password for real OpenProject users created from ClickUp users. Existing OpenProject users are reused and their passwords are not reset.
 
+## Clean Re-import
+
+Use the guarded reset script before a clean ClickUp re-import when OpenProject already contains stale test projects, duplicated work packages, or bad previous imports.
+
+Dry-run only:
+
+```bash
+npm run reset:openproject -- --dry-run
+```
+
+Real destructive reset:
+
+```bash
+npm run reset:openproject -- --yes --confirm DELETE_ALL_OPENPROJECT_PROJECTS_AND_WORK_PACKAGES
+```
+
+If `NODE_ENV=production`, add:
+
+```bash
+--allow-production
+```
+
+The reset removes only OpenProject work packages and OpenProject projects. It does not delete:
+
+- OpenProject users
+- OpenProject roles
+- OpenProject statuses
+- OpenProject priorities
+- OpenProject custom fields
+- OpenProject workflows
+- local Prisma users
+- local auth/session data
+- Local Docs
+- GitHub repository settings
+
+After reset, run the ClickUp migration again:
+
+```bash
+CLICKUP_TOKEN="..." npm run seed:openproject:clickup
+```
+
+The reset also removes stale local references to deleted OpenProject project/work package ids and deletes `server/openproject/seed-data/clickup-hierarchy.json` so the next seed rebuilds hierarchy from scratch.
+
 ## Mapping
 
 The production runtime uses a stable OpenProject mapping:

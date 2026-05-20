@@ -302,6 +302,51 @@ Current ClickUp permission source limitations:
 
 `OPENPROJECT_IMPORTED_USER_PASSWORD` is only for real OpenProject users created during migration. `CLICKUP_IMPORTED_USER_PASSWORD` is only for local tracker users created for the local auth scaffold.
 
+## Clean OpenProject And Re-import From ClickUp
+
+Use this when OpenProject already contains stale test projects, duplicated tasks, or broken previous imports.
+
+1. Check what would be deleted:
+
+   ```bash
+   npm run reset:openproject -- --dry-run
+   ```
+
+2. Confirm the dry-run summary lists the OpenProject work packages and projects you expect to remove.
+3. Verify that dry-run did not delete anything.
+4. Run the real destructive reset:
+
+   ```bash
+   npm run reset:openproject -- --yes --confirm DELETE_ALL_OPENPROJECT_PROJECTS_AND_WORK_PACKAGES
+   ```
+
+5. If `NODE_ENV=production`, add `--allow-production`.
+6. Confirm the reset summary reports deleted work packages and deleted projects.
+7. Confirm OpenProject users, roles, statuses, priorities, and custom fields still exist.
+8. Confirm local Prisma users, local docs, and GitHub repository settings still exist.
+9. Confirm `server/openproject/seed-data/clickup-hierarchy.json` is gone and the old hierarchy no longer appears in the UI.
+10. Re-run the ClickUp migration:
+
+   ```bash
+   CLICKUP_TOKEN="..." npm run seed:openproject:clickup
+   ```
+
+11. Start the tracker:
+
+   ```bash
+   npm run dev
+   ```
+
+12. Verify the sidebar contains only the fresh ClickUp-imported structure.
+13. Verify task lists contain only the fresh ClickUp-imported tasks.
+14. Find a ClickUp task with an assignee and confirm the mapped OpenProject work package has:
+   - primary assignee set
+   - second assignee mapped to responsible when present
+   - remaining assignees preserved in task metadata when more than two existed in ClickUp
+15. Run the seed a second time and confirm there are no duplicate projects, work packages, users, or memberships.
+
+The reset intentionally does not delete OpenProject users, roles, statuses, priorities, custom fields, workflows, local tracker users, local auth/session data, Local Docs, or GitHub repository settings.
+
 ## Final Verification
 
 ```bash
