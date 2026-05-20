@@ -193,16 +193,40 @@ Existing GitHub code is optional and isolated.
 Currently unsupported or disabled:
 
 - OpenProject Wiki-backed docs.
-- Attachments upload.
-- Time entries/timer actions.
-- Dependencies/relations UI.
-- Custom fields editing.
 - Tags editing.
+- Custom fields editing. Custom fields are shown read-only from OpenProject work package data.
 - Folder/List creation inside the ClickUp-like hierarchy.
 - Board card order persistence inside a status column.
 - GitHub links for OpenProject-backed work packages until an explicit mapping exists.
+- Saved views.
+- Bulk actions.
+- In-app notifications.
+- Import report UI.
 
 Unsupported features should be hidden or disabled with clear copy. They should not appear as active buttons.
+
+## Verify Relations, Time, Attachments, And Custom Fields
+
+1. Open a task detail page.
+2. Open the `Relations` tab.
+3. Add a relation to another OpenProject work package id.
+4. Refresh and confirm the relation remains visible.
+5. Open the `Time` tab.
+6. Log a time entry with hours, date, and comment.
+7. Refresh and confirm the time entry remains visible.
+8. Open the `Files` tab.
+9. Upload a small attachment.
+10. Refresh and confirm the attachment remains visible and can be opened.
+11. If upload fails, verify the error comes from OpenProject permissions/API and not from fake UI.
+12. If the task has OpenProject custom fields, confirm the `Custom fields` tab shows them read-only.
+
+## Verify Assigned To Me
+
+1. Log in as a local tracker user whose email matches an imported OpenProject user.
+2. Open a task list.
+3. Click `Assigned to me`.
+4. Confirm the assignee filter is set to the matching OpenProject user.
+5. Confirm the task query is sent backend-side to `/api/openproject/tasks`.
 
 ## Optional ClickUp Migration
 

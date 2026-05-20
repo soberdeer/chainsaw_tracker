@@ -4,6 +4,10 @@ import type {
   GitHubPullRequest,
   GitHubRepository,
   Membership,
+  OpenProjectAttachmentItem,
+  OpenProjectCustomFieldItem,
+  OpenProjectRelationItem,
+  OpenProjectTimeEntryItem,
   PermissionSet,
   SearchResult,
   Task,
@@ -137,6 +141,68 @@ export function addTaskComment(taskId: string, comment: string) {
     method: 'POST',
     body: JSON.stringify({ comment }),
   });
+}
+
+export function getTaskRelations(taskId: string) {
+  return request<{ items: OpenProjectRelationItem[] }>(
+    `/api/openproject/tasks/${taskId}/relations`
+  );
+}
+
+export function addTaskRelation(
+  taskId: string,
+  input: { targetTaskId: string; type: string; description?: string }
+) {
+  return request<OpenProjectRelationItem>(`/api/openproject/tasks/${taskId}/relations`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteTaskRelation(taskId: string, relationId: string) {
+  return request<void>(`/api/openproject/tasks/${taskId}/relations/${relationId}`, {
+    method: 'DELETE',
+  });
+}
+
+export function getTaskTimeEntries(taskId: string) {
+  return request<{ items: OpenProjectTimeEntryItem[]; totalHours: number }>(
+    `/api/openproject/tasks/${taskId}/time-entries`
+  );
+}
+
+export function addTaskTimeEntry(
+  taskId: string,
+  input: { hours: number; spentOn: string; comment?: string }
+) {
+  return request<OpenProjectTimeEntryItem>(`/api/openproject/tasks/${taskId}/time-entries`, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function getTaskAttachments(taskId: string) {
+  return request<{ items: OpenProjectAttachmentItem[] }>(
+    `/api/openproject/tasks/${taskId}/attachments`
+  );
+}
+
+export function uploadTaskAttachment(taskId: string, file: File, description?: string) {
+  const form = new FormData();
+  form.set('file', file);
+  if (description) {
+    form.set('description', description);
+  }
+  return request<OpenProjectAttachmentItem>(`/api/openproject/tasks/${taskId}/attachments`, {
+    method: 'POST',
+    body: form,
+  });
+}
+
+export function getTaskCustomFields(taskId: string) {
+  return request<{ items: OpenProjectCustomFieldItem[] }>(
+    `/api/openproject/tasks/${taskId}/custom-fields`
+  );
 }
 
 export function updateTask(

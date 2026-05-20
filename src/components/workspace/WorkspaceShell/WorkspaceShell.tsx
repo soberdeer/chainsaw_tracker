@@ -223,6 +223,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     });
     return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [workspace, tasks]);
+  const currentOpenProjectUser = useMemo(
+    () => availableAssignees.find((user) => user.email === currentUser.email),
+    [availableAssignees, currentUser.email]
+  );
+  const assignedToMeActive = Boolean(
+    currentOpenProjectUser && assigneeFilter.includes(currentOpenProjectUser.id)
+  );
 
   const loadTasks = useCallback(
     async (cursor?: string) => {
@@ -795,6 +802,26 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="14rem"
                         searchable
                       />
+                      <Tooltip
+                        label={
+                          currentOpenProjectUser
+                            ? 'Filter tasks assigned to current user'
+                            : 'Current tracker user is not linked to an OpenProject user'
+                        }
+                      >
+                        <Button
+                          variant={assignedToMeActive ? 'filled' : 'light'}
+                          disabled={!currentOpenProjectUser}
+                          onClick={() => {
+                            if (!currentOpenProjectUser) return;
+                            setAssigneeFilter(
+                              assignedToMeActive ? [] : [currentOpenProjectUser.id]
+                            );
+                          }}
+                        >
+                          Assigned to me
+                        </Button>
+                      </Tooltip>
                       <Select
                         value={priorityFilter}
                         onChange={setPriorityFilter}

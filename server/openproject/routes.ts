@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import multer from 'multer';
 import { z } from 'zod';
 import { requireCurrentUser } from '../services/auth.js';
 import { requireOpenProjectProjectWrite, requireOpenProjectTaskWrite } from './permissions.js';
 import * as service from './service.js';
 
 export const openProjectRouter = Router();
+const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
 
 openProjectRouter.use(async (req, _res, next) => {
   try {
@@ -165,6 +167,64 @@ openProjectRouter.post('/tasks/:taskId/activity', async (req, res) => {
   await requireOpenProjectTaskWrite(req);
   const body = z.object({ comment: z.string().min(1) }).parse(req.body);
   res.status(201).json(await service.addTaskComment(req.params.taskId, body.comment));
+});
+
+openProjectRouter.get('/tasks/:taskId/relations', async (req, res) => {
+  res.json({ items: await service.getTaskRelations(req.params.taskId) });
+});
+
+openProjectRouter.post('/tasks/:taskId/relations', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      targetTaskId: z.string().min(1),
+      type: z.enum(['relates', 'blocks', 'blocked', 'precedes', 'follows']).default('relates'),
+      description: z.string().optional(),
+    })
+    .parse(req.body);
+  res.status(201).json(await service.createTaskRelation(req.params.taskId, body));
+});
+
+openProjectRouter.delete('/tasks/:taskId/relations/:relationId', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  await service.deleteTaskRelation(req.params.relationId);
+  res.status(204).send();
+});
+
+openProjectRouter.get('/tasks/:taskId/time-entries', async (req, res) => {
+  res.json(await service.getTaskTimeEntries(req.params.taskId));
+});
+
+openProjectRouter.post('/tasks/:taskId/time-entries', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      hours: z.coerce.number().positive(),
+      spentOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      comment: z.string().optional(),
+    })
+    .parse(req.body);
+  res.status(201).json(await service.addTaskTimeEntry(req.params.taskId, body));
+});
+
+openProjectRouter.get('/tasks/:taskId/attachments', async (req, res) => {
+  res.json({ items: await service.getTaskAttachments(req.params.taskId) });
+});
+
+openProjectRouter.post('/tasks/:taskId/attachments', upload.single('file'), async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  if (!req.file) {
+    res.status(400).json({ error: 'file is required' });
+    return;
+  }
+  const description = typeof req.body.description === 'string' ? req.body.description : undefined;
+  res
+    .status(201)
+    .json(await service.addTaskAttachment(String(req.params.taskId), req.file, description));
+});
+
+openProjectRouter.get('/tasks/:taskId/custom-fields', async (req, res) => {
+  res.json({ items: await service.getTaskCustomFields(req.params.taskId) });
 });
 
 openProjectRouter.get('/search', async (req, res) => {

@@ -113,6 +113,14 @@ Frontend task runtime uses `/api/openproject/*`:
 - `POST /api/openproject/tasks/:taskId/duplicate`
 - `GET /api/openproject/tasks/:taskId/activity`
 - `POST /api/openproject/tasks/:taskId/activity`
+- `GET /api/openproject/tasks/:taskId/relations`
+- `POST /api/openproject/tasks/:taskId/relations`
+- `DELETE /api/openproject/tasks/:taskId/relations/:relationId`
+- `GET /api/openproject/tasks/:taskId/time-entries`
+- `POST /api/openproject/tasks/:taskId/time-entries`
+- `GET /api/openproject/tasks/:taskId/attachments`
+- `POST /api/openproject/tasks/:taskId/attachments`
+- `GET /api/openproject/tasks/:taskId/custom-fields`
 - `GET /api/openproject/search?q=...`
 
 Unsupported OpenProject adapter actions are disabled in the UI. Folder/list creation is not active because OpenProject has no direct folder/list equivalent in this mapping.
@@ -133,7 +141,11 @@ Search is a subject/title contains filter, not a global full-text search across 
 - Board view is available as a status board. Dragging a card between columns updates the OpenProject status.
 - Reordering inside a status is not persisted because OpenProject is the source of truth and this adapter does not map order to a supported OpenProject field.
 - Docs are still local docs, not OpenProject wiki pages. The UI should treat them as Local Docs.
-- Tags, attachments, dependencies, time entries, and custom fields are hidden or read-only unless wired to OpenProject.
+- Relations/dependencies are OpenProject-backed from task detail. Supported relation types are relates, blocks, blocked by, follows, and precedes.
+- Time entries are OpenProject-backed from task detail. The UI creates time entries against the first available OpenProject time entry activity.
+- Attachments are OpenProject-backed from task detail when the OpenProject attachments endpoint is enabled for the token/project.
+- Custom fields are read from OpenProject work packages and shown read-only. Editing custom fields needs schema/form-specific save support.
+- Tags are not editable yet. ClickUp tags should be migrated to a real OpenProject custom field or stored as documented metadata before exposing editing.
 - GitHub integration is optional and isolated from OpenProject task runtime.
 - GitHub links are hidden for OpenProject-backed work packages until an explicit `OpenProject workPackageId -> local GitHub link taskId` mapping exists.
 

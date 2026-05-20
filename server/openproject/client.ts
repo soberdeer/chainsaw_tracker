@@ -89,6 +89,63 @@ export async function openProjectRequest<T>(
   }
 }
 
+export async function openProjectMultipartRequest<T>(
+  path: string,
+  form: FormData,
+  options: {
+    method?: string;
+    query?: Record<string, string | number | boolean | undefined | null>;
+  } = {}
+): Promise<T> {
+  const method = options.method || 'POST';
+  const start = Date.now();
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  const url = buildUrl(path, options.query);
+
+  try {
+    const response = await fetch(url, {
+      method,
+      signal: controller.signal,
+      headers: {
+        Authorization: authHeader(),
+        Accept: 'application/hal+json, application/json',
+      },
+      body: form,
+    });
+
+    const text = await response.text();
+    const payload = text
+      ? (() => {
+          try {
+            return JSON.parse(text);
+          } catch {
+            return { message: response.ok ? text : response.statusText, raw: text.slice(0, 500) };
+          }
+        })()
+      : null;
+    const duration = Date.now() - start;
+    console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
+    if (!response.ok) {
+      const message =
+        payload?.message ||
+        payload?._embedded?.errors?.[0]?.message ||
+        statusMessage(response.status, response.statusText);
+      throw new OpenProjectApiError(response.status, String(message), payload);
+    }
+    return payload as T;
+  } catch (error) {
+    if (error instanceof OpenProjectApiError || error instanceof OpenProjectConfigError)
+      throw error;
+    if ((error as Error).name === 'AbortError') {
+      throw new OpenProjectApiError(504, 'OpenProject API request timed out');
+    }
+    throw new OpenProjectApiError(502, 'OpenProject API is unavailable');
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 function statusMessage(status: number, fallback: string) {
   if (status === 401) return 'OpenProject authentication failed';
   if (status === 403) return 'OpenProject permission denied';

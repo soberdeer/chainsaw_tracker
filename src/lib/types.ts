@@ -136,6 +136,44 @@ export type TaskDependency = {
   task?: Task;
 };
 
+export type OpenProjectRelationItem = {
+  id: string;
+  type: string;
+  reverseType?: string;
+  fromId?: string;
+  fromTitle?: string;
+  toId?: string;
+  toTitle?: string;
+  description?: string;
+};
+
+export type OpenProjectTimeEntryItem = {
+  id: string;
+  hours: string;
+  spentOn?: string;
+  comment?: string;
+  user?: User;
+  activity?: string;
+  createdAt?: string;
+};
+
+export type OpenProjectAttachmentItem = {
+  id: string;
+  fileName: string;
+  fileSize?: number;
+  contentType?: string;
+  description?: string;
+  downloadUrl?: string;
+  createdAt?: string;
+};
+
+export type OpenProjectCustomFieldItem = {
+  key: string;
+  label: string;
+  value: string;
+  editable: false;
+};
+
 export type Tag = {
   id: string;
   name: string;

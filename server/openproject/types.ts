@@ -82,6 +82,14 @@ export type OpenProjectWorkPackage = {
   createdAt?: string;
   updatedAt?: string;
   _links: Record<string, HalLink>;
+  _embedded?: {
+    attachments?: {
+      _embedded?: {
+        elements?: OpenProjectAttachment[];
+      };
+    };
+  };
+  [key: `customField${number}`]: unknown;
 };
 
 export type OpenProjectActivity = {
@@ -89,5 +97,39 @@ export type OpenProjectActivity = {
   comment?: OpenProjectText;
   details?: OpenProjectText[];
   createdAt: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectRelation = {
+  id: number;
+  type: string;
+  reverseType?: string;
+  description?: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectTimeEntry = {
+  id: number;
+  hours: string | number;
+  spentOn?: string;
+  comment?: OpenProjectText;
+  createdAt?: string;
+  updatedAt?: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectTimeEntryActivity = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectAttachment = {
+  id: number;
+  fileName?: string;
+  fileSize?: number;
+  contentType?: string;
+  description?: OpenProjectText;
+  createdAt?: string;
   _links: Record<string, HalLink>;
 };

@@ -1,4 +1,4 @@
-import { openProjectRequest } from './client.js';
+import { openProjectMultipartRequest, openProjectRequest } from './client.js';
 import {
   findSeededListById,
   findSeededListByImportedDescription,
@@ -20,9 +20,13 @@ import {
 import type {
   HalCollection,
   OpenProjectActivity,
+  OpenProjectAttachment,
   OpenProjectPriority,
   OpenProjectProject,
+  OpenProjectRelation,
   OpenProjectStatus,
+  OpenProjectTimeEntry,
+  OpenProjectTimeEntryActivity,
   OpenProjectType,
   OpenProjectUser,
   OpenProjectWorkPackage,
@@ -36,6 +40,8 @@ type PageQuery = {
   search?: string;
   priority?: string;
 };
+
+const relationTypes = new Set(['relates', 'blocks', 'blocked', 'precedes', 'follows']);
 
 const hiddenRuntimeProjectKeys = new Set(['clickupimport', 'scrumproject', 'demoproject']);
 
@@ -330,6 +336,237 @@ export async function buildWorkPackageFilters(query: PageQuery) {
   return filters;
 }
 
+function taskFilter(taskId: string) {
+  return JSON.stringify([{ work_package: { operator: '=', values: [taskId] } }]);
+}
+
+function relationLinkId(relation: OpenProjectRelation, key: string) {
+  const value = relation._links[key];
+  return Array.isArray(value) ? value[0]?.href : value?.href;
+}
+
+function relationLinkTitle(relation: OpenProjectRelation, key: string) {
+  const value = relation._links[key];
+  return Array.isArray(value) ? value[0]?.title : value?.title;
+}
+
+function mapRelation(relation: OpenProjectRelation) {
+  return {
+    id: String(relation.id),
+    type: relation.type,
+    reverseType: relation.reverseType,
+    fromId: linkTail(relationLinkId(relation, 'from')),
+    fromTitle: relationLinkTitle(relation, 'from'),
+    toId: linkTail(relationLinkId(relation, 'to')),
+    toTitle: relationLinkTitle(relation, 'to'),
+    description: relation.description,
+  };
+}
+
+export async function getTaskRelations(taskId: string) {
+  const page = await openProjectRequest<HalCollection<OpenProjectRelation>>(
+    `/api/v3/work_packages/${taskId}/relations`,
+    { query: { pageSize: 100 } }
+  );
+  return (page._embedded?.elements || []).map(mapRelation);
+}
+
+export async function createTaskRelation(
+  taskId: string,
+  input: { targetTaskId: string; type: string; description?: string }
+) {
+  if (taskId === input.targetTaskId) {
+    const error = new Error('A task cannot be related to itself');
+    (error as Error & { statusCode?: number }).statusCode = 400;
+    throw error;
+  }
+  const type = relationTypes.has(input.type) ? input.type : 'relates';
+  const relation = await openProjectRequest<OpenProjectRelation>(
+    `/api/v3/work_packages/${taskId}/relations`,
+    {
+      method: 'POST',
+      body: {
+        type,
+        description: input.description || undefined,
+        _links: { to: { href: `/api/v3/work_packages/${input.targetTaskId}` } },
+      },
+    }
+  );
+  return mapRelation(relation);
+}
+
+export async function deleteTaskRelation(relationId: string) {
+  await openProjectRequest<void>(`/api/v3/relations/${relationId}`, { method: 'DELETE' });
+}
+
+function durationToHours(value: string | number) {
+  if (typeof value === 'number') return value;
+  const hourMatch = value.match(/(\d+(?:\.\d+)?)H/);
+  const minuteMatch = value.match(/(\d+(?:\.\d+)?)M/);
+  return Number(hourMatch?.[1] || 0) + Number(minuteMatch?.[1] || 0) / 60;
+}
+
+function hoursToDuration(hours: number) {
+  const safe = Math.max(0.01, hours);
+  const wholeHours = Math.floor(safe);
+  const minutes = Math.round((safe - wholeHours) * 60);
+  return `PT${wholeHours ? `${wholeHours}H` : ''}${minutes ? `${minutes}M` : ''}`;
+}
+
+function mapTimeEntry(
+  entry: OpenProjectTimeEntry,
+  users = new Map<string, ReturnType<typeof mapUser>>()
+) {
+  const userHref = entry._links.user?.href || '';
+  return {
+    id: String(entry.id),
+    hours: String(durationToHours(entry.hours)),
+    spentOn: entry.spentOn,
+    comment: entry.comment?.raw,
+    user: users.get(userHref),
+    activity: entry._links.activity?.title || undefined,
+    createdAt: entry.createdAt,
+  };
+}
+
+export async function getTaskTimeEntries(taskId: string) {
+  const [page, users] = await Promise.all([
+    openProjectRequest<HalCollection<OpenProjectTimeEntry>>('/api/v3/time_entries', {
+      query: {
+        pageSize: 100,
+        filters: taskFilter(taskId),
+        sortBy: JSON.stringify([['spent_on', 'desc']]),
+      },
+    }),
+    usersByHref(),
+  ]);
+  const items = (page._embedded?.elements || []).map((entry) => mapTimeEntry(entry, users));
+  return {
+    items,
+    totalHours: items.reduce((sum, entry) => sum + Number(entry.hours || 0), 0),
+  };
+}
+
+async function firstTimeEntryActivity() {
+  const page = await openProjectRequest<HalCollection<OpenProjectTimeEntryActivity>>(
+    '/api/v3/time_entries/activities',
+    { query: { pageSize: 100 } }
+  );
+  return page._embedded?.elements?.[0];
+}
+
+export async function addTaskTimeEntry(
+  taskId: string,
+  input: { hours: number; spentOn: string; comment?: string }
+) {
+  const activity = await firstTimeEntryActivity();
+  const entry = await openProjectRequest<OpenProjectTimeEntry>('/api/v3/time_entries', {
+    method: 'POST',
+    body: {
+      hours: hoursToDuration(input.hours),
+      spentOn: input.spentOn,
+      comment: { format: 'markdown', raw: input.comment || '' },
+      _links: {
+        workPackage: { href: `/api/v3/work_packages/${taskId}` },
+        ...(activity ? { activity: { href: activity._links.self.href } } : {}),
+      },
+    },
+  });
+  const users = await usersByHref();
+  return mapTimeEntry(entry, users);
+}
+
+function mapAttachment(attachment: OpenProjectAttachment) {
+  return {
+    id: String(attachment.id),
+    fileName: attachment.fileName || attachment._links.self?.title || `Attachment ${attachment.id}`,
+    fileSize: attachment.fileSize,
+    contentType: attachment.contentType,
+    description: attachment.description?.raw,
+    downloadUrl:
+      attachment._links.downloadLocation?.href || attachment._links.staticDownloadLocation?.href,
+    createdAt: attachment.createdAt,
+  };
+}
+
+export async function getTaskAttachments(taskId: string) {
+  const workPackage = await openProjectRequest<OpenProjectWorkPackage>(
+    `/api/v3/work_packages/${taskId}`,
+    { query: { include: 'attachments' } }
+  );
+  const embedded = workPackage._embedded?.attachments?._embedded?.elements || [];
+  if (embedded.length) return embedded.map(mapAttachment);
+  const page = await openProjectRequest<HalCollection<OpenProjectAttachment>>(
+    `/api/v3/work_packages/${taskId}/attachments`,
+    { query: { pageSize: 100 } }
+  ).catch(() => ({ _embedded: { elements: [] } }));
+  return (page._embedded?.elements || []).map(mapAttachment);
+}
+
+export async function addTaskAttachment(
+  taskId: string,
+  file: Express.Multer.File,
+  description?: string
+) {
+  const form = new FormData();
+  form.set(
+    'metadata',
+    new Blob(
+      [
+        JSON.stringify({
+          fileName: file.originalname,
+          description: { format: 'plain', raw: description || '' },
+        }),
+      ],
+      { type: 'application/json' }
+    )
+  );
+  const fileBytes = file.buffer.buffer.slice(
+    file.buffer.byteOffset,
+    file.buffer.byteOffset + file.buffer.length
+  ) as ArrayBuffer;
+  form.set('file', new Blob([fileBytes], { type: file.mimetype }), file.originalname);
+  const attachment = await openProjectMultipartRequest<OpenProjectAttachment>(
+    `/api/v3/work_packages/${taskId}/attachments`,
+    form
+  );
+  return mapAttachment(attachment);
+}
+
+function customFieldLabel(key: string) {
+  return key.replace(/^customField/, 'Custom field ');
+}
+
+function customFieldValue(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  if (Array.isArray(value)) {
+    return value.map(customFieldValue).filter(Boolean).join(', ');
+  }
+  if (typeof value === 'object') {
+    const item = value as { title?: unknown; name?: unknown; href?: unknown; raw?: unknown };
+    return String(item.title || item.name || item.raw || item.href || JSON.stringify(value));
+  }
+  return String(value);
+}
+
+export async function getTaskCustomFields(taskId: string) {
+  const workPackage = await openProjectRequest<OpenProjectWorkPackage>(
+    `/api/v3/work_packages/${taskId}`
+  );
+  return Object.entries(workPackage)
+    .filter(([key]) => /^customField\d+$/.test(key))
+    .map(([key, value]) => ({
+      key,
+      label: customFieldLabel(key),
+      value: customFieldValue(value),
+      editable: false as const,
+    }))
+    .filter((item) => item.value);
+}
+
 export async function createTask(
   projectId: string,
   input: {
@@ -495,16 +732,32 @@ export async function addTaskComment(taskId: string, comment: string) {
 
 export async function searchTasks(query: string) {
   if (!query.trim()) return [];
-  const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
-  const lists = seeded ? seededLists(seeded) : undefined;
-  const projects: Array<{ id: string | number }> = lists || (await getProjects());
-  const pages = await Promise.all(
-    projects.slice(0, 8).map((project) =>
-      getTasks(String(project.id), { search: query, limit: 10 }).catch(() => ({
-        items: [],
-        nextCursor: null,
-      }))
-    )
-  );
-  return pages.flatMap((page) => page.items).slice(0, 20);
+  const [page, users, seeded] = await Promise.all([
+    openProjectRequest<HalCollection<OpenProjectWorkPackage>>('/api/v3/work_packages', {
+      query: {
+        pageSize: 50,
+        filters: JSON.stringify([
+          { subject: { operator: '~', values: [query.trim()] } },
+          { status: { operator: '*', values: [] } },
+        ]),
+      },
+    }),
+    usersByHref(),
+    useSeededHierarchy() ? loadSeededHierarchy() : Promise.resolve(null),
+  ]);
+  return (page._embedded?.elements || []).slice(0, 50).map((item) => {
+    const projectId = item._links.project?.href?.split('/').filter(Boolean).at(-1);
+    const taskList = projectId ? findSeededListByProjectId(seeded, projectId) : undefined;
+    return mapWorkPackage(
+      item,
+      {
+        projectId,
+        projectName: taskList?.name,
+        taskList,
+        folderId: taskList?.folderId,
+        spaceId: seededListSpaceId(seeded, taskList),
+      },
+      users
+    );
+  });
 }

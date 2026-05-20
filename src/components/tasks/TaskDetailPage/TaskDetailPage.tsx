@@ -2,8 +2,10 @@ import {
   ActionIcon,
   Badge,
   Button,
+  FileInput,
   Group,
   MultiSelect,
+  NumberInput,
   Paper,
   Select,
   SimpleGrid,
@@ -20,18 +22,30 @@ import {
   IconExternalLink,
   IconFlag,
   IconGitPullRequest,
+  IconLink,
+  IconPaperclip,
   IconPlus,
   IconRefresh,
+  IconClock,
+  IconTrash,
   IconUsers,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
   addTaskComment,
+  addTaskRelation,
+  addTaskTimeEntry,
+  deleteTaskRelation,
   getGitHubRepositories,
   getTask,
   getTaskActivity,
+  getTaskAttachments,
+  getTaskCustomFields,
+  getTaskRelations,
+  getTaskTimeEntries,
   linkTaskPullRequest,
   refreshTaskGitHub,
+  uploadTaskAttachment,
   unlinkTaskPullRequest,
   updateTask,
   displayStatus,
@@ -41,6 +55,10 @@ import {
   toDateInput,
   type ActivityLog,
   type GitHubRepository,
+  type OpenProjectAttachmentItem,
+  type OpenProjectCustomFieldItem,
+  type OpenProjectRelationItem,
+  type OpenProjectTimeEntryItem,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -86,6 +104,20 @@ export function TaskDetailPage({
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [comment, setComment] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
+  const [relations, setRelations] = useState<OpenProjectRelationItem[]>([]);
+  const [relationTargetId, setRelationTargetId] = useState('');
+  const [relationType, setRelationType] = useState('relates');
+  const [relationSaving, setRelationSaving] = useState(false);
+  const [timeEntries, setTimeEntries] = useState<OpenProjectTimeEntryItem[]>([]);
+  const [totalHours, setTotalHours] = useState(0);
+  const [timeHours, setTimeHours] = useState<number | string>(1);
+  const [timeSpentOn, setTimeSpentOn] = useState(toDateInput(new Date().toISOString()));
+  const [timeComment, setTimeComment] = useState('');
+  const [timeSaving, setTimeSaving] = useState(false);
+  const [attachments, setAttachments] = useState<OpenProjectAttachmentItem[]>([]);
+  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
+  const [attachmentSaving, setAttachmentSaving] = useState(false);
+  const [customFields, setCustomFields] = useState<OpenProjectCustomFieldItem[]>([]);
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
   const [manualPr, setManualPr] = useState('');
@@ -105,6 +137,24 @@ export function TaskDetailPage({
     getTaskActivity(task.id)
       .then((page) => setActivity(page.items))
       .catch((error) => onError(getErrorMessage(error)));
+    getTaskRelations(task.id)
+      .then((page) => setRelations(page.items))
+      .catch(() => setRelations([]));
+    getTaskTimeEntries(task.id)
+      .then((page) => {
+        setTimeEntries(page.items);
+        setTotalHours(page.totalHours);
+      })
+      .catch(() => {
+        setTimeEntries([]);
+        setTotalHours(0);
+      });
+    getTaskAttachments(task.id)
+      .then((page) => setAttachments(page.items))
+      .catch(() => setAttachments([]));
+    getTaskCustomFields(task.id)
+      .then((page) => setCustomFields(page.items))
+      .catch(() => setCustomFields([]));
     if (githubSupportedForTask) {
       getGitHubRepositories(workspace.id)
         .then((items) => {
@@ -173,6 +223,65 @@ export function TaskDetailPage({
       onError(getErrorMessage(error));
     } finally {
       setCommentSaving(false);
+    }
+  };
+
+  const submitRelation = async () => {
+    if (!canWriteTasks || !relationTargetId.trim() || relationTargetId.trim() === task.id) {
+      return;
+    }
+    try {
+      setRelationSaving(true);
+      await addTaskRelation(task.id, {
+        targetTaskId: relationTargetId.trim(),
+        type: relationType,
+      });
+      setRelationTargetId('');
+      const page = await getTaskRelations(task.id);
+      setRelations(page.items);
+    } catch (error) {
+      onError(getErrorMessage(error));
+    } finally {
+      setRelationSaving(false);
+    }
+  };
+
+  const submitTimeEntry = async () => {
+    if (!canWriteTasks || !Number(timeHours) || !timeSpentOn) {
+      return;
+    }
+    try {
+      setTimeSaving(true);
+      await addTaskTimeEntry(task.id, {
+        hours: Number(timeHours),
+        spentOn: timeSpentOn,
+        comment: timeComment,
+      });
+      setTimeComment('');
+      const page = await getTaskTimeEntries(task.id);
+      setTimeEntries(page.items);
+      setTotalHours(page.totalHours);
+    } catch (error) {
+      onError(getErrorMessage(error));
+    } finally {
+      setTimeSaving(false);
+    }
+  };
+
+  const submitAttachment = async () => {
+    if (!canWriteTasks || !attachmentFile) {
+      return;
+    }
+    try {
+      setAttachmentSaving(true);
+      await uploadTaskAttachment(task.id, attachmentFile);
+      setAttachmentFile(null);
+      const page = await getTaskAttachments(task.id);
+      setAttachments(page.items);
+    } catch (error) {
+      onError(getErrorMessage(error));
+    } finally {
+      setAttachmentSaving(false);
     }
   };
 
@@ -347,13 +456,17 @@ export function TaskDetailPage({
             </Tooltip>
           </Tabs.Tab>
           <Tabs.Tab value="activity">Activity</Tabs.Tab>
+          <Tabs.Tab value="relations">Relations</Tabs.Tab>
+          <Tabs.Tab value="time">Time</Tabs.Tab>
+          <Tabs.Tab value="files">Files</Tabs.Tab>
+          {customFields.length > 0 && <Tabs.Tab value="custom-fields">Custom fields</Tabs.Tab>}
         </Tabs.List>
         <Tabs.Panel value="details" pt="md">
           <Stack>
             <Text c="dimmed">Task fields are saved through the OpenProject API.</Text>
             <Text size="sm" c="dimmed">
-              Dependencies, linked tasks, custom fields, attachments, and timers are intentionally
-              hidden until wired to OpenProject endpoints.
+              Relations, activity, files, and time entries are saved through OpenProject. Custom
+              fields are shown read-only unless the OpenProject schema exposes editable metadata.
             </Text>
           </Stack>
         </Tabs.Panel>
@@ -655,6 +768,186 @@ export function TaskDetailPage({
             {!activity.length && <Text c="dimmed">No activity yet.</Text>}
           </Stack>
         </Tabs.Panel>
+        <Tabs.Panel value="relations" pt="md">
+          <Stack>
+            {canWriteTasks && (
+              <Paper withBorder p="sm">
+                <SimpleGrid cols={{ base: 1, sm: 3 }}>
+                  <TextInput
+                    label="Target work package ID"
+                    value={relationTargetId}
+                    onChange={(event) => setRelationTargetId(event.currentTarget.value)}
+                    leftSection={<IconLink size="1rem" />}
+                  />
+                  <Select
+                    label="Relation type"
+                    value={relationType}
+                    onChange={(value) => setRelationType(value || 'relates')}
+                    data={[
+                      { value: 'relates', label: 'Relates' },
+                      { value: 'blocks', label: 'Blocks' },
+                      { value: 'blocked', label: 'Blocked by' },
+                      { value: 'precedes', label: 'Precedes' },
+                      { value: 'follows', label: 'Follows' },
+                    ]}
+                  />
+                  <Stack justify="flex-end">
+                    <Button loading={relationSaving} onClick={submitRelation}>
+                      Add relation
+                    </Button>
+                  </Stack>
+                </SimpleGrid>
+              </Paper>
+            )}
+            {relations.map((relation) => (
+              <Paper key={relation.id} withBorder p="sm">
+                <Group justify="space-between">
+                  <Stack gap={2}>
+                    <Text fw={700}>{relation.type}</Text>
+                    <Text size="sm" c="dimmed">
+                      {relation.fromTitle || relation.fromId} → {relation.toTitle || relation.toId}
+                    </Text>
+                  </Stack>
+                  {canWriteTasks && (
+                    <Tooltip label="Delete relation">
+                      <ActionIcon
+                        color="red"
+                        variant="subtle"
+                        aria-label="Delete relation"
+                        onClick={async () => {
+                          try {
+                            await deleteTaskRelation(task.id, relation.id);
+                            const page = await getTaskRelations(task.id);
+                            setRelations(page.items);
+                          } catch (error) {
+                            onError(getErrorMessage(error));
+                          }
+                        }}
+                      >
+                        <IconTrash size="1rem" />
+                      </ActionIcon>
+                    </Tooltip>
+                  )}
+                </Group>
+              </Paper>
+            ))}
+            {!relations.length && <Text c="dimmed">No OpenProject relations.</Text>}
+          </Stack>
+        </Tabs.Panel>
+        <Tabs.Panel value="time" pt="md">
+          <Stack>
+            <Group justify="space-between">
+              <Title order={4}>Time entries</Title>
+              <Tooltip label={`${totalHours.toFixed(2)} hours logged`}>
+                <Badge leftSection={<IconClock size="0.875rem" />}>{totalHours.toFixed(2)}h</Badge>
+              </Tooltip>
+            </Group>
+            {canWriteTasks && (
+              <Paper withBorder p="sm">
+                <SimpleGrid cols={{ base: 1, sm: 4 }}>
+                  <NumberInput
+                    label="Hours"
+                    min={0.01}
+                    step={0.25}
+                    value={timeHours}
+                    onChange={setTimeHours}
+                  />
+                  <TextInput
+                    label="Spent on"
+                    type="date"
+                    value={timeSpentOn}
+                    onChange={(event) => setTimeSpentOn(event.currentTarget.value)}
+                  />
+                  <TextInput
+                    label="Comment"
+                    value={timeComment}
+                    onChange={(event) => setTimeComment(event.currentTarget.value)}
+                  />
+                  <Stack justify="flex-end">
+                    <Button loading={timeSaving} onClick={submitTimeEntry}>
+                      Log time
+                    </Button>
+                  </Stack>
+                </SimpleGrid>
+              </Paper>
+            )}
+            {timeEntries.map((entry) => (
+              <Paper key={entry.id} withBorder p="sm">
+                <Group justify="space-between">
+                  <Text fw={700}>{entry.hours}h</Text>
+                  <Text size="sm" c="dimmed">
+                    {entry.spentOn || '-'} {entry.user ? `• ${entry.user.name}` : ''}
+                  </Text>
+                </Group>
+                {entry.comment && <Text size="sm">{entry.comment}</Text>}
+              </Paper>
+            ))}
+            {!timeEntries.length && <Text c="dimmed">No OpenProject time entries.</Text>}
+          </Stack>
+        </Tabs.Panel>
+        <Tabs.Panel value="files" pt="md">
+          <Stack>
+            {canWriteTasks && (
+              <Paper withBorder p="sm">
+                <Group align="end">
+                  <FileInput
+                    label="Upload attachment"
+                    value={attachmentFile}
+                    onChange={setAttachmentFile}
+                    leftSection={<IconPaperclip size="1rem" />}
+                  />
+                  <Button
+                    loading={attachmentSaving}
+                    disabled={!attachmentFile}
+                    onClick={submitAttachment}
+                  >
+                    Upload
+                  </Button>
+                </Group>
+              </Paper>
+            )}
+            {attachments.map((attachment) => (
+              <Paper key={attachment.id} withBorder p="sm">
+                <Group justify="space-between">
+                  <Stack gap={2}>
+                    <Text fw={700}>{attachment.fileName}</Text>
+                    <Text size="sm" c="dimmed">
+                      {attachment.contentType || 'file'}{' '}
+                      {attachment.fileSize ? `• ${Math.round(attachment.fileSize / 1024)} KB` : ''}
+                    </Text>
+                  </Stack>
+                  {attachment.downloadUrl && (
+                    <Button
+                      size="xs"
+                      variant="light"
+                      component="a"
+                      href={attachment.downloadUrl}
+                      target="_blank"
+                    >
+                      Open
+                    </Button>
+                  )}
+                </Group>
+              </Paper>
+            ))}
+            {!attachments.length && <Text c="dimmed">No OpenProject attachments.</Text>}
+          </Stack>
+        </Tabs.Panel>
+        {customFields.length > 0 && (
+          <Tabs.Panel value="custom-fields" pt="md">
+            <SimpleGrid cols={{ base: 1, sm: 2 }}>
+              {customFields.map((field) => (
+                <TextInput
+                  key={field.key}
+                  label={field.label}
+                  value={field.value}
+                  readOnly
+                  description="Read-only OpenProject custom field"
+                />
+              ))}
+            </SimpleGrid>
+          </Tabs.Panel>
+        )}
       </Tabs>
     </Paper>
   );
