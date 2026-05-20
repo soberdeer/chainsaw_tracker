@@ -13,6 +13,7 @@
     "setup": "npm run db:up && npm run prisma:migrate && npm run prisma:generate",
     "setup:local": "npm run db:create && npm run prisma:migrate && npm run prisma:generate",
     "build": "tsc -b && vite build",
+    "typecheck": "tsc --noEmit",
     "preview": "vite preview --host 0.0.0.0",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
@@ -20,7 +21,7 @@
     "oxlint": "oxlint . --fix",
     "lint": "npm run oxlint",
     "test:code": "tsx --test tests/*.test.ts",
-    "test": "npm run format && npm run lint && npm run test:code",
+    "test": "npm run format && npm run lint && npm run typecheck && npm run test:code",
     "format": "oxfmt --write \"**/*.{ts,tsx,css}\""
   },
   "dependencies": {

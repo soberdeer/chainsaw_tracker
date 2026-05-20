@@ -31,6 +31,14 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     const detail = payload.detail ? `: ${payload.detail}` : '';
     throw new Error(`${payload.error || response.statusText}${detail}`);
   }
+  if (response.status === 204) {
+    return undefined as T;
+  }
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const text = await response.text();
+    return text ? (text as T) : (undefined as T);
+  }
   return response.json();
 }
 
@@ -294,6 +302,10 @@ export function markAllNotificationsRead() {
 
 export function getImportReports() {
   return request<MigrationRun[]>('/api/import-reports');
+}
+
+export function getImportReport(id: string) {
+  return request<MigrationRun>(`/api/import-reports/${id}`);
 }
 
 export function getTaskLists(workspaceId: string, teamId?: string) {

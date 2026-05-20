@@ -1,4 +1,9 @@
-import { buildWorkPackageFilters, getProjects, getTasks } from '../server/openproject/service.js';
+import {
+  buildWorkPackageFilters,
+  getProjects,
+  getTasks,
+  inferCustomFieldKind,
+} from '../server/openproject/service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
@@ -123,4 +128,14 @@ test('getProjects hides migration and demo OpenProject projects from runtime', a
     projects.map((project) => project.name),
     ['Real Space']
   );
+});
+
+test('inferCustomFieldKind recognises editable scalar field types', () => {
+  assert.equal(inferCustomFieldKind('plain text'), 'text');
+  assert.equal(inferCustomFieldKind('2026-05-20'), 'date');
+  assert.equal(inferCustomFieldKind('Line 1\nLine 2'), 'textarea');
+  assert.equal(inferCustomFieldKind(7), 'integer');
+  assert.equal(inferCustomFieldKind(7.5), 'float');
+  assert.equal(inferCustomFieldKind(true), 'boolean');
+  assert.equal(inferCustomFieldKind({ title: 'Option' }), 'readonly');
 });

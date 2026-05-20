@@ -14,7 +14,7 @@ import type {
   OpenProjectUser,
   OpenProjectWorkPackage,
 } from '../server/openproject/types.js';
-import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
+import type { PermissionSet, WorkspaceRole } from '../src/lib';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
   ClickUpFolder,
@@ -24,6 +24,11 @@ import type {
   ClickUpTask,
   ClickUpTeam,
 } from './migration/clickup/types.js';
+import {
+  appendAdditionalAssigneesMeta,
+  splitClickUpAssignees,
+  type ClickUpAssigneeLike,
+} from './migration/clickupAssignees.js';
 import {
   clickUpPermissionFromRaw,
   extractFolderPermissionGrants,
@@ -134,6 +139,10 @@ type Summary = {
   clickUpAttachmentsSeen: number;
   clickUpCommentsSeen: number;
   clickUpTimeEntriesSeen: number;
+  assigneesMapped: number;
+  responsibleMapped: number;
+  additionalAssigneesStored: number;
+  assigneeMappingErrors: string[];
   fallbackRecoveredTasks: number;
   fallbackSkippedTasks: number;
   errors: string[];
@@ -315,8 +324,47 @@ function cleanOptional(value: unknown) {
   return text.length ? text : undefined;
 }
 
+function openProjectUserHref(user?: OpenProjectUser | null) {
+  return user?._links.self.href || (user?.id ? `/api/v3/users/${user.id}` : undefined);
+}
+
 function clickUpUrlForTask(task: ClickUpTask) {
   return cleanOptional((task as { url?: string }).url);
+}
+
+async function openProjectUserForClickUpUser(
+  clickUpUser: ClickUpUserLike,
+  openProjectUserSync: OpenProjectUserSyncContext
+) {
+  return ensureOpenProjectUserFromClickUp(clickUpUser, openProjectUserSync);
+}
+
+async function clickUpAssigneeLinks(
+  task: ClickUpTask,
+  openProjectUserSync: OpenProjectUserSyncContext
+) {
+  const mapped = splitClickUpAssignees(
+    ((task as unknown as { assignees?: ClickUpAssigneeLike[] }).assignees ||
+      []) as ClickUpAssigneeLike[]
+  );
+
+  const [assigneeUser, responsibleUser] = await Promise.all([
+    mapped.assignee
+      ? openProjectUserForClickUpUser(mapped.assignee, openProjectUserSync)
+      : Promise.resolve(null),
+    mapped.responsible
+      ? openProjectUserForClickUpUser(mapped.responsible, openProjectUserSync)
+      : Promise.resolve(null),
+  ]);
+
+  return {
+    assigneeHref: openProjectUserHref(assigneeUser),
+    responsibleHref:
+      responsibleUser && responsibleUser.id !== assigneeUser?.id
+        ? openProjectUserHref(responsibleUser)
+        : undefined,
+    additionalAssignees: mapped.additional,
+  };
 }
 
 function originalClickUpPath(context: ClickUpTaskContext) {
@@ -1339,6 +1387,9 @@ function buildTaskBody(params: {
   openProjectStatuses: OpenProjectStatus[];
   priorities: OpenProjectPriority[];
   includeStatus?: boolean;
+  assigneeHref?: string;
+  responsibleHref?: string;
+  additionalAssignees?: ClickUpAssigneeLike[];
 }) {
   const links: Record<string, { href: string | undefined }> = {
     type: { href: params.type?._links.self.href },
@@ -1359,13 +1410,25 @@ function buildTaskBody(params: {
     links.priority = { href: priority };
   }
 
+  if (params.assigneeHref) {
+    links.assignee = { href: params.assigneeHref };
+  }
+
+  if (params.responsibleHref) {
+    links.responsible = { href: params.responsibleHref };
+  }
+
   const meta = metaFromContext(params.task, params.context);
+  const description = appendAdditionalAssigneesMeta(
+    clickUpTaskDescription(params.task),
+    params.additionalAssignees || []
+  );
 
   const body: Record<string, unknown> = {
     subject: params.task.name,
     description: {
       format: 'markdown',
-      raw: appendImportedMeta(clickUpTaskDescription(params.task), meta),
+      raw: appendImportedMeta(description, meta),
     },
     _links: links,
   };
@@ -1382,6 +1445,10 @@ function buildTaskBody(params: {
   }
 
   return body;
+}
+
+function isAssigneeMappingError(error: unknown) {
+  return /assignee|responsible/i.test(openProjectErrorMessage(error));
 }
 
 function indexExistingWorkPackages(workPackages: OpenProjectWorkPackage[]) {
@@ -1411,49 +1478,71 @@ async function createOpenProjectWorkPackage(params: {
   openProjectStatuses: OpenProjectStatus[];
   priorities: OpenProjectPriority[];
   summary: Summary;
+  openProjectUserSync: OpenProjectUserSyncContext;
 }) {
-  const body = buildTaskBody({
-    task: params.task,
-    context: params.context,
-    type: params.type,
-    openProjectStatuses: params.openProjectStatuses,
-    priorities: params.priorities,
-    includeStatus: true,
-  });
+  const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
+  let includeStatus = true;
+  let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
 
-  try {
-    return await openProjectRequest<OpenProjectWorkPackage>(
-      `/api/v3/projects/${params.project.id}/work_packages`,
-      {
-        method: 'POST',
-        body,
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const created = await openProjectRequest<OpenProjectWorkPackage>(
+        `/api/v3/projects/${params.project.id}/work_packages`,
+        {
+          method: 'POST',
+          body: buildTaskBody({
+            task: params.task,
+            context: params.context,
+            type: params.type,
+            openProjectStatuses: params.openProjectStatuses,
+            priorities: params.priorities,
+            includeStatus,
+            assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
+            responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
+            additionalAssignees: assigneeMapping.additionalAssignees,
+          }),
+        }
+      );
+
+      if (includeAssignments && assigneeMapping.assigneeHref) {
+        params.summary.assigneesMapped += 1;
       }
-    );
-  } catch (error) {
-    if (!isInvalidStatusTransitionError(error)) {
+      if (includeAssignments && assigneeMapping.responsibleHref) {
+        params.summary.responsibleMapped += 1;
+      }
+      if (assigneeMapping.additionalAssignees.length) {
+        params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
+      }
+
+      return created;
+    } catch (error) {
+      if (includeStatus && isInvalidStatusTransitionError(error)) {
+        includeStatus = false;
+        params.summary.statusTransitionsSkipped += 1;
+        params.summary.warnings.push(
+          `status skipped while creating ${params.task.name} (${params.task.id}) because OpenProject rejected the imported ClickUp status`
+        );
+        continue;
+      }
+
+      if (includeAssignments && isAssigneeMappingError(error)) {
+        includeAssignments = false;
+        params.summary.assigneeMappingErrors.push(
+          `task ${params.task.id}: OpenProject rejected assignee/responsible mapping: ${openProjectErrorMessage(
+            error
+          )}`
+        );
+        params.summary.warnings.push(
+          `task ${params.task.name} (${params.task.id}): created without assignee/responsible because OpenProject rejected the imported assignee mapping`
+        );
+        continue;
+      }
+
       throw error;
     }
-
-    params.summary.statusTransitionsSkipped += 1;
-    params.summary.warnings.push(
-      `status skipped while creating ${params.task.name} (${params.task.id}) because OpenProject rejected the imported ClickUp status`
-    );
-
-    return openProjectRequest<OpenProjectWorkPackage>(
-      `/api/v3/projects/${params.project.id}/work_packages`,
-      {
-        method: 'POST',
-        body: buildTaskBody({
-          task: params.task,
-          context: params.context,
-          type: params.type,
-          openProjectStatuses: params.openProjectStatuses,
-          priorities: params.priorities,
-          includeStatus: false,
-        }),
-      }
-    );
   }
+
+  throw new Error(`Could not create work package for ClickUp task ${params.task.id}`);
 }
 
 async function updateOpenProjectWorkPackage(params: {
@@ -1464,25 +1553,66 @@ async function updateOpenProjectWorkPackage(params: {
   openProjectStatuses: OpenProjectStatus[];
   priorities: OpenProjectPriority[];
   summary: Summary;
+  openProjectUserSync: OpenProjectUserSyncContext;
 }) {
   if (params.task.status) {
     params.summary.statusTransitionsSkipped += 1;
   }
+  const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
+  let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
 
-  return openProjectRequest<OpenProjectWorkPackage>(`/api/v3/work_packages/${params.existing.id}`, {
-    method: 'PATCH',
-    body: {
-      lockVersion: params.existing.lockVersion,
-      ...buildTaskBody({
-        task: params.task,
-        context: params.context,
-        type: params.type,
-        openProjectStatuses: params.openProjectStatuses,
-        priorities: params.priorities,
-        includeStatus: false,
-      }),
-    },
-  });
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const updated = await openProjectRequest<OpenProjectWorkPackage>(
+        `/api/v3/work_packages/${params.existing.id}`,
+        {
+          method: 'PATCH',
+          body: {
+            lockVersion: params.existing.lockVersion,
+            ...buildTaskBody({
+              task: params.task,
+              context: params.context,
+              type: params.type,
+              openProjectStatuses: params.openProjectStatuses,
+              priorities: params.priorities,
+              includeStatus: false,
+              assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
+              responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
+              additionalAssignees: assigneeMapping.additionalAssignees,
+            }),
+          },
+        }
+      );
+
+      if (includeAssignments && assigneeMapping.assigneeHref) {
+        params.summary.assigneesMapped += 1;
+      }
+      if (includeAssignments && assigneeMapping.responsibleHref) {
+        params.summary.responsibleMapped += 1;
+      }
+      if (assigneeMapping.additionalAssignees.length) {
+        params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
+      }
+
+      return updated;
+    } catch (error) {
+      if (includeAssignments && isAssigneeMappingError(error)) {
+        includeAssignments = false;
+        params.summary.assigneeMappingErrors.push(
+          `task ${params.task.id}: OpenProject rejected assignee/responsible update: ${openProjectErrorMessage(
+            error
+          )}`
+        );
+        params.summary.warnings.push(
+          `task ${params.task.name} (${params.task.id}): assignee/responsible update was skipped because OpenProject rejected the mapping`
+        );
+        continue;
+      }
+      throw error;
+    }
+  }
+
+  throw new Error(`Could not update work package for ClickUp task ${params.task.id}`);
 }
 
 async function syncClickUpTasksIntoProject(params: {
@@ -1522,6 +1652,7 @@ async function syncClickUpTasksIntoProject(params: {
           openProjectStatuses: params.openProjectStatuses,
           priorities: params.priorities,
           summary: params.summary,
+          openProjectUserSync: params.openProjectUserSync,
         });
 
         byClickUpTaskId.set(task.id, updated);
@@ -1535,6 +1666,7 @@ async function syncClickUpTasksIntoProject(params: {
           openProjectStatuses: params.openProjectStatuses,
           priorities: params.priorities,
           summary: params.summary,
+          openProjectUserSync: params.openProjectUserSync,
         });
 
         byClickUpTaskId.set(task.id, created);
@@ -2052,6 +2184,10 @@ async function main() {
     clickUpAttachmentsSeen: 0,
     clickUpCommentsSeen: 0,
     clickUpTimeEntriesSeen: 0,
+    assigneesMapped: 0,
+    responsibleMapped: 0,
+    additionalAssigneesStored: 0,
+    assigneeMappingErrors: [],
     fallbackRecoveredTasks: 0,
     fallbackSkippedTasks: 0,
     errors: [],
@@ -2283,6 +2419,7 @@ async function main() {
       warnings: [...summary.warnings, ...summary.permissionWarnings],
       errors: [
         ...summary.errors,
+        ...summary.assigneeMappingErrors,
         ...summary.openProjectUserErrors,
         ...summary.openProjectMembershipErrors,
       ],

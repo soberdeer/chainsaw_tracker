@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Badge,
   Button,
+  Checkbox,
   FileInput,
   Group,
   MultiSelect,
@@ -284,6 +285,137 @@ export function TaskDetailPage({
     } finally {
       setAttachmentSaving(false);
     }
+  };
+
+  const renderCustomFieldInput = (field: OpenProjectCustomFieldItem) => {
+    const commonDescription = field.editable
+      ? 'Saved through OpenProject custom field PATCH'
+      : 'Read-only OpenProject custom field';
+
+    if (field.kind === 'boolean') {
+      return (
+        <Checkbox
+          label={field.label}
+          checked={Boolean(field.rawValue)}
+          disabled={!canWriteTasks || !field.editable}
+          description={commonDescription}
+          onChange={async (event) => {
+            if (!canWriteTasks || !field.editable) return;
+            try {
+              const page = await updateTaskCustomField(
+                task.id,
+                field.key,
+                event.currentTarget.checked
+              );
+              setCustomFields(page.items);
+            } catch (error) {
+              onError(getErrorMessage(error));
+            }
+          }}
+        />
+      );
+    }
+
+    if (field.kind === 'integer' || field.kind === 'float') {
+      return (
+        <NumberInput
+          label={field.label}
+          value={typeof field.rawValue === 'number' ? field.rawValue : undefined}
+          decimalScale={field.kind === 'integer' ? 0 : 2}
+          allowDecimal={field.kind === 'float'}
+          allowNegative
+          disabled={!canWriteTasks || !field.editable}
+          description={commonDescription}
+          onBlur={async (event) => {
+            if (!canWriteTasks || !field.editable) return;
+            const value = event.currentTarget.value.trim();
+            if (!value || value === String(field.rawValue ?? '')) return;
+            try {
+              const page = await updateTaskCustomField(
+                task.id,
+                field.key,
+                field.kind === 'integer' ? Number.parseInt(value, 10) : Number.parseFloat(value)
+              );
+              setCustomFields(page.items);
+            } catch (error) {
+              onError(getErrorMessage(error));
+            }
+          }}
+        />
+      );
+    }
+
+    if (field.kind === 'textarea') {
+      return (
+        <Textarea
+          label={field.label}
+          defaultValue={field.value}
+          readOnly={!canWriteTasks || !field.editable}
+          description={commonDescription}
+          autosize
+          minRows={3}
+          onBlur={async (event) => {
+            if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
+              return;
+            try {
+              const page = await updateTaskCustomField(
+                task.id,
+                field.key,
+                event.currentTarget.value
+              );
+              setCustomFields(page.items);
+            } catch (error) {
+              onError(getErrorMessage(error));
+            }
+          }}
+        />
+      );
+    }
+
+    if (field.kind === 'date') {
+      return (
+        <TextInput
+          label={field.label}
+          type="date"
+          defaultValue={typeof field.rawValue === 'string' ? field.rawValue : field.value}
+          readOnly={!canWriteTasks || !field.editable}
+          description={commonDescription}
+          onBlur={async (event) => {
+            if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
+              return;
+            try {
+              const page = await updateTaskCustomField(
+                task.id,
+                field.key,
+                event.currentTarget.value
+              );
+              setCustomFields(page.items);
+            } catch (error) {
+              onError(getErrorMessage(error));
+            }
+          }}
+        />
+      );
+    }
+
+    return (
+      <TextInput
+        label={field.label}
+        defaultValue={field.value}
+        readOnly={!canWriteTasks || !field.editable}
+        description={commonDescription}
+        onBlur={async (event) => {
+          if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
+            return;
+          try {
+            const page = await updateTaskCustomField(task.id, field.key, event.currentTarget.value);
+            setCustomFields(page.items);
+          } catch (error) {
+            onError(getErrorMessage(error));
+          }
+        }}
+      />
+    );
   };
 
   return (
@@ -938,30 +1070,8 @@ export function TaskDetailPage({
           <Tabs.Panel value="custom-fields" pt="md">
             <SimpleGrid cols={{ base: 1, sm: 2 }}>
               {customFields.map((field) => (
-                <Group key={field.key} align="end" wrap="nowrap">
-                  <TextInput
-                    label={field.label}
-                    defaultValue={field.value}
-                    readOnly={!canWriteTasks}
-                    description={
-                      canWriteTasks
-                        ? 'Saved through OpenProject custom field PATCH'
-                        : 'Read-only OpenProject custom field'
-                    }
-                    onBlur={async (event) => {
-                      if (!canWriteTasks || event.currentTarget.value === field.value) return;
-                      try {
-                        const page = await updateTaskCustomField(
-                          task.id,
-                          field.key,
-                          event.currentTarget.value
-                        );
-                        setCustomFields(page.items);
-                      } catch (error) {
-                        onError(getErrorMessage(error));
-                      }
-                    }}
-                  />
+                <Group key={field.key} align="stretch" wrap="nowrap">
+                  {renderCustomFieldInput(field)}
                 </Group>
               ))}
             </SimpleGrid>

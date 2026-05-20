@@ -171,6 +171,8 @@ export type OpenProjectCustomFieldItem = {
   key: string;
   label: string;
   value: string;
+  rawValue: string | number | boolean | null;
+  kind: 'text' | 'textarea' | 'integer' | 'float' | 'date' | 'boolean' | 'readonly';
   editable: boolean;
 };
 

@@ -20,6 +20,11 @@ importReportsRouter.get('/', async (_req, res) => {
   res.json(runs);
 });
 
+importReportsRouter.get('/:id', async (req, res) => {
+  const run = await prisma.migrationRun.findUniqueOrThrow({ where: { id: req.params.id } });
+  res.json(run);
+});
+
 importReportsRouter.get('/:id/json', async (req, res) => {
   const run = await prisma.migrationRun.findUniqueOrThrow({ where: { id: req.params.id } });
   res.setHeader('Content-Disposition', `attachment; filename="migration-${run.id}.json"`);

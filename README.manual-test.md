@@ -128,7 +128,10 @@ curl http://localhost:4000/api/openproject/workspaces
    - start date
    - due date
 5. Refresh the page and confirm changes persisted in OpenProject.
-6. Unsupported fields such as tags, dependencies, attachments, custom fields, and timers must not appear as active editable controls.
+6. Open `Relations`, `Time`, and `Files` tabs and confirm they load real OpenProject-backed data.
+7. Open `Custom fields` if present.
+8. Confirm scalar fields such as text, multiline text, integer, float, date, and boolean can be edited.
+9. Confirm unsupported custom field shapes remain read-only.
 
 ## Create / Update / Delete
 
@@ -213,7 +216,7 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 9. Upload a small attachment.
 10. Refresh and confirm the attachment remains visible and can be opened.
 11. If upload fails, verify the error comes from OpenProject permissions/API and not from fake UI.
-12. If the task has OpenProject custom fields, edit a text-like field and blur the input.
+12. If the task has OpenProject custom fields, edit a supported scalar field and blur the input.
 13. Confirm OpenProject accepts the PATCH or returns a validation error in the UI.
 
 ## Verify Assigned To Me
@@ -234,7 +237,9 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 6. Confirm OpenProject updates tasks and partial failures are shown.
 7. Assign a task to a user whose email exists as a local tracker user.
 8. Confirm the bell shows a real notification.
-9. As an owner/admin, open the Import Reports menu and download the latest JSON report.
+9. As an owner/admin, open the Import Reports menu and open the latest report detail modal.
+10. Confirm the modal shows summary, warnings, and errors.
+11. Download the JSON report from the modal and confirm the payload matches the visible summary.
 
 ## Optional ClickUp Migration
 
@@ -272,6 +277,9 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - Explicit ClickUp folder members, when returned by `GET /folder/{folder_id}` in the same access/sharing fields, are applied to the mapped Folder project and inherited by child list projects.
    - Explicit ClickUp list members from `GET /list/{list_id}/member` are applied to the mapped list project.
    - Task assignees get at least Member access to the mapped list project.
+   - The first ClickUp assignee becomes the OpenProject assignee when OpenProject accepts the mapping.
+   - The second ClickUp assignee becomes the OpenProject responsible user when available.
+   - Additional assignees are preserved in the task description metadata block until watcher mapping is implemented.
 6. Check inheritance:
    - Space-level grants are applied to folder/list subprojects.
    - Explicit list access does not grant access to unrelated top-level spaces.
@@ -280,6 +288,10 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - no duplicate memberships
    - existing stronger roles are not downgraded
    - weaker roles are upgraded when ClickUp access requires it
+8. Pick a ClickUp task with multiple assignees and open the mapped OpenProject work package:
+   - confirm the primary assignee is set
+   - confirm the second assignee is set as responsible when supported
+   - confirm any remaining assignees are preserved in task metadata instead of being dropped
 
 Current ClickUp permission source limitations:
 

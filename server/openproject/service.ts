@@ -570,6 +570,26 @@ function customFieldLabel(key: string) {
   return key.replace(/^customField/, 'Custom field ');
 }
 
+export function inferCustomFieldKind(value: unknown) {
+  if (typeof value === 'boolean') return 'boolean' as const;
+  if (typeof value === 'number')
+    return Number.isInteger(value) ? ('integer' as const) : ('float' as const);
+  if (typeof value === 'string') {
+    if (/^\d{4}-\d{2}-\d{2}$/.test(value)) return 'date' as const;
+    if (value.includes('\n') || value.length > 120) return 'textarea' as const;
+    return 'text' as const;
+  }
+  return 'readonly' as const;
+}
+
+function customFieldRawValue(value: unknown): string | number | boolean | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+    return value;
+  }
+  return null;
+}
+
 function customFieldValue(value: unknown): string {
   if (value === null || value === undefined) return '';
   if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
@@ -594,10 +614,12 @@ export async function getTaskCustomFields(taskId: string) {
     .map(([key, value]) => ({
       key,
       label: customFieldLabel(key),
+      rawValue: customFieldRawValue(value),
+      kind: inferCustomFieldKind(value),
       value: customFieldValue(value),
-      editable: true,
+      editable: inferCustomFieldKind(value) !== 'readonly',
     }))
-    .filter((item) => item.value);
+    .filter((item) => item.value || item.rawValue !== null);
 }
 
 export async function updateTaskCustomField(taskId: string, key: string, value: unknown) {

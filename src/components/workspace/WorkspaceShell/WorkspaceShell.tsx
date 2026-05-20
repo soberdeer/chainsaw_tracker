@@ -8,6 +8,7 @@ import {
   Group,
   Loader,
   Menu,
+  Modal,
   MultiSelect,
   ScrollArea,
   Select,
@@ -42,6 +43,7 @@ import {
   bulkUpdateTasks,
   createSavedView,
   deleteSavedView,
+  getImportReport,
   getImportReports,
   getNotifications,
   getSavedViews,
@@ -125,6 +127,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationUnread, setNotificationUnread] = useState(0);
   const [importReports, setImportReports] = useState<MigrationRun[]>([]);
+  const [activeImportReport, setActiveImportReport] = useState<MigrationRun | null>(null);
   const profileUser = {
     id: currentUser.id,
     email: currentUser.email,
@@ -556,635 +559,693 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   }
 
   return (
-    <AppShell navbar={{ width: '21.75rem', breakpoint: 'sm' }} padding={0}>
-      <GlobalSearchModal
-        opened={searchOpen}
-        workspace={workspace}
-        activeSpace={activeSpace}
-        activeFolder={activeFolder}
-        activeTaskList={activeTaskList}
-        onClose={() => setSearchOpen(false)}
-        onNavigate={(url) => navigate(url)}
-        onCreateTask={() => setCreateTaskStatusId(statuses[0]?.id || null)}
-        onCreateSpace={() => setSpaceCreateOpen(true)}
-        onError={setActionError}
-        canManageSpaces={canManageSpaces}
-        canWriteTasks={canWriteTasks}
-      />
-      <TaskCreateModal
-        opened={Boolean(createTaskStatusId)}
-        taskList={activeTaskList}
-        statuses={statuses}
-        users={availableAssignees}
-        initialStatusId={createTaskStatusId || statuses[0]?.id}
-        onClose={() => setCreateTaskStatusId(null)}
-        onCreated={() => reload()}
-        onError={setActionError}
-      />
-      <ProfileModal
-        opened={profileOpen}
-        user={currentUser}
-        role={currentMembership?.role}
-        onClose={() => setProfileOpen(false)}
-        onSaved={onCurrentUserChange}
-      />
-      {workspace && (
-        <SpaceCreateModal
-          opened={spaceCreateOpen}
+    <>
+      <AppShell navbar={{ width: '21.75rem', breakpoint: 'sm' }} padding={0}>
+        <GlobalSearchModal
+          opened={searchOpen}
           workspace={workspace}
-          onClose={() => setSpaceCreateOpen(false)}
-          onCreated={reload}
+          activeSpace={activeSpace}
+          activeFolder={activeFolder}
+          activeTaskList={activeTaskList}
+          onClose={() => setSearchOpen(false)}
+          onNavigate={(url) => navigate(url)}
+          onCreateTask={() => setCreateTaskStatusId(statuses[0]?.id || null)}
+          onCreateSpace={() => setSpaceCreateOpen(true)}
+          onError={setActionError}
+          canManageSpaces={canManageSpaces}
+          canWriteTasks={canWriteTasks}
         />
-      )}
-      <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
-        <Group mb="lg" gap="sm" justify="space-between">
-          <Group gap="sm">
-            <Tooltip label="Workspace">
-              <ThemeIcon size="lg" radius="md" color="dark">
-                <IconCheck size="1.25rem" />
-              </ThemeIcon>
-            </Tooltip>
-            <div>
-              <Text fw={800}>{workspace.name}</Text>
-              <Text size="xs" c="dimmed">
-                All Tasks - studio workspace
-              </Text>
-            </div>
+        <TaskCreateModal
+          opened={Boolean(createTaskStatusId)}
+          taskList={activeTaskList}
+          statuses={statuses}
+          users={availableAssignees}
+          initialStatusId={createTaskStatusId || statuses[0]?.id}
+          onClose={() => setCreateTaskStatusId(null)}
+          onCreated={() => reload()}
+          onError={setActionError}
+        />
+        <ProfileModal
+          opened={profileOpen}
+          user={currentUser}
+          role={currentMembership?.role}
+          onClose={() => setProfileOpen(false)}
+          onSaved={onCurrentUserChange}
+        />
+        {workspace && (
+          <SpaceCreateModal
+            opened={spaceCreateOpen}
+            workspace={workspace}
+            onClose={() => setSpaceCreateOpen(false)}
+            onCreated={reload}
+          />
+        )}
+        <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
+          <Group mb="lg" gap="sm" justify="space-between">
+            <Group gap="sm">
+              <Tooltip label="Workspace">
+                <ThemeIcon size="lg" radius="md" color="dark">
+                  <IconCheck size="1.25rem" />
+                </ThemeIcon>
+              </Tooltip>
+              <div>
+                <Text fw={800}>{workspace.name}</Text>
+                <Text size="xs" c="dimmed">
+                  All Tasks - studio workspace
+                </Text>
+              </div>
+            </Group>
+            {canManageSpaces && (
+              <Tooltip label="Add space">
+                <ActionIcon
+                  variant="light"
+                  aria-label="Add space"
+                  onClick={() => setSpaceCreateOpen(true)}
+                >
+                  <IconPlus size="1.25rem" />
+                </ActionIcon>
+              </Tooltip>
+            )}
           </Group>
-          {canManageSpaces && (
-            <Tooltip label="Add space">
-              <ActionIcon
-                variant="light"
-                aria-label="Add space"
-                onClick={() => setSpaceCreateOpen(true)}
-              >
-                <IconPlus size="1.25rem" />
-              </ActionIcon>
-            </Tooltip>
-          )}
-        </Group>
-        <button
-          type="button"
-          className={classes.profileButton}
-          onClick={() => setProfileOpen(true)}
-        >
-          <AvatarStack users={[profileUser]} size="1.75rem" />
-          <span>
-            <Text size="sm" fw={700}>
-              {currentUser.name}
-            </Text>
-            <Text size="xs" c="dimmed">
-              {currentMembership?.role || 'No role'} • service-token mode
-            </Text>
-          </span>
-        </button>
-        <Button
-          variant="subtle"
-          size="compact-sm"
-          mb="md"
-          onClick={async () => {
-            await logout().catch(() => undefined);
-            onCurrentUserChange(null);
-          }}
-        >
-          Logout
-        </Button>
-        <Text size="lg" fw={700} mb="md">
-          Spaces
-        </Text>
-        <ScrollArea className={classes.spacesTree}>
-          {workspace.spaces.map((space) => {
-            const isActiveSpace = space.id === activeSpace.id;
-            const isExpanded = expandedSpaceIds.has(space.id);
-            return (
-              <Box key={space.id} className={classes.spaceTreeBlock}>
-                <Group wrap="nowrap" gap={0}>
-                  <button
-                    type="button"
-                    className={
-                      isActiveSpace
-                        ? `${classes.spaceTreeRow} ${classes.active}`
-                        : classes.spaceTreeRow
-                    }
-                    onClick={() => {
-                      toggleSpace(space.id);
-                      if (!isActiveSpace) {
-                        setSpaceId(space.id);
-                        const folder = firstTaskFolder(space);
-                        setFolderId(folder?.id);
-                        setTaskListId(firstTaskList(folder)?.id);
-                        if (folder) navigate(folderPath(space.id, folder.id));
+          <button
+            type="button"
+            className={classes.profileButton}
+            onClick={() => setProfileOpen(true)}
+          >
+            <AvatarStack users={[profileUser]} size="1.75rem" />
+            <span>
+              <Text size="sm" fw={700}>
+                {currentUser.name}
+              </Text>
+              <Text size="xs" c="dimmed">
+                {currentMembership?.role || 'No role'} • service-token mode
+              </Text>
+            </span>
+          </button>
+          <Button
+            variant="subtle"
+            size="compact-sm"
+            mb="md"
+            onClick={async () => {
+              await logout().catch(() => undefined);
+              onCurrentUserChange(null);
+            }}
+          >
+            Logout
+          </Button>
+          <Text size="lg" fw={700} mb="md">
+            Spaces
+          </Text>
+          <ScrollArea className={classes.spacesTree}>
+            {workspace.spaces.map((space) => {
+              const isActiveSpace = space.id === activeSpace.id;
+              const isExpanded = expandedSpaceIds.has(space.id);
+              return (
+                <Box key={space.id} className={classes.spaceTreeBlock}>
+                  <Group wrap="nowrap" gap={0}>
+                    <button
+                      type="button"
+                      className={
+                        isActiveSpace
+                          ? `${classes.spaceTreeRow} ${classes.active}`
+                          : classes.spaceTreeRow
                       }
-                    }}
-                  >
-                    <span className={classes.treeCaret}>
-                      {isExpanded ? (
-                        <IconChevronDown size="0.875rem" />
-                      ) : (
-                        <IconChevronRight size="0.875rem" />
+                      onClick={() => {
+                        toggleSpace(space.id);
+                        if (!isActiveSpace) {
+                          setSpaceId(space.id);
+                          const folder = firstTaskFolder(space);
+                          setFolderId(folder?.id);
+                          setTaskListId(firstTaskList(folder)?.id);
+                          if (folder) navigate(folderPath(space.id, folder.id));
+                        }
+                      }}
+                    >
+                      <span className={classes.treeCaret}>
+                        {isExpanded ? (
+                          <IconChevronDown size="0.875rem" />
+                        ) : (
+                          <IconChevronRight size="0.875rem" />
+                        )}
+                      </span>
+                      <span className={classes.spaceInitial} style={{ background: space.color }}>
+                        {space.initials || space.name.slice(0, 1)}
+                      </span>
+                      <span className={classes.spaceName}>{space.name}</span>
+                      {space.locked && (
+                        <Tooltip label={`${space.name} is private`}>
+                          <IconLock size="1rem" className={classes.mutedIcon} />
+                        </Tooltip>
                       )}
-                    </span>
-                    <span className={classes.spaceInitial} style={{ background: space.color }}>
-                      {space.initials || space.name.slice(0, 1)}
-                    </span>
-                    <span className={classes.spaceName}>{space.name}</span>
-                    {space.locked && (
-                      <Tooltip label={`${space.name} is private`}>
-                        <IconLock size="1rem" className={classes.mutedIcon} />
+                    </button>
+                    {isActiveSpace && (
+                      <Menu width="22rem" position="right-start">
+                        <Menu.Target>
+                          <Tooltip label="Space actions">
+                            <ActionIcon
+                              component="div"
+                              variant="subtle"
+                              aria-label="Space actions"
+                              className={classes.rowAction}
+                            >
+                              <IconDots size="1.125rem" />
+                            </ActionIcon>
+                          </Tooltip>
+                        </Menu.Target>
+                        <Menu.Dropdown
+                          className={classes.menuDropdown}
+                          onClick={(event) => event.stopPropagation()}
+                        >
+                          <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
+                          <Menu.Item
+                            onClick={() =>
+                              navigator.clipboard?.writeText(
+                                `${window.location.origin}/space/${space.id}`
+                              )
+                            }
+                          >
+                            Copy link
+                          </Menu.Item>
+                          <Menu.Divider />
+                          <Menu.Label>Create new</Menu.Label>
+                          <Menu.Item disabled>Folders are not available in OpenProject</Menu.Item>
+                          <Menu.Item disabled>Lists are not available in OpenProject</Menu.Item>
+                        </Menu.Dropdown>
+                      </Menu>
+                    )}
+                    {isActiveSpace && (
+                      <Tooltip label="OpenProject projects do not have folders">
+                        <ActionIcon
+                          variant="subtle"
+                          aria-label="Folders are not available in OpenProject"
+                          className={classes.rowAction}
+                          disabled
+                        >
+                          <IconPlus size="1.125rem" />
+                        </ActionIcon>
                       </Tooltip>
                     )}
-                  </button>
-                  {isActiveSpace && (
-                    <Menu width="22rem" position="right-start">
-                      <Menu.Target>
-                        <Tooltip label="Space actions">
-                          <ActionIcon
-                            component="div"
-                            variant="subtle"
-                            aria-label="Space actions"
-                            className={classes.rowAction}
-                          >
-                            <IconDots size="1.125rem" />
-                          </ActionIcon>
-                        </Tooltip>
-                      </Menu.Target>
-                      <Menu.Dropdown
-                        className={classes.menuDropdown}
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
-                        <Menu.Item
-                          onClick={() =>
-                            navigator.clipboard?.writeText(
-                              `${window.location.origin}/space/${space.id}`
-                            )
-                          }
-                        >
-                          Copy link
-                        </Menu.Item>
-                        <Menu.Divider />
-                        <Menu.Label>Create new</Menu.Label>
-                        <Menu.Item disabled>Folders are not available in OpenProject</Menu.Item>
-                        <Menu.Item disabled>Lists are not available in OpenProject</Menu.Item>
-                      </Menu.Dropdown>
-                    </Menu>
-                  )}
-                  {isActiveSpace && (
-                    <Tooltip label="OpenProject projects do not have folders">
-                      <ActionIcon
-                        variant="subtle"
-                        aria-label="Folders are not available in OpenProject"
-                        className={classes.rowAction}
-                        disabled
-                      >
-                        <IconPlus size="1.125rem" />
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                </Group>
+                  </Group>
 
-                {isExpanded && (
-                  <Box className={classes.folderTree}>
-                    {space.folders.map((folder) => renderFolder(space.id, folder))}
-                  </Box>
-                )}
-              </Box>
-            );
-          })}
-          {canManageSpaces && (
-            <button
-              className={classes.newSpaceRow}
-              type="button"
-              onClick={async () => {
-                setSpaceCreateOpen(true);
-              }}
-            >
-              <IconPlus size="1.125rem" />
-              New Space
-            </button>
-          )}
-        </ScrollArea>
-      </AppShell.Navbar>
-
-      <AppShell.Main className={classes.mainShell}>
-        <Stack gap={0}>
-          {actionError && (
-            <Alert
-              color="red"
-              title="Action failed"
-              withCloseButton
-              onClose={() => setActionError(null)}
-              m="md"
-            >
-              {actionError}
-            </Alert>
-          )}
-          <Group className={classes.topBar} justify="space-between">
-            <Group gap="xs" wrap="nowrap">
-              <span className={classes.breadcrumbChip} style={{ background: activeSpace.color }}>
-                {activeSpace.initials || activeSpace.name.slice(0, 1)}
-              </span>
-              <Button
-                component={Link}
-                to={folderPath(activeSpace.id, activeFolder?.id || '')}
-                variant="subtle"
-                size="compact-md"
+                  {isExpanded && (
+                    <Box className={classes.folderTree}>
+                      {space.folders.map((folder) => renderFolder(space.id, folder))}
+                    </Box>
+                  )}
+                </Box>
+              );
+            })}
+            {canManageSpaces && (
+              <button
+                className={classes.newSpaceRow}
+                type="button"
+                onClick={async () => {
+                  setSpaceCreateOpen(true);
+                }}
               >
-                {activeSpace.name}
-              </Button>
-              {activeSpace.locked && (
-                <Tooltip label={`${activeSpace.name} is private`}>
-                  <IconLock size="1rem" className={classes.mutedIcon} />
-                </Tooltip>
-              )}
-              <Text c="dimmed">/</Text>
-              <Tooltip label="Current folder">
-                <IconFolder size="1.25rem" className={classes.mutedIcon} />
-              </Tooltip>
-              {activeFolder ? (
+                <IconPlus size="1.125rem" />
+                New Space
+              </button>
+            )}
+          </ScrollArea>
+        </AppShell.Navbar>
+
+        <AppShell.Main className={classes.mainShell}>
+          <Stack gap={0}>
+            {actionError && (
+              <Alert
+                color="red"
+                title="Action failed"
+                withCloseButton
+                onClose={() => setActionError(null)}
+                m="md"
+              >
+                {actionError}
+              </Alert>
+            )}
+            <Group className={classes.topBar} justify="space-between">
+              <Group gap="xs" wrap="nowrap">
+                <span className={classes.breadcrumbChip} style={{ background: activeSpace.color }}>
+                  {activeSpace.initials || activeSpace.name.slice(0, 1)}
+                </span>
                 <Button
                   component={Link}
-                  to={folderPath(activeSpace.id, activeFolder.id)}
+                  to={folderPath(activeSpace.id, activeFolder?.id || '')}
                   variant="subtle"
                   size="compact-md"
                 >
-                  {activeFolder.name}
+                  {activeSpace.name}
                 </Button>
-              ) : (
-                <Text fw={700}>Local Docs</Text>
-              )}
-              {activeFolder?.locked && (
-                <Tooltip label={`${activeFolder.name} is private`}>
-                  <IconLock size="1rem" className={classes.mutedIcon} />
-                </Tooltip>
-              )}
-              <Text c="dimmed">/</Text>
-              <Text fw={800}>{selectedTask?.title || activeTaskList?.name || 'DOC'}</Text>
-              <Tooltip label="Current location">
-                <IconChevronDown size="1rem" className={classes.mutedIcon} />
-              </Tooltip>
-            </Group>
-            <Group gap="md">
-              <Menu width="22rem" position="bottom-end">
-                <Menu.Target>
-                  <Tooltip label="Notifications">
-                    <ActionIcon variant="light" aria-label="Notifications">
-                      <IconBell size="1.125rem" />
-                      {notificationUnread > 0 && (
-                        <Badge size="xs" color="red">
-                          {notificationUnread}
-                        </Badge>
-                      )}
-                    </ActionIcon>
+                {activeSpace.locked && (
+                  <Tooltip label={`${activeSpace.name} is private`}>
+                    <IconLock size="1rem" className={classes.mutedIcon} />
                   </Tooltip>
-                </Menu.Target>
-                <Menu.Dropdown>
-                  <Menu.Label>Notifications</Menu.Label>
-                  {notifications.slice(0, 8).map((notification) => (
-                    <Menu.Item
-                      key={notification.id}
-                      fw={notification.readAt ? 400 : 700}
-                      onClick={async () => {
-                        await markNotificationRead(notification.id).catch(() => undefined);
-                        if (notification.workPackageId && activeSpace && activeFolder) {
-                          navigate(
-                            taskPath(activeSpace.id, activeFolder.id, notification.workPackageId)
-                          );
-                        }
-                        reload();
-                      }}
-                    >
-                      {notification.title}
-                    </Menu.Item>
-                  ))}
-                  {!notifications.length && <Menu.Item disabled>No notifications</Menu.Item>}
-                  <Menu.Divider />
-                  <Menu.Item
-                    onClick={async () => {
-                      await markAllNotificationsRead().catch(() => undefined);
-                      reload();
-                    }}
+                )}
+                <Text c="dimmed">/</Text>
+                <Tooltip label="Current folder">
+                  <IconFolder size="1.25rem" className={classes.mutedIcon} />
+                </Tooltip>
+                {activeFolder ? (
+                  <Button
+                    component={Link}
+                    to={folderPath(activeSpace.id, activeFolder.id)}
+                    variant="subtle"
+                    size="compact-md"
                   >
-                    Mark all as read
-                  </Menu.Item>
-                </Menu.Dropdown>
-              </Menu>
-              {canManageSpaces && (
-                <Menu width="24rem" position="bottom-end">
+                    {activeFolder.name}
+                  </Button>
+                ) : (
+                  <Text fw={700}>Local Docs</Text>
+                )}
+                {activeFolder?.locked && (
+                  <Tooltip label={`${activeFolder.name} is private`}>
+                    <IconLock size="1rem" className={classes.mutedIcon} />
+                  </Tooltip>
+                )}
+                <Text c="dimmed">/</Text>
+                <Text fw={800}>{selectedTask?.title || activeTaskList?.name || 'DOC'}</Text>
+                <Tooltip label="Current location">
+                  <IconChevronDown size="1rem" className={classes.mutedIcon} />
+                </Tooltip>
+              </Group>
+              <Group gap="md">
+                <Menu width="22rem" position="bottom-end">
                   <Menu.Target>
-                    <Tooltip label="Import reports">
-                      <ActionIcon variant="light" aria-label="Import reports">
-                        <IconReport size="1.125rem" />
+                    <Tooltip label="Notifications">
+                      <ActionIcon variant="light" aria-label="Notifications">
+                        <IconBell size="1.125rem" />
+                        {notificationUnread > 0 && (
+                          <Badge size="xs" color="red">
+                            {notificationUnread}
+                          </Badge>
+                        )}
                       </ActionIcon>
                     </Tooltip>
                   </Menu.Target>
                   <Menu.Dropdown>
-                    <Menu.Label>Latest import reports</Menu.Label>
-                    {importReports.slice(0, 8).map((report) => (
+                    <Menu.Label>Notifications</Menu.Label>
+                    {notifications.slice(0, 8).map((notification) => (
                       <Menu.Item
-                        key={report.id}
-                        component="a"
-                        href={`/api/import-reports/${report.id}/json`}
-                        target="_blank"
+                        key={notification.id}
+                        fw={notification.readAt ? 400 : 700}
+                        onClick={async () => {
+                          await markNotificationRead(notification.id).catch(() => undefined);
+                          if (notification.workPackageId && activeSpace && activeFolder) {
+                            navigate(
+                              taskPath(activeSpace.id, activeFolder.id, notification.workPackageId)
+                            );
+                          }
+                          reload();
+                        }}
                       >
-                        {report.source} • {report.status} •{' '}
-                        {new Date(report.startedAt).toLocaleString()}
+                        {notification.title}
                       </Menu.Item>
                     ))}
-                    {!importReports.length && <Menu.Item disabled>No import reports yet</Menu.Item>}
+                    {!notifications.length && <Menu.Item disabled>No notifications</Menu.Item>}
+                    <Menu.Divider />
+                    <Menu.Item
+                      onClick={async () => {
+                        await markAllNotificationsRead().catch(() => undefined);
+                        reload();
+                      }}
+                    >
+                      Mark all as read
+                    </Menu.Item>
                   </Menu.Dropdown>
                 </Menu>
-              )}
-              <Button
-                variant="light"
-                leftSection={<IconSearch size="1rem" />}
-                onClick={() => setSearchOpen(true)}
-              >
-                Search ⌘K
-              </Button>
-              <Button variant="light" onClick={() => toggleColorScheme()}>
-                {colorScheme === 'dark' ? 'Light' : 'Dark'}
-              </Button>
-            </Group>
-          </Group>
-
-          {selectedTask ? (
-            <Box p="lg">
-              <TaskDetailPage
-                task={selectedTask}
-                workspace={workspace}
-                statuses={statuses}
-                onBack={backToFolder}
-                onSaved={(task) => {
-                  setSelectedTask(task);
-                  reload();
-                }}
-                onOpenSubtask={openSubtask}
-                onError={setActionError}
-                canWriteTasks={canWriteTasks}
-              />
-            </Box>
-          ) : (
-            <Tabs
-              value={taskView}
-              onChange={setTaskView}
-              keepMounted={false}
-              className={classes.contentTabs}
-            >
-              <Tabs.List className={classes.viewTabs}>
-                <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>
-                  List
-                </Tabs.Tab>
-                <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>
-                  Board
-                </Tabs.Tab>
-              </Tabs.List>
-
-              <Tabs.Panel value="tasks">
-                <Stack gap={0}>
-                  <Group className={classes.taskToolbar} justify="space-between">
-                    <Group gap="xs">
-                      <Tooltip label="Grouped by OpenProject status">
-                        <Badge variant="light">Grouped by OpenProject status</Badge>
-                      </Tooltip>
-                      <Select
-                        placeholder="Saved views"
-                        data={savedViews.map((view) => ({ value: view.id, label: view.name }))}
-                        onChange={applySavedView}
-                        leftSection={<IconTableOptions size="1rem" />}
-                        w="12rem"
-                      />
-                      <TextInput
-                        value={savedViewName}
-                        onChange={(event) => setSavedViewName(event.currentTarget.value)}
-                        placeholder="View name"
-                        w="9rem"
-                      />
-                      <Button
-                        variant="light"
-                        disabled={!savedViewName.trim()}
-                        onClick={saveCurrentView}
-                      >
-                        Save view
-                      </Button>
-                      {savedViews.length > 0 && (
-                        <Menu>
-                          <Menu.Target>
-                            <ActionIcon variant="subtle" aria-label="Manage saved views">
-                              <IconDots size="1rem" />
-                            </ActionIcon>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            {savedViews.map((view) => (
-                              <Menu.Item
-                                key={view.id}
-                                color="red"
-                                onClick={async () => {
-                                  await deleteSavedView(view.id).catch((error) =>
-                                    setActionError(getErrorMessage(error))
-                                  );
-                                  setSavedViews((current) =>
-                                    current.filter((item) => item.id !== view.id)
-                                  );
-                                }}
-                              >
-                                Delete {view.name}
-                              </Menu.Item>
-                            ))}
-                          </Menu.Dropdown>
-                        </Menu>
-                      )}
-                    </Group>
-                    <Group gap="xs">
-                      <TextInput
-                        value={taskSearch}
-                        onChange={(event) => setTaskSearch(event.currentTarget.value)}
-                        placeholder="Search tasks"
-                        leftSection={<IconSearch size="1rem" />}
-                        w="16rem"
-                      />
-                      <Select
-                        value={statusFilter}
-                        onChange={setStatusFilter}
-                        clearable
-                        placeholder="Status"
-                        data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-                        w="10rem"
-                      />
-                      <MultiSelect
-                        value={assigneeFilter}
-                        onChange={setAssigneeFilter}
-                        clearable
-                        placeholder="Assignees"
-                        data={availableAssignees.map((user) => ({
-                          value: user.id,
-                          label: user.name,
-                        }))}
-                        w="14rem"
-                        searchable
-                      />
-                      <Tooltip
-                        label={
-                          currentOpenProjectUser
-                            ? 'Filter tasks assigned to current user'
-                            : 'Current tracker user is not linked to an OpenProject user'
-                        }
-                      >
-                        <Button
-                          variant={assignedToMeActive ? 'filled' : 'light'}
-                          disabled={!currentOpenProjectUser}
-                          onClick={() => {
-                            if (!currentOpenProjectUser) return;
-                            setAssigneeFilter(
-                              assignedToMeActive ? [] : [currentOpenProjectUser.id]
-                            );
-                          }}
-                        >
-                          Assigned to me
-                        </Button>
-                      </Tooltip>
-                      <Select
-                        value={priorityFilter}
-                        onChange={setPriorityFilter}
-                        clearable
-                        placeholder="Priority"
-                        data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-                        w="9rem"
-                      />
-                      <Tooltip label="Open search">
-                        <ActionIcon
-                          className={classes.pillIcon}
-                          variant="subtle"
-                          aria-label="Search"
-                          onClick={() => setSearchOpen(true)}
-                        >
-                          <IconSearch size="1.25rem" />
+                {canManageSpaces && (
+                  <Menu width="24rem" position="bottom-end">
+                    <Menu.Target>
+                      <Tooltip label="Import reports">
+                        <ActionIcon variant="light" aria-label="Import reports">
+                          <IconReport size="1.125rem" />
                         </ActionIcon>
                       </Tooltip>
-                      {canWriteTasks && (
-                        <Button
-                          color="teal"
-                          rightSection={<IconChevronDown size="1rem" />}
-                          onClick={() => statuses[0] && addTask(statuses[0].id)}
+                    </Menu.Target>
+                    <Menu.Dropdown>
+                      <Menu.Label>Latest import reports</Menu.Label>
+                      {importReports.slice(0, 8).map((report) => (
+                        <Menu.Item
+                          key={report.id}
+                          onClick={() =>
+                            void runAction(async () => {
+                              setActiveImportReport(await getImportReport(report.id));
+                            })
+                          }
                         >
-                          Add Task
-                        </Button>
+                          {report.source} • {report.status} •{' '}
+                          {new Date(report.startedAt).toLocaleString()}
+                        </Menu.Item>
+                      ))}
+                      {!importReports.length && (
+                        <Menu.Item disabled>No import reports yet</Menu.Item>
                       )}
-                    </Group>
-                  </Group>
-                  {tasksError && (
-                    <Alert color="red" title="Could not load tasks">
-                      {tasksError}
-                    </Alert>
-                  )}
-                  {selectedTaskIds.size > 0 && canWriteTasks && (
-                    <Alert color="blue" title={`${selectedTaskIds.size} selected`}>
+                    </Menu.Dropdown>
+                  </Menu>
+                )}
+                <Button
+                  variant="light"
+                  leftSection={<IconSearch size="1rem" />}
+                  onClick={() => setSearchOpen(true)}
+                >
+                  Search ⌘K
+                </Button>
+                <Button variant="light" onClick={() => toggleColorScheme()}>
+                  {colorScheme === 'dark' ? 'Light' : 'Dark'}
+                </Button>
+              </Group>
+            </Group>
+
+            {selectedTask ? (
+              <Box p="lg">
+                <TaskDetailPage
+                  task={selectedTask}
+                  workspace={workspace}
+                  statuses={statuses}
+                  onBack={backToFolder}
+                  onSaved={(task) => {
+                    setSelectedTask(task);
+                    reload();
+                  }}
+                  onOpenSubtask={openSubtask}
+                  onError={setActionError}
+                  canWriteTasks={canWriteTasks}
+                />
+              </Box>
+            ) : (
+              <Tabs
+                value={taskView}
+                onChange={setTaskView}
+                keepMounted={false}
+                className={classes.contentTabs}
+              >
+                <Tabs.List className={classes.viewTabs}>
+                  <Tabs.Tab value="tasks" leftSection={<IconList size="1rem" />}>
+                    List
+                  </Tabs.Tab>
+                  <Tabs.Tab value="board" leftSection={<IconLayoutKanban size="1rem" />}>
+                    Board
+                  </Tabs.Tab>
+                </Tabs.List>
+
+                <Tabs.Panel value="tasks">
+                  <Stack gap={0}>
+                    <Group className={classes.taskToolbar} justify="space-between">
                       <Group gap="xs">
+                        <Tooltip label="Grouped by OpenProject status">
+                          <Badge variant="light">Grouped by OpenProject status</Badge>
+                        </Tooltip>
                         <Select
-                          placeholder="Bulk status"
-                          data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-                          onChange={(value) => value && void runBulkUpdate({ statusId: value })}
+                          placeholder="Saved views"
+                          data={savedViews.map((view) => ({ value: view.id, label: view.name }))}
+                          onChange={applySavedView}
+                          leftSection={<IconTableOptions size="1rem" />}
                           w="12rem"
                         />
+                        <TextInput
+                          value={savedViewName}
+                          onChange={(event) => setSavedViewName(event.currentTarget.value)}
+                          placeholder="View name"
+                          w="9rem"
+                        />
+                        <Button
+                          variant="light"
+                          disabled={!savedViewName.trim()}
+                          onClick={saveCurrentView}
+                        >
+                          Save view
+                        </Button>
+                        {savedViews.length > 0 && (
+                          <Menu>
+                            <Menu.Target>
+                              <ActionIcon variant="subtle" aria-label="Manage saved views">
+                                <IconDots size="1rem" />
+                              </ActionIcon>
+                            </Menu.Target>
+                            <Menu.Dropdown>
+                              {savedViews.map((view) => (
+                                <Menu.Item
+                                  key={view.id}
+                                  color="red"
+                                  onClick={async () => {
+                                    await deleteSavedView(view.id).catch((error) =>
+                                      setActionError(getErrorMessage(error))
+                                    );
+                                    setSavedViews((current) =>
+                                      current.filter((item) => item.id !== view.id)
+                                    );
+                                  }}
+                                >
+                                  Delete {view.name}
+                                </Menu.Item>
+                              ))}
+                            </Menu.Dropdown>
+                          </Menu>
+                        )}
+                      </Group>
+                      <Group gap="xs">
+                        <TextInput
+                          value={taskSearch}
+                          onChange={(event) => setTaskSearch(event.currentTarget.value)}
+                          placeholder="Search tasks"
+                          leftSection={<IconSearch size="1rem" />}
+                          w="16rem"
+                        />
                         <Select
-                          placeholder="Bulk priority"
-                          data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-                          onChange={(value) => value && void runBulkUpdate({ priority: value })}
-                          w="12rem"
+                          value={statusFilter}
+                          onChange={setStatusFilter}
+                          clearable
+                          placeholder="Status"
+                          data={statuses.map((item) => ({ value: item.id, label: item.name }))}
+                          w="10rem"
                         />
                         <MultiSelect
-                          placeholder="Bulk assignee/responsible"
+                          value={assigneeFilter}
+                          onChange={setAssigneeFilter}
+                          clearable
+                          placeholder="Assignees"
                           data={availableAssignees.map((user) => ({
                             value: user.id,
                             label: user.name,
                           }))}
-                          maxValues={2}
-                          onChange={(value) => void runBulkUpdate({ assigneeIds: value })}
-                          w="16rem"
+                          w="14rem"
+                          searchable
                         />
-                        <Button variant="subtle" onClick={() => setSelectedTaskIds(new Set())}>
-                          Clear selection
-                        </Button>
-                      </Group>
-                    </Alert>
-                  )}
-                  {tasksLoading && !tasks.length ? (
-                    <Box className={classes.center} p="xl">
-                      <Loader />
-                    </Box>
-                  ) : tasks.length === 0 ? (
-                    <Box p="xl">
-                      <Text c="dimmed">No tasks match these filters.</Text>
-                    </Box>
-                  ) : (
-                    <GroupedTaskList
-                      tasks={tasks}
-                      statuses={statuses}
-                      onAddTask={addTask}
-                      onOpenTask={openTask}
-                      onMoveTask={moveTask}
-                      onChanged={reload}
-                      onError={setActionError}
-                      canWriteTasks={canWriteTasks}
-                      selectedTaskIds={selectedTaskIds}
-                      onSelectedTaskChange={toggleSelectedTask}
-                    />
-                  )}
-                  {nextCursor && (
-                    <Button
-                      variant="subtle"
-                      loading={tasksLoading}
-                      onClick={() => loadTasks(nextCursor)}
-                    >
-                      Load more
-                    </Button>
-                  )}
-                </Stack>
-              </Tabs.Panel>
-
-              <Tabs.Panel value="board">
-                <Stack gap={0}>
-                  <Group className={classes.taskToolbar} justify="space-between">
-                    <Tooltip label="Board columns are OpenProject statuses. Dragging changes status only; card order is not persisted.">
-                      <Badge variant="light">OpenProject status board</Badge>
-                    </Tooltip>
-                    <Group gap="xs">
-                      {canWriteTasks && (
-                        <Button
-                          color="teal"
-                          rightSection={<IconChevronDown size="1rem" />}
-                          onClick={() => statuses[0] && addTask(statuses[0].id)}
+                        <Tooltip
+                          label={
+                            currentOpenProjectUser
+                              ? 'Filter tasks assigned to current user'
+                              : 'Current tracker user is not linked to an OpenProject user'
+                          }
                         >
-                          Add Task
-                        </Button>
-                      )}
+                          <Button
+                            variant={assignedToMeActive ? 'filled' : 'light'}
+                            disabled={!currentOpenProjectUser}
+                            onClick={() => {
+                              if (!currentOpenProjectUser) return;
+                              setAssigneeFilter(
+                                assignedToMeActive ? [] : [currentOpenProjectUser.id]
+                              );
+                            }}
+                          >
+                            Assigned to me
+                          </Button>
+                        </Tooltip>
+                        <Select
+                          value={priorityFilter}
+                          onChange={setPriorityFilter}
+                          clearable
+                          placeholder="Priority"
+                          data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+                          w="9rem"
+                        />
+                        <Tooltip label="Open search">
+                          <ActionIcon
+                            className={classes.pillIcon}
+                            variant="subtle"
+                            aria-label="Search"
+                            onClick={() => setSearchOpen(true)}
+                          >
+                            <IconSearch size="1.25rem" />
+                          </ActionIcon>
+                        </Tooltip>
+                        {canWriteTasks && (
+                          <Button
+                            color="teal"
+                            rightSection={<IconChevronDown size="1rem" />}
+                            onClick={() => statuses[0] && addTask(statuses[0].id)}
+                          >
+                            Add Task
+                          </Button>
+                        )}
+                      </Group>
                     </Group>
-                  </Group>
-                  {tasksError && (
-                    <Alert color="red" title="Could not load tasks">
-                      {tasksError}
-                    </Alert>
-                  )}
-                  {tasksLoading && !tasks.length ? (
-                    <Box className={classes.center} p="xl">
-                      <Loader />
-                    </Box>
-                  ) : (
-                    <TaskBoard
-                      tasks={tasks}
-                      statuses={statuses}
-                      onAddTask={addTask}
-                      onOpenTask={openTask}
-                      onMoveTask={moveTask}
-                      canWriteTasks={canWriteTasks}
-                    />
-                  )}
-                </Stack>
-              </Tabs.Panel>
-            </Tabs>
-          )}
-        </Stack>
-      </AppShell.Main>
-    </AppShell>
+                    {tasksError && (
+                      <Alert color="red" title="Could not load tasks">
+                        {tasksError}
+                      </Alert>
+                    )}
+                    {selectedTaskIds.size > 0 && canWriteTasks && (
+                      <Alert color="blue" title={`${selectedTaskIds.size} selected`}>
+                        <Group gap="xs">
+                          <Select
+                            placeholder="Bulk status"
+                            data={statuses.map((item) => ({ value: item.id, label: item.name }))}
+                            onChange={(value) => value && void runBulkUpdate({ statusId: value })}
+                            w="12rem"
+                          />
+                          <Select
+                            placeholder="Bulk priority"
+                            data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+                            onChange={(value) => value && void runBulkUpdate({ priority: value })}
+                            w="12rem"
+                          />
+                          <MultiSelect
+                            placeholder="Bulk assignee/responsible"
+                            data={availableAssignees.map((user) => ({
+                              value: user.id,
+                              label: user.name,
+                            }))}
+                            maxValues={2}
+                            onChange={(value) => void runBulkUpdate({ assigneeIds: value })}
+                            w="16rem"
+                          />
+                          <Button variant="subtle" onClick={() => setSelectedTaskIds(new Set())}>
+                            Clear selection
+                          </Button>
+                        </Group>
+                      </Alert>
+                    )}
+                    {tasksLoading && !tasks.length ? (
+                      <Box className={classes.center} p="xl">
+                        <Loader />
+                      </Box>
+                    ) : tasks.length === 0 ? (
+                      <Box p="xl">
+                        <Text c="dimmed">No tasks match these filters.</Text>
+                      </Box>
+                    ) : (
+                      <GroupedTaskList
+                        tasks={tasks}
+                        statuses={statuses}
+                        onAddTask={addTask}
+                        onOpenTask={openTask}
+                        onMoveTask={moveTask}
+                        onChanged={reload}
+                        onError={setActionError}
+                        canWriteTasks={canWriteTasks}
+                        selectedTaskIds={selectedTaskIds}
+                        onSelectedTaskChange={toggleSelectedTask}
+                      />
+                    )}
+                    {nextCursor && (
+                      <Button
+                        variant="subtle"
+                        loading={tasksLoading}
+                        onClick={() => loadTasks(nextCursor)}
+                      >
+                        Load more
+                      </Button>
+                    )}
+                  </Stack>
+                </Tabs.Panel>
+
+                <Tabs.Panel value="board">
+                  <Stack gap={0}>
+                    <Group className={classes.taskToolbar} justify="space-between">
+                      <Tooltip label="Board columns are OpenProject statuses. Dragging changes status only; card order is not persisted.">
+                        <Badge variant="light">OpenProject status board</Badge>
+                      </Tooltip>
+                      <Group gap="xs">
+                        {canWriteTasks && (
+                          <Button
+                            color="teal"
+                            rightSection={<IconChevronDown size="1rem" />}
+                            onClick={() => statuses[0] && addTask(statuses[0].id)}
+                          >
+                            Add Task
+                          </Button>
+                        )}
+                      </Group>
+                    </Group>
+                    {tasksError && (
+                      <Alert color="red" title="Could not load tasks">
+                        {tasksError}
+                      </Alert>
+                    )}
+                    {tasksLoading && !tasks.length ? (
+                      <Box className={classes.center} p="xl">
+                        <Loader />
+                      </Box>
+                    ) : (
+                      <TaskBoard
+                        tasks={tasks}
+                        statuses={statuses}
+                        onAddTask={addTask}
+                        onOpenTask={openTask}
+                        onMoveTask={moveTask}
+                        canWriteTasks={canWriteTasks}
+                      />
+                    )}
+                  </Stack>
+                </Tabs.Panel>
+              </Tabs>
+            )}
+          </Stack>
+        </AppShell.Main>
+      </AppShell>
+      <Modal
+        opened={Boolean(activeImportReport)}
+        onClose={() => setActiveImportReport(null)}
+        title="Import report"
+        size="lg"
+      >
+        {activeImportReport && (
+          <Stack gap="md">
+            <Group justify="space-between" align="flex-start">
+              <Stack gap={2}>
+                <Text fw={700}>
+                  {activeImportReport.source} • {activeImportReport.status}
+                </Text>
+                <Text size="sm" c="dimmed">
+                  Started {new Date(activeImportReport.startedAt).toLocaleString()}
+                </Text>
+                {activeImportReport.finishedAt && (
+                  <Text size="sm" c="dimmed">
+                    Finished {new Date(activeImportReport.finishedAt).toLocaleString()}
+                  </Text>
+                )}
+              </Stack>
+              <Button
+                component="a"
+                href={`/api/import-reports/${activeImportReport.id}/json`}
+                target="_blank"
+                variant="light"
+              >
+                Download JSON
+              </Button>
+            </Group>
+            <Text size="sm" fw={700}>
+              Summary
+            </Text>
+            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(activeImportReport.summary || {}, null, 2)}
+            </Text>
+            <Text size="sm" fw={700}>
+              Warnings
+            </Text>
+            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(activeImportReport.warnings || [], null, 2)}
+            </Text>
+            <Text size="sm" fw={700}>
+              Errors
+            </Text>
+            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
+              {JSON.stringify(activeImportReport.errors || [], null, 2)}
+            </Text>
+          </Stack>
+        )}
+      </Modal>
+    </>
   );
 }
