@@ -745,7 +745,11 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
   return localUser;
 }
 
-async function syncClickUpTeamUsersIntoLocalWorkspace(team: ClickUpTeam, context: UserSyncContext) {
+async function syncClickUpTeamUsersIntoLocalWorkspace(
+  team: ClickUpTeam,
+  context: UserSyncContext,
+  openProjectUserSync: OpenProjectUserSyncContext
+) {
   const members = (team as unknown as { members?: unknown[] }).members || [];
 
   for (const member of members) {
@@ -756,6 +760,7 @@ async function syncClickUpTeamUsersIntoLocalWorkspace(team: ClickUpTeam, context
     }
 
     await syncClickUpUserIntoLocalWorkspace(clickUpUser, context);
+    await ensureOpenProjectUserFromClickUp(clickUpUser, openProjectUserSync);
   }
 }
 
@@ -798,6 +803,36 @@ function teamPermissionGrants(team: ClickUpTeam, summary: Summary): PermissionGr
   summary.permissionSourcesUsed.teamMembers = members.length > 0;
 
   return permissionGrantsFromMembers(members, 'teamMembers', 'member');
+}
+
+function hierarchyPermissionGrants(
+  value: unknown,
+  source: 'spaceMembers' | 'folderMembers',
+  summary: Summary
+): PermissionGrant[] {
+  const payload = value as {
+    members?: unknown[];
+    users?: unknown[];
+    permissions?: unknown[];
+    shared?: { users?: unknown[]; members?: unknown[] };
+  };
+  const members = [
+    ...(payload.members || []),
+    ...(payload.users || []),
+    ...(payload.permissions || []),
+    ...(payload.shared?.users || []),
+    ...(payload.shared?.members || []),
+  ];
+
+  if (source === 'spaceMembers') {
+    summary.clickUpSpaceMembersSeen += members.length;
+  } else {
+    summary.clickUpFolderMembersSeen += members.length;
+  }
+
+  summary.permissionSourcesUsed[source] ||= members.length > 0;
+
+  return permissionGrantsFromMembers(members, source, 'member');
 }
 
 function taskAssigneePermissionGrants(task: ClickUpTask, summary: Summary): PermissionGrant[] {
@@ -1491,9 +1526,15 @@ async function seedFolderedLists(params: {
   });
 
   if (params.folder.hidden) {
-    params.summary.permissionWarnings.push(
-      `folder ${params.folder.name}: ClickUp folder explicit access was not available from the current API response; inherited permissions were applied`
+    const hasExplicitFolderGrants = params.inheritedGrants.some(
+      (grant) => grant.source === 'folderMembers'
     );
+
+    if (!hasExplicitFolderGrants) {
+      params.summary.permissionWarnings.push(
+        `folder ${params.folder.name}: ClickUp folder explicit access was not available from the current API response; inherited permissions were applied`
+      );
+    }
   }
 
   await applyOpenProjectMemberships(
@@ -1973,7 +2014,7 @@ async function main() {
     throw new Error('ClickUp returned no teams/workspaces');
   }
 
-  await syncClickUpTeamUsersIntoLocalWorkspace(team, userSync);
+  await syncClickUpTeamUsersIntoLocalWorkspace(team, userSync, openProjectUserSync);
   const workspaceGrants = teamPermissionGrants(team, summary);
 
   const spaces = await getClickUpSpaces(team.id);
@@ -2004,13 +2045,16 @@ async function main() {
       return null;
     });
 
-    if (space.private) {
+    const explicitSpaceGrants = hierarchyPermissionGrants(space, 'spaceMembers', summary);
+    const spaceGrants = [...workspaceGrants, ...explicitSpaceGrants];
+
+    if (space.private && explicitSpaceGrants.length === 0) {
       summary.permissionWarnings.push(
         `space ${space.name}: ClickUp space explicit access was not available from the current API response; workspace members were applied`
       );
     }
 
-    await applyOpenProjectMemberships(spaceProject, workspaceGrants, openProjectUserSync);
+    await applyOpenProjectMemberships(spaceProject, spaceGrants, openProjectUserSync);
 
     const folders = await getClickUpFolders(space.id).catch((error) => {
       summary.errors.push(`space ${space.name}: ${(error as Error).message}`);
@@ -2031,6 +2075,8 @@ async function main() {
         summary.errors.push(`folder ${folder.name}: ${(error as Error).message}`);
         return [];
       });
+      const explicitFolderGrants = hierarchyPermissionGrants(folder, 'folderMembers', summary);
+      const folderGrants = [...spaceGrants, ...explicitFolderGrants];
 
       await seedFolderedLists({
         space,
@@ -2038,7 +2084,7 @@ async function main() {
         folder,
         lists,
         spaceProject,
-        inheritedGrants: workspaceGrants,
+        inheritedGrants: folderGrants,
         projects,
         openProjectStatuses,
         openProjectPriorities,
@@ -2053,7 +2099,7 @@ async function main() {
       seededSpace,
       lists: folderlessLists,
       spaceProject,
-      inheritedGrants: workspaceGrants,
+      inheritedGrants: spaceGrants,
       projects,
       openProjectStatuses,
       openProjectPriorities,
