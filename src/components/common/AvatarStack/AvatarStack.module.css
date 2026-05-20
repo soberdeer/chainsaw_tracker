@@ -3,8 +3,6 @@
 }
 
 .avatar {
-  border: 0.125rem solid var(--app-bg);
-  color: #fff;
   font-weight: 800;
   letter-spacing: 0;
   margin-left: -0.45rem;

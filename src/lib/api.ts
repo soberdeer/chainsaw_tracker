@@ -462,11 +462,19 @@ export function inviteMember(workspaceId: string, input: { email: string; role?:
   );
 }
 
-export function acceptInvite(token: string) {
-  return request<{ workspaceId: string; workspaceName: string; membership: Membership }>(
-    `/api/workspaces/invites/${token}/accept`,
-    { method: 'POST' }
-  );
+export function acceptInvite(
+  token: string,
+  input?: { name?: string; password?: string; confirmPassword?: string }
+) {
+  return request<{
+    workspaceId: string;
+    workspaceName: string;
+    membership: Membership;
+    user: CurrentUser;
+  }>(`/api/workspaces/invites/${token}/accept`, {
+    method: 'POST',
+    body: JSON.stringify(input || {}),
+  });
 }
 
 export function updateMembership(workspaceId: string, membershipId: string, role: WorkspaceRole) {

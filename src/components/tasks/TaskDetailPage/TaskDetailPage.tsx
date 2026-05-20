@@ -66,7 +66,6 @@ import {
   type TaskStatus,
   type Workspace,
 } from '@/lib';
-import { AvatarStack } from '../../common/AvatarStack';
 import { SubtaskModal } from './SubtaskModal/SubtaskModal';
 import classes from './TaskDetailPage.module.css';
 
@@ -424,11 +423,7 @@ export function TaskDetailPage({
         opened={subtaskModalOpen}
         parentTask={task}
         statuses={statuses}
-        users={
-          workspace.openProjectUsers?.length
-            ? workspace.openProjectUsers
-            : workspace.memberships.map((membership) => membership.user)
-        }
+        users={workspace.memberships.map((membership) => membership.user)}
         onClose={() => setSubtaskModalOpen(false)}
         onCreated={onSaved}
         onError={onError}
@@ -476,12 +471,9 @@ export function TaskDetailPage({
             setAssigneeIds(value);
             void updateAndRefresh({ assigneeIds: value });
           }}
-          data={(workspace.openProjectUsers?.length
-            ? workspace.openProjectUsers
-            : workspace.memberships.map((membership) => membership.user)
-          ).map((user) => ({
-            value: user.openProjectUserId || user.id,
-            label: user.name,
+          data={workspace.memberships.map((membership) => ({
+            value: membership.user.id,
+            label: membership.user.name,
           }))}
           searchable
           clearable
@@ -836,8 +828,12 @@ export function TaskDetailPage({
                 </Group>
                 <span>
                   {subtask.assignees?.length ? (
-                    <AvatarStack users={subtask.assignees} size="1.75rem" />
+                    // <Avatar.Group>
+                    // {subtask.assignees.map((a, i) => (<Avatar key={i}))}
+                    //   </Avatar.Group>
+                    <div />
                   ) : (
+                    // <AvatarStack users={subtask.assignees} size="1.75rem" />
                     <Text c="dimmed">-</Text>
                   )}
                 </span>

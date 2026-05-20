@@ -21,16 +21,18 @@ export default function App() {
     return <Loader m="xl" />;
   }
 
-  if (!user) {
-    return <LoginPage onLoggedIn={setUser} />;
-  }
-
   return (
     <Routes>
-      <Route path="/accept-invite/:token" element={<AcceptInvitePage />} />
+      <Route path="/accept-invite/:token" element={<AcceptInvitePage onAccepted={setUser} />} />
       <Route
         path="*"
-        element={<WorkspaceShell currentUser={user} onCurrentUserChange={setUser} />}
+        element={
+          user ? (
+            <WorkspaceShell currentUser={user} onCurrentUserChange={setUser} />
+          ) : (
+            <LoginPage onLoggedIn={setUser} />
+          )
+        }
       />
     </Routes>
   );

@@ -1414,7 +1414,7 @@ async function ensureOpenProjectProject(
   return project;
 }
 
-function buildTaskBody(params: {
+export function buildTaskBody(params: {
   task: ClickUpTask;
   context: ClickUpTaskContext;
   type?: OpenProjectType;

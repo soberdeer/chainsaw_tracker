@@ -8,12 +8,80 @@ import {
   getRuntimeWorkspaceSettings,
   getUsers as getOpenProjectUsers,
 } from '../openproject/service.js';
-import { hashPassword, requireCurrentUser } from '../services/auth.js';
+import {
+  currentUser,
+  hashPassword,
+  requireCurrentUser,
+  setSessionCookie,
+} from '../services/auth.js';
 import { sendInviteEmail } from '../services/email.js';
 import { accessibleSpaceIds, requirePermission, currentUserId } from '../services/permissions.js';
 import crypto from 'node:crypto';
 
 export const workspacesRouter = Router();
+export const inviteRoleSchema = z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']);
+
+export function assertWorkspaceOwnerMutationAllowed(input: {
+  currentRole: 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+  nextRole?: 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+  ownerCount: number;
+  operation: 'update' | 'remove';
+}) {
+  if (input.currentRole !== 'OWNER') {
+    return;
+  }
+  const isDowngrade = input.operation === 'update' && input.nextRole && input.nextRole !== 'OWNER';
+  const isRemove = input.operation === 'remove';
+  if ((isDowngrade || isRemove) && input.ownerCount <= 1) {
+    const error = new Error(
+      isRemove ? 'Cannot remove the last owner' : 'Cannot downgrade the last owner'
+    );
+    Object.assign(error, { statusCode: 400 });
+    throw error;
+  }
+}
+
+export function resolveInviteAcceptancePlan(input: {
+  inviteEmail: string;
+  currentUserEmail?: string | null;
+  existingUserForInviteEmail: boolean;
+  name?: string;
+  password?: string;
+  confirmPassword?: string;
+}) {
+  if (input.currentUserEmail) {
+    if (input.currentUserEmail.toLowerCase() !== input.inviteEmail.toLowerCase()) {
+      const error = new Error('Invite email does not match the current account');
+      Object.assign(error, { statusCode: 403 });
+      throw error;
+    }
+    return { kind: 'current-user' as const };
+  }
+
+  if (input.existingUserForInviteEmail) {
+    const error = new Error('Login first to accept this invite for your existing account');
+    Object.assign(error, { statusCode: 401 });
+    throw error;
+  }
+
+  if (!input.password || !input.confirmPassword) {
+    const error = new Error('Name and password are required to create a new invited account');
+    Object.assign(error, { statusCode: 400 });
+    throw error;
+  }
+
+  if (input.password !== input.confirmPassword) {
+    const error = new Error('Password confirmation does not match');
+    Object.assign(error, { statusCode: 400 });
+    throw error;
+  }
+
+  return {
+    kind: 'create-user' as const,
+    name: input.name ?? '',
+    password: input.password,
+  };
+}
 
 async function resolveWorkspaceRecord(workspaceId: string) {
   if (workspaceId === 'openproject') {
@@ -380,13 +448,19 @@ workspacesRouter.patch('/:workspaceId/members/:userId', async (req, res) => {
     include: { user: true },
   });
 
-  if (
-    membership.role === 'OWNER' &&
-    body.role !== 'OWNER' &&
-    (await ownerCount(workspace.id)) <= 1
-  ) {
-    res.status(400).json({ error: 'Cannot downgrade the last owner' });
-    return;
+  if (membership.role === 'OWNER' && body.role !== 'OWNER') {
+    try {
+      assertWorkspaceOwnerMutationAllowed({
+        currentRole: membership.role,
+        nextRole: body.role,
+        ownerCount: await ownerCount(workspace.id),
+        operation: 'update',
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Cannot downgrade the last owner';
+      res.status(400).json({ error: message });
+      return;
+    }
   }
 
   const updated = await prisma.membership.update({
@@ -410,8 +484,15 @@ workspacesRouter.delete('/:workspaceId/members/:userId', async (req, res) => {
     },
   });
 
-  if (membership.role === 'OWNER' && (await ownerCount(workspace.id)) <= 1) {
-    res.status(400).json({ error: 'Cannot remove the last owner' });
+  try {
+    assertWorkspaceOwnerMutationAllowed({
+      currentRole: membership.role,
+      ownerCount: await ownerCount(workspace.id),
+      operation: 'remove',
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Cannot remove the last owner';
+    res.status(400).json({ error: message });
     return;
   }
 
@@ -591,20 +672,18 @@ workspacesRouter.post('/', async (req, res) => {
 });
 
 workspacesRouter.post('/:workspaceId/invites', async (req, res) => {
-  await requirePermission(req, req.params.workspaceId, 'inviteMembers');
+  const workspace = await resolveWorkspaceRecord(req.params.workspaceId);
+  await requirePermission(req, workspace.id, 'inviteMembers');
   const body = z
     .object({
       email: z.string().email(),
-      role: z.enum(['OWNER', 'ADMIN', 'MEMBER', 'VIEWER']).default('MEMBER'),
+      role: inviteRoleSchema.default('MEMBER'),
     })
     .parse(req.body);
 
-  const workspace = await prisma.workspace.findUniqueOrThrow({
-    where: { id: req.params.workspaceId },
-  });
   const invite = await prisma.invite.create({
     data: {
-      workspaceId: req.params.workspaceId,
+      workspaceId: workspace.id,
       email: body.email,
       role: body.role,
       token: crypto.randomUUID(),
@@ -627,6 +706,13 @@ workspacesRouter.post('/:workspaceId/invites', async (req, res) => {
 });
 
 workspacesRouter.post('/invites/:token/accept', async (req, res) => {
+  const body = z
+    .object({
+      name: z.string().max(120).optional(),
+      password: z.string().min(8).optional(),
+      confirmPassword: z.string().min(8).optional(),
+    })
+    .parse(req.body ?? {});
   const invite = await prisma.invite.findUniqueOrThrow({
     where: { token: req.params.token },
     include: { workspace: true },
@@ -636,19 +722,70 @@ workspacesRouter.post('/invites/:token/accept', async (req, res) => {
     return;
   }
 
-  const userId = currentUserId(req) || 'local-user';
-  const user = await prisma.user.upsert({
-    where: { id: userId },
-    create: { id: userId, email: invite.email, name: invite.email.split('@')[0] },
-    update: { email: invite.email },
+  const loggedInUser = await currentUser(req);
+  const existingInvitedUser = await prisma.user.findUnique({
+    where: { email: invite.email },
   });
+
+  let plan;
+  try {
+    plan = resolveInviteAcceptancePlan({
+      inviteEmail: invite.email,
+      currentUserEmail: loggedInUser?.email,
+      existingUserForInviteEmail: Boolean(existingInvitedUser && !loggedInUser),
+      name: body.name,
+      password: body.password,
+      confirmPassword: body.confirmPassword,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Could not accept invite';
+    const statusCode = (error as { statusCode?: number }).statusCode || 400;
+    res.status(statusCode).json({ error: message });
+    return;
+  }
+
+  let user = loggedInUser;
+
+  if (plan.kind === 'create-user') {
+    user = await prisma.user.create({
+      data: {
+        email: invite.email,
+        name: plan.name,
+        passwordHash: hashPassword(plan.password),
+        source: 'MANUALLY_INVITED',
+      },
+    });
+  }
+
+  if (!user) {
+    res.status(401).json({ error: 'Login first to accept this invite' });
+    return;
+  }
+
   const membership = await prisma.membership.upsert({
     where: { userId_workspaceId: { userId: user.id, workspaceId: invite.workspaceId } },
     create: { userId: user.id, workspaceId: invite.workspaceId, role: invite.role },
     update: { role: invite.role },
   });
   await prisma.invite.update({ where: { id: invite.id }, data: { status: 'ACCEPTED' } });
-  res.json({ workspaceId: invite.workspaceId, workspaceName: invite.workspace.name, membership });
+  if (plan.kind === 'create-user') {
+    setSessionCookie(res, user.id);
+  }
+  res.json({
+    workspaceId: invite.workspaceId,
+    workspaceName: invite.workspace.name,
+    membership,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarUrl: user.avatarUrl,
+      source: user.source,
+      openProjectUserId: user.openProjectUserId,
+      openProjectLogin: user.openProjectLogin,
+      lastLoginAt: user.lastLoginAt,
+    },
+  });
 });
 
 workspacesRouter.patch('/:workspaceId/memberships/:membershipId', async (req, res) => {
