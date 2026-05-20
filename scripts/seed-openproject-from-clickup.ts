@@ -75,6 +75,7 @@ type OpenProjectUserSyncContext = {
   roles: OpenProjectRole[];
   memberships: OpenProjectMembership[];
   clickUpUserToOpenProjectUser: Map<string, OpenProjectUser>;
+  failedClickUpUserKeys: Set<string>;
   summary: Summary;
 };
 
@@ -97,6 +98,7 @@ type Summary = {
   clickUpListMembersSeen: number;
   clickUpTaskAssigneesSeen: number;
   localUsersCreated: number;
+  localUsersReused: number;
   localUsersUpdated: number;
   localMembershipsCreated: number;
   openProjectUsersCreated: number;
@@ -137,7 +139,7 @@ const META_END = '<!-- /chainsaw-clickup-import-meta -->';
 
 const importedUserDefaultPassword = process.env.CLICKUP_IMPORTED_USER_PASSWORD || 'clickup!2026';
 const openProjectImportedUserPassword =
-  process.env.OPENPROJECT_IMPORTED_USER_PASSWORD || 'clickup!2026';
+  process.env.OPENPROJECT_IMPORTED_USER_PASSWORD || 'Clickup!2026';
 
 const importedAdminEmails = new Set(
   (process.env.OP_IMPORTED_ADMIN_EMAILS || '')
@@ -700,17 +702,25 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
   let localUser;
 
   if (existing) {
-    localUser = await prisma.user.update({
-      where: { id: existing.id },
-      data: {
-        name,
-        ...(existing.passwordHash
-          ? {}
-          : { passwordHash: hashPassword(importedUserDefaultPassword) }),
-      },
-    });
+    const needsUpdate = existing.name !== name || !existing.passwordHash;
 
-    context.summary.localUsersUpdated += 1;
+    localUser = needsUpdate
+      ? await prisma.user.update({
+          where: { id: existing.id },
+          data: {
+            name,
+            ...(existing.passwordHash
+              ? {}
+              : { passwordHash: hashPassword(importedUserDefaultPassword) }),
+          },
+        })
+      : existing;
+
+    if (needsUpdate) {
+      context.summary.localUsersUpdated += 1;
+    } else {
+      context.summary.localUsersReused += 1;
+    }
   } else {
     localUser = await prisma.user.create({
       data: {
@@ -766,14 +776,12 @@ async function syncClickUpTeamUsersIntoLocalWorkspace(
   }
 }
 
-async function syncClickUpTaskAssigneesIntoLocalWorkspace(
-  task: ClickUpTask,
+async function syncPermissionGrantUsersIntoLocalWorkspace(
+  grants: PermissionGrant[],
   context: UserSyncContext
 ) {
-  const assignees = (task as unknown as { assignees?: ClickUpUserLike[] }).assignees || [];
-
-  for (const assignee of assignees) {
-    await syncClickUpUserIntoLocalWorkspace(assignee, context);
+  for (const grant of grants) {
+    await syncClickUpUserIntoLocalWorkspace(grant.user, context);
   }
 }
 
@@ -909,6 +917,10 @@ async function ensureOpenProjectUserFromClickUp(
     return context.clickUpUserToOpenProjectUser.get(key);
   }
 
+  if (key && context.failedClickUpUserKeys.has(key)) {
+    return null;
+  }
+
   const email = clickUpUserEmail(clickUpUser).slice(0, 255);
   const login = normalizeLogin(email);
   const existing = findOpenProjectUserByEmailOrLogin(context.users, email, login);
@@ -940,13 +952,56 @@ async function ensureOpenProjectUserFromClickUp(
     if (key) context.clickUpUserToOpenProjectUser.set(key, created);
     return created;
   } catch (error) {
-    const message = `OpenProject user ${email}: ${(error as Error).message}`;
+    if (key) {
+      context.failedClickUpUserKeys.add(key);
+    }
+
+    const message = `OpenProject user ${email}: ${openProjectErrorMessage(error)}`;
     context.summary.openProjectUserErrors.push(message);
     context.summary.permissionWarnings.push(
       `${message}. The OpenProject token may need manage_user/global admin permissions.`
     );
     return null;
   }
+}
+
+function openProjectErrorMessage(error: unknown) {
+  const base = (error as Error).message || 'OpenProject request failed';
+  const payload = (error as { payload?: unknown }).payload;
+  const details = openProjectPayloadDetails(payload);
+
+  return details ? `${base}: ${details}` : base;
+}
+
+function openProjectPayloadDetails(payload: unknown): string | null {
+  if (!payload || typeof payload !== 'object') {
+    return null;
+  }
+
+  const body = payload as {
+    message?: unknown;
+    _embedded?: {
+      errors?: Array<{
+        message?: unknown;
+        details?: { attribute?: unknown };
+      }>;
+    };
+  };
+
+  const errors = body._embedded?.errors || [];
+  const errorMessages = errors
+    .map((item) => {
+      const attribute = item.details?.attribute;
+      const prefix = typeof attribute === 'string' ? `${attribute}: ` : '';
+      return typeof item.message === 'string' ? `${prefix}${item.message}` : null;
+    })
+    .filter((item): item is string => Boolean(item));
+
+  if (errorMessages.length > 0) {
+    return errorMessages.join('; ');
+  }
+
+  return typeof body.message === 'string' ? body.message : null;
 }
 
 function findOpenProjectMembership(
@@ -1418,12 +1473,9 @@ async function syncClickUpTasksIntoProject(params: {
   const { byClickUpTaskId, bySubject } = indexExistingWorkPackages(existingWorkPackages);
 
   for (const task of clickUpTasks) {
-    await syncClickUpTaskAssigneesIntoLocalWorkspace(task, params.userSync);
-    await applyOpenProjectMemberships(
-      params.project,
-      taskAssigneePermissionGrants(task, params.summary),
-      params.openProjectUserSync
-    );
+    const assigneeGrants = taskAssigneePermissionGrants(task, params.summary);
+    await syncPermissionGrantUsersIntoLocalWorkspace(assigneeGrants, params.userSync);
+    await applyOpenProjectMemberships(params.project, assigneeGrants, params.openProjectUserSync);
 
     const existingById = byClickUpTaskId.get(task.id);
     const existingBySubject = bySubject.get(task.name);
@@ -1561,6 +1613,7 @@ async function seedFolderedLists(params: {
     }
   }
 
+  await syncPermissionGrantUsersIntoLocalWorkspace(params.inheritedGrants, params.userSync);
   await applyOpenProjectMemberships(
     folderProject,
     params.inheritedGrants,
@@ -1597,6 +1650,7 @@ async function seedFolderedLists(params: {
 
     const listGrants = await getClickUpListMembers(list.id, params.summary);
     const effectiveGrants = [...params.inheritedGrants, ...listGrants];
+    await syncPermissionGrantUsersIntoLocalWorkspace(effectiveGrants, params.userSync);
     await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
 
     const context: ClickUpTaskContext = {
@@ -1675,6 +1729,7 @@ async function seedFolderlessLists(params: {
 
     const listGrants = await getClickUpListMembers(list.id, params.summary);
     const effectiveGrants = [...params.inheritedGrants, ...listGrants];
+    await syncPermissionGrantUsersIntoLocalWorkspace(effectiveGrants, params.userSync);
     await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
 
     const seededListFolder = createSeededFolder({
@@ -1915,6 +1970,7 @@ async function main() {
     clickUpListMembersSeen: 0,
     clickUpTaskAssigneesSeen: 0,
     localUsersCreated: 0,
+    localUsersReused: 0,
     localUsersUpdated: 0,
     localMembershipsCreated: 0,
     openProjectUsersCreated: 0,
@@ -1981,6 +2037,7 @@ async function main() {
     roles: openProjectRoles,
     memberships: openProjectMemberships,
     clickUpUserToOpenProjectUser: new Map<string, OpenProjectUser>(),
+    failedClickUpUserKeys: new Set<string>(),
     summary,
   };
 
@@ -2011,6 +2068,7 @@ async function main() {
           fallbackRecoveredTasks: summary.fallbackRecoveredTasks,
           fallbackSkippedTasks: summary.fallbackSkippedTasks,
           localUsersCreated: summary.localUsersCreated,
+          localUsersReused: summary.localUsersReused,
           localUsersUpdated: summary.localUsersUpdated,
           localMembershipsCreated: summary.localMembershipsCreated,
           hierarchyPath: path,
@@ -2080,6 +2138,7 @@ async function main() {
       );
     }
 
+    await syncPermissionGrantUsersIntoLocalWorkspace(spaceGrants, userSync);
     await applyOpenProjectMemberships(spaceProject, spaceGrants, openProjectUserSync);
 
     const folders = await getClickUpFolders(space.id).catch((error) => {

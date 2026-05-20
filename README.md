@@ -52,7 +52,7 @@ npm run seed:openproject:clickup
 Optional migration-only user env:
 
 ```bash
-OPENPROJECT_IMPORTED_USER_PASSWORD="clickup!2026"
+OPENPROJECT_IMPORTED_USER_PASSWORD="Clickup!2026"
 OP_IMPORTED_ADMIN_EMAILS=""
 CLICKUP_IMPORTED_USER_PASSWORD="clickup!2026"
 ```

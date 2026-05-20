@@ -219,7 +219,7 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    ```bash
    CLICKUP_TOKEN="..."
    OPENPROJECT_API_TOKEN="admin-or-manage-user-token"
-   OPENPROJECT_IMPORTED_USER_PASSWORD="clickup!2026"
+   OPENPROJECT_IMPORTED_USER_PASSWORD="Clickup!2026"
    CLICKUP_IMPORTED_USER_PASSWORD="clickup!2026"
    OP_IMPORTED_ADMIN_EMAILS=""
    ```
@@ -233,7 +233,7 @@ Use an OpenProject admin/API token with permission to manage users and membershi
 3. In OpenProject administration, verify users from ClickUp exist.
 4. Log in to OpenProject as one imported user:
    - login/email: the ClickUp email, or `clickup-<id>@local.clickup.invalid` if ClickUp had no email
-   - password: `OPENPROJECT_IMPORTED_USER_PASSWORD`, default `clickup!2026`
+   - password: `OPENPROJECT_IMPORTED_USER_PASSWORD`, default `Clickup!2026`
 5. Check project memberships:
    - ClickUp workspace members are applied to mapped Space/Folder/List projects.
    - Explicit ClickUp space members, when returned by `GET /space/{space_id}` fields such as `members`, `users`, `permissions`, `access`, `sharing`, or `shared`, are applied to the mapped Space project and inherited by child projects.
