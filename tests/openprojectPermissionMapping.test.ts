@@ -1,5 +1,7 @@
 import {
   clickUpPermissionFromRaw,
+  extractFolderPermissionGrants,
+  extractSpacePermissionGrants,
   isRoleAtLeast,
   openProjectRoleLevel,
   pickOpenProjectRoleForClickUpPermission,
@@ -45,4 +47,31 @@ test('role strength prevents downgrade and allows upgrade', () => {
   assert.equal(isRoleAtLeast('Manager', 'member'), true);
   assert.equal(isRoleAtLeast('Member', 'admin'), false);
   assert.equal(isRoleAtLeast('Reader', 'commenter'), false);
+});
+
+test('extracts ClickUp space permission grants from known access fields', () => {
+  const grants = extractSpacePermissionGrants({
+    private: true,
+    sharing: {
+      users: [{ user: { id: 10, email: 'viewer@example.test' }, permission: 'view_only' }],
+    },
+    permissions: [{ user: { id: 11, email: 'admin@example.test' }, role: 'admin' }],
+  });
+
+  assert.deepEqual(
+    grants.map((grant) => grant.level),
+    ['admin', 'reader']
+  );
+});
+
+test('extracts ClickUp folder permission grants from shared members', () => {
+  const grants = extractFolderPermissionGrants({
+    hidden: true,
+    shared: {
+      members: [{ user: { id: 12, email: 'commenter@example.test' }, permission: 'comment' }],
+    },
+  });
+
+  assert.equal(grants.length, 1);
+  assert.equal(grants[0]?.level, 'commenter');
 });

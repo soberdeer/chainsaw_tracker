@@ -6,6 +6,11 @@ export type OpenProjectRoleLike = {
 
 export type ImportedPermissionLevel = 'admin' | 'member' | 'commenter' | 'reader';
 
+export type ClickUpPermissionGrantLike = {
+  user: unknown;
+  level: ImportedPermissionLevel;
+};
+
 export const permissionStrength: Record<ImportedPermissionLevel, number> = {
   reader: 1,
   commenter: 2,
@@ -90,4 +95,79 @@ export function clickUpPermissionFromRaw(value: unknown): ImportedPermissionLeve
   }
 
   return 'member';
+}
+
+function isObject(value: unknown): value is Record<string, unknown> {
+  return Boolean(value && typeof value === 'object');
+}
+
+function arrayFromPath(value: unknown, path: string[]) {
+  let current = value;
+
+  for (const key of path) {
+    if (!isObject(current)) {
+      return [];
+    }
+
+    current = current[key];
+  }
+
+  return Array.isArray(current) ? current : [];
+}
+
+function permissionGrantCandidates(value: unknown) {
+  return [
+    ...arrayFromPath(value, ['members']),
+    ...arrayFromPath(value, ['users']),
+    ...arrayFromPath(value, ['permissions']),
+    ...arrayFromPath(value, ['access']),
+    ...arrayFromPath(value, ['sharing']),
+    ...arrayFromPath(value, ['shared']),
+    ...arrayFromPath(value, ['shared', 'members']),
+    ...arrayFromPath(value, ['shared', 'users']),
+    ...arrayFromPath(value, ['sharing', 'members']),
+    ...arrayFromPath(value, ['sharing', 'users']),
+    ...arrayFromPath(value, ['access', 'members']),
+    ...arrayFromPath(value, ['access', 'users']),
+  ];
+}
+
+function userFromCandidate(value: unknown) {
+  if (!isObject(value)) {
+    return null;
+  }
+
+  if (value.user !== undefined) {
+    return value.user;
+  }
+
+  if (value.member !== undefined) {
+    return value.member;
+  }
+
+  if (value.id !== undefined || value.email !== undefined || value.username !== undefined) {
+    return value;
+  }
+
+  return null;
+}
+
+export function extractClickUpHierarchyPermissionGrants(value: unknown) {
+  return permissionGrantCandidates(value).flatMap((candidate): ClickUpPermissionGrantLike[] => {
+    const user = userFromCandidate(candidate);
+
+    if (!user) {
+      return [];
+    }
+
+    return [{ user, level: clickUpPermissionFromRaw(candidate) }];
+  });
+}
+
+export function extractSpacePermissionGrants(space: unknown) {
+  return extractClickUpHierarchyPermissionGrants(space);
+}
+
+export function extractFolderPermissionGrants(folder: unknown) {
+  return extractClickUpHierarchyPermissionGrants(folder);
 }

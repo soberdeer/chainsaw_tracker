@@ -26,6 +26,8 @@ import type {
 } from './migration/clickup/types.js';
 import {
   clickUpPermissionFromRaw,
+  extractFolderPermissionGrants,
+  extractSpacePermissionGrants,
   isRoleAtLeast,
   pickOpenProjectRoleForClickUpPermission,
   type ImportedPermissionLevel,
@@ -805,34 +807,38 @@ function teamPermissionGrants(team: ClickUpTeam, summary: Summary): PermissionGr
   return permissionGrantsFromMembers(members, 'teamMembers', 'member');
 }
 
-function hierarchyPermissionGrants(
-  value: unknown,
-  source: 'spaceMembers' | 'folderMembers',
-  summary: Summary
-): PermissionGrant[] {
-  const payload = value as {
-    members?: unknown[];
-    users?: unknown[];
-    permissions?: unknown[];
-    shared?: { users?: unknown[]; members?: unknown[] };
-  };
-  const members = [
-    ...(payload.members || []),
-    ...(payload.users || []),
-    ...(payload.permissions || []),
-    ...(payload.shared?.users || []),
-    ...(payload.shared?.members || []),
-  ];
+function extractSpaceGrants(space: ClickUpSpace, summary: Summary): PermissionGrant[] {
+  const grants = extractSpacePermissionGrants(space).flatMap((grant): PermissionGrant[] => {
+    const user = clickUpUserFromTeamMember(grant.user);
 
-  if (source === 'spaceMembers') {
-    summary.clickUpSpaceMembersSeen += members.length;
-  } else {
-    summary.clickUpFolderMembersSeen += members.length;
-  }
+    if (!user) {
+      return [];
+    }
 
-  summary.permissionSourcesUsed[source] ||= members.length > 0;
+    return [{ user, level: grant.level, source: 'spaceMembers' }];
+  });
 
-  return permissionGrantsFromMembers(members, source, 'member');
+  summary.clickUpSpaceMembersSeen += grants.length;
+  summary.permissionSourcesUsed.spaceMembers ||= grants.length > 0;
+
+  return grants;
+}
+
+function extractFolderGrants(folder: ClickUpFolder, summary: Summary): PermissionGrant[] {
+  const grants = extractFolderPermissionGrants(folder).flatMap((grant): PermissionGrant[] => {
+    const user = clickUpUserFromTeamMember(grant.user);
+
+    if (!user) {
+      return [];
+    }
+
+    return [{ user, level: grant.level, source: 'folderMembers' }];
+  });
+
+  summary.clickUpFolderMembersSeen += grants.length;
+  summary.permissionSourcesUsed.folderMembers ||= grants.length > 0;
+
+  return grants;
 }
 
 function taskAssigneePermissionGrants(task: ClickUpTask, summary: Summary): PermissionGrant[] {
@@ -1086,12 +1092,30 @@ async function getClickUpSpaces(teamId: string) {
   return payload.spaces || [];
 }
 
+async function getClickUpSpaceDetails(spaceId: string, summary: Summary) {
+  return clickUpRequest<ClickUpSpace>(`/space/${spaceId}`).catch((error) => {
+    summary.permissionWarnings.push(
+      `space ${spaceId}: cannot read detailed ClickUp space access fields: ${(error as Error).message}`
+    );
+    return null;
+  });
+}
+
 async function getClickUpFolders(spaceId: string) {
   const payload = await clickUpRequest<{ folders: ClickUpFolder[] }>(`/space/${spaceId}/folder`, {
     query: { archived: false },
   });
 
   return payload.folders || [];
+}
+
+async function getClickUpFolderDetails(folderId: string, summary: Summary) {
+  return clickUpRequest<ClickUpFolder>(`/folder/${folderId}`).catch((error) => {
+    summary.permissionWarnings.push(
+      `folder ${folderId}: cannot read detailed ClickUp folder access fields: ${(error as Error).message}`
+    );
+    return null;
+  });
 }
 
 async function getClickUpFolderlessLists(spaceId: string) {
@@ -2045,7 +2069,9 @@ async function main() {
       return null;
     });
 
-    const explicitSpaceGrants = hierarchyPermissionGrants(space, 'spaceMembers', summary);
+    const spaceDetails = await getClickUpSpaceDetails(space.id, summary);
+    const spaceForPermissions = spaceDetails || space;
+    const explicitSpaceGrants = extractSpaceGrants(spaceForPermissions, summary);
     const spaceGrants = [...workspaceGrants, ...explicitSpaceGrants];
 
     if (space.private && explicitSpaceGrants.length === 0) {
@@ -2075,7 +2101,9 @@ async function main() {
         summary.errors.push(`folder ${folder.name}: ${(error as Error).message}`);
         return [];
       });
-      const explicitFolderGrants = hierarchyPermissionGrants(folder, 'folderMembers', summary);
+      const folderDetails = await getClickUpFolderDetails(folder.id, summary);
+      const folderForPermissions = folderDetails || folder;
+      const explicitFolderGrants = extractFolderGrants(folderForPermissions, summary);
       const folderGrants = [...spaceGrants, ...explicitFolderGrants];
 
       await seedFolderedLists({

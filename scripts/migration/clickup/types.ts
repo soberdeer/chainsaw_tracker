@@ -22,6 +22,12 @@ export type ClickUpSpace = {
   private?: boolean;
   color?: string;
   statuses?: ClickUpStatus[];
+  members?: unknown[];
+  users?: unknown[];
+  permissions?: unknown[];
+  sharing?: unknown;
+  shared?: unknown;
+  access?: unknown;
 };
 
 export type ClickUpFolder = {
@@ -30,6 +36,12 @@ export type ClickUpFolder = {
   hidden?: boolean;
   lists?: ClickUpList[];
   statuses?: ClickUpStatus[];
+  members?: unknown[];
+  users?: unknown[];
+  permissions?: unknown[];
+  sharing?: unknown;
+  shared?: unknown;
+  access?: unknown;
 };
 
 export type ClickUpList = {

@@ -236,6 +236,8 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - password: `OPENPROJECT_IMPORTED_USER_PASSWORD`, default `clickup!2026`
 5. Check project memberships:
    - ClickUp workspace members are applied to mapped Space/Folder/List projects.
+   - Explicit ClickUp space members, when returned by `GET /space/{space_id}` fields such as `members`, `users`, `permissions`, `access`, `sharing`, or `shared`, are applied to the mapped Space project and inherited by child projects.
+   - Explicit ClickUp folder members, when returned by `GET /folder/{folder_id}` in the same access/sharing fields, are applied to the mapped Folder project and inherited by child list projects.
    - Explicit ClickUp list members from `GET /list/{list_id}/member` are applied to the mapped list project.
    - Task assignees get at least Member access to the mapped list project.
 6. Check inheritance:
@@ -250,8 +252,9 @@ Use an OpenProject admin/API token with permission to manage users and membershi
 Current ClickUp permission source limitations:
 
 - `team.members` is treated as workspace-wide membership.
+- Space/folder explicit grants are extracted only when ClickUp returns access fields in the Space/Folder API responses.
 - Explicit list members are read through `GET /list/{list_id}/member` when available.
-- Space/folder explicit member APIs are not available in the current migration adapter response; private spaces/folders emit warnings and inherit known workspace/list/assignee grants.
+- Private spaces/folders without returned explicit member fields emit warnings and inherit known workspace/list/assignee grants.
 
 `OPENPROJECT_IMPORTED_USER_PASSWORD` is only for real OpenProject users created during migration. `CLICKUP_IMPORTED_USER_PASSWORD` is only for local tracker users created for the local auth scaffold.
 
