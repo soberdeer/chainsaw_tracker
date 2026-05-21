@@ -154,7 +154,8 @@ The tracker includes:
 - Workspace overview and onboarding panel after login:
   - OpenProject connection status
   - latest import status
-  - import coverage summary
+  - warnings and errors count from the latest import report
+  - import coverage summary for projects, tasks, users, memberships, and assignee mapping
   - quick actions for tasks, imports, settings, and OpenProject
 - Workspace settings:
   - General

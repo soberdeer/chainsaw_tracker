@@ -20,9 +20,13 @@ test('summarizeImportRun extracts key import counters', () => {
       tasksUpdated: 2,
       openProjectUsersCreated: 4,
       openProjectUsersReused: 1,
+      openProjectMembershipsCreated: 7,
+      openProjectMembershipsReused: 3,
+      openProjectMembershipsUpdated: 1,
       assigneesMapped: 6,
       responsibleMapped: 2,
       additionalAssigneesStored: 1,
+      assigneeMappingErrors: ['task 1 failed'],
     },
     warnings: ['warn-a', 'warn-b'],
     errors: [],
@@ -31,9 +35,10 @@ test('summarizeImportRun extracts key import counters', () => {
   assert.equal(summary.projectsImported, 3);
   assert.equal(summary.tasksImported, 12);
   assert.equal(summary.usersImported, 5);
+  assert.equal(summary.membershipsImported, 11);
   assert.equal(summary.assigneesMapped, 6);
   assert.equal(summary.warningsCount, 2);
-  assert.equal(summary.errorsCount, 0);
+  assert.equal(summary.errorsCount, 1);
 });
 
 test('buildWorkspaceChecklist reflects connection and import status', () => {

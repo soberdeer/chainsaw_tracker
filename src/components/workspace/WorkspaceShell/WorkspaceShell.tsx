@@ -1345,12 +1345,19 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         ? `${latestImportReport.status} • ${new Date(latestImportReport.startedAt).toLocaleString()}`
                         : 'Import has not been run yet.'}
                     </Text>
+                    {latestImportReport && (
+                      <Text size="xs" c="dimmed" mt={4}>
+                        {latestImportSummary.warningsCount} warnings •{' '}
+                        {latestImportSummary.errorsCount} errors
+                      </Text>
+                    )}
                   </Alert>
                   <Alert color="teal" title="Import coverage">
                     <Text size="sm">
                       {latestImportSummary.projectsImported} projects,{' '}
                       {latestImportSummary.tasksImported} tasks, {latestImportSummary.usersImported}{' '}
-                      users, {latestImportSummary.assigneesMapped} assignees mapped.
+                      users, {latestImportSummary.membershipsImported} memberships,{' '}
+                      {latestImportSummary.assigneesMapped} assignees mapped.
                     </Text>
                   </Alert>
                 </SimpleGrid>

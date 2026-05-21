@@ -64,7 +64,7 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 12. Confirm it applies the existing assignee filter instead of opening a separate fake module.
 13. Open `Access` and confirm local workspace role, permission set, and OpenProject memberships are visible.
 14. Log out and confirm protected tracker UI is no longer available.
-15. Confirm the workspace overview shows connection status, latest import status, import coverage, and quick actions.
+15. Confirm the workspace overview shows connection status, latest import status, warnings/errors count, import coverage, and quick actions.
 
 Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
 
@@ -340,6 +340,7 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - additional assignees are not silently lost;
    - when OpenProject rejects assignee or responsible, the imported task description still keeps a
      `Additional assignees` block with each fallback user name, email, and `ClickUp ID`.
+   - the workspace overview still reports assignee mapping counts from the last import summary.
 6. Check inheritance:
    - Space-level grants are applied to folder/list subprojects.
    - Explicit list access does not grant access to unrelated top-level spaces.

@@ -51,6 +51,10 @@ export function summarizeImportRun(run?: MigrationRun | null) {
     usersImported:
       numericValue(summary, ['openProjectUsersCreated']) +
       numericValue(summary, ['openProjectUsersReused', 'localUsersCreated', 'localUsersReused']),
+    membershipsImported:
+      numericValue(summary, ['openProjectMembershipsCreated']) +
+      numericValue(summary, ['openProjectMembershipsReused']) +
+      numericValue(summary, ['openProjectMembershipsUpdated']),
     assigneesMapped: numericValue(summary, ['assigneesMapped']),
     responsibleMapped: numericValue(summary, ['responsibleMapped']),
     additionalAssigneesStored: numericValue(summary, ['additionalAssigneesStored']),
