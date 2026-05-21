@@ -58,6 +58,10 @@ import {
   logout,
   markAllNotificationsRead,
   markNotificationRead,
+  myTasksPath,
+  allTasksPath,
+  reorderBoardTasks,
+  saveBoardCardOrder,
   updateTask,
   updateSavedView,
   firstTaskFolder,
@@ -133,6 +137,7 @@ const EXPANDED_FOLDER_KEY = 'op-tracker:expanded-folders';
 export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string>();
@@ -161,6 +166,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [projectAccessOpen, setProjectAccessOpen] = useState(false);
   const [spaceCreateOpen, setSpaceCreateOpen] = useState(false);
   const [taskView, setTaskView] = useState<string | null>(initialQuery.taskView);
+  const [taskReturnPath, setTaskReturnPath] = useState<string | null>(null);
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') {
       return new Set();
@@ -338,7 +344,18 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
         if (route.taskId) {
           getTask(route.taskId)
-            .then(setSelectedTask)
+            .then((task) => {
+              setSelectedTask(task);
+              if (task.departmentId) {
+                setSpaceId(task.departmentId);
+              }
+              if (task.folderId) {
+                setFolderId(task.folderId);
+              }
+              if (task.taskListId) {
+                setTaskListId(task.taskListId);
+              }
+            })
             .catch((error) => setActionError(getErrorMessage(error)));
           setSelectedDoc(null);
         } else if (route.docId) {
@@ -356,7 +373,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           setSelectedDoc(null);
         }
 
-        if (!route.spaceId && defaultSpace && defaultFolder) {
+        if (!route.spaceId && !route.scope && defaultSpace && defaultFolder) {
           navigate(folderPath(defaultSpace.id, defaultFolder.id), { replace: true });
         }
       })
@@ -425,6 +442,10 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   );
   const latestImportReport = importReports[0] || null;
   const latestImportSummary = summarizeImportRun(latestImportReport);
+  const workspaceWideScope = route.scope || null;
+  const workspaceWideLabel =
+    workspaceWideScope === 'mine' ? 'My Tasks' : workspaceWideScope === 'all' ? 'All Tasks' : null;
+  const isWorkspaceWide = Boolean(workspaceWideScope);
   const checklist = buildWorkspaceChecklist({
     connectionStatus,
     latestImport: latestImportReport,
@@ -437,9 +458,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   );
   const emptyState = describeTaskCollectionState({
     hasLinkedOpenProjectUser: Boolean(currentOpenProjectUser),
-    assignedToMeActive,
+    assignedToMeActive: assignedToMeActive || workspaceWideScope === 'mine',
     filtersActive,
-    isWorkspaceWide: false,
+    isWorkspaceWide,
   });
   const breadcrumbItems = buildWorkspaceBreadcrumbs({
     workspace,
@@ -449,6 +470,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     selectedTaskTitle: selectedTask?.title || null,
     selectedDocTitle: selectedDoc?.title || null,
     currentView: selectedDoc ? 'docs' : (taskView as 'tasks' | 'board' | 'docs') || 'tasks',
+    workspaceWideLabel,
   });
 
   useEffect(() => {
@@ -459,21 +481,33 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
   const loadTasks = useCallback(
     async (cursor?: string) => {
-      if (!workspace?.id || !activeTaskList?.id) {
+      if (!workspace?.id || (!isWorkspaceWide && !activeTaskList?.id)) {
         setTasks([]);
         setNextCursor(null);
+        return;
+      }
+      if (workspaceWideScope === 'mine' && !currentOpenProjectUser) {
+        setTasks([]);
+        setNextCursor(null);
+        setTasksLoading(false);
         return;
       }
 
       try {
         setTasksLoading(true);
         setTasksError(null);
+        const effectiveAssigneeIds =
+          workspaceWideScope === 'mine' && currentOpenProjectUser
+            ? [currentOpenProjectUser.id]
+            : assigneeFilter.length
+              ? assigneeFilter
+              : undefined;
 
         const page = await getTasks({
           workspaceId: workspace.id,
-          listId: activeTaskList.id,
+          listId: isWorkspaceWide ? undefined : activeTaskList?.id,
           statusId: statusFilter || undefined,
-          assigneeIds: assigneeFilter.length ? assigneeFilter : undefined,
+          assigneeIds: effectiveAssigneeIds,
           priority: priorityFilter || undefined,
           search: taskSearch,
           limit: 50,
@@ -488,7 +522,17 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         setTasksLoading(false);
       }
     },
-    [workspace?.id, activeTaskList?.id, statusFilter, assigneeFilter, priorityFilter, taskSearch]
+    [
+      workspace?.id,
+      activeTaskList?.id,
+      statusFilter,
+      assigneeFilter,
+      priorityFilter,
+      taskSearch,
+      isWorkspaceWide,
+      workspaceWideScope,
+      currentOpenProjectUser,
+    ]
   );
 
   useEffect(() => {
@@ -526,35 +570,48 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     setCreateTaskStatusId(statusId);
   };
 
-  const moveTask = async (taskId: string, statusId: string) => {
-    if (!canWriteTasks) return;
+  const moveTask = async (taskId: string, statusId: string, targetTaskId?: string | null) => {
+    if (!canWriteTasks || !activeTaskList) return;
     const task = tasks.find((item) => item.id === taskId);
-    if (task?.statusId === statusId) return;
+    if (!task) return;
+    const nextBoard = reorderBoardTasks(tasks, statuses, {
+      taskId,
+      toStatusId: statusId,
+      targetTaskId,
+    });
+    if (!nextBoard) {
+      return;
+    }
+
     const previousTasks = tasks;
     const previousSelectedTask = selectedTask;
-    const nextStatusName = statuses.find((candidate) => candidate.id === statusId)?.name;
-    setTasks((current) =>
-      current.map((item) =>
-        item.id === taskId
-          ? { ...item, statusId, ...(nextStatusName ? { status: nextStatusName } : {}) }
-          : item
-      )
-    );
+    const previousStatusId = task.statusId;
+    const statusChanged = previousStatusId !== statusId;
+    setTasks(nextBoard.tasks);
     if (selectedTask?.id === taskId) {
-      setSelectedTask({
-        ...selectedTask,
-        statusId,
-        ...(nextStatusName ? { status: nextStatusName } : {}),
-      });
+      setSelectedTask(nextBoard.updatedTask);
     }
+
+    let statusUpdated = false;
     try {
-      const updated = await updateTask(taskId, { statusId });
-      setTasks((current) => current.map((item) => (item.id === taskId ? updated : item)));
-      if (selectedTask?.id === taskId) {
-        setSelectedTask(updated);
+      if (statusChanged) {
+        const updated = await updateTask(taskId, { statusId });
+        statusUpdated = true;
+        setTasks((current) => current.map((item) => (item.id === taskId ? updated : item)));
+        if (selectedTask?.id === taskId) {
+          setSelectedTask(updated);
+        }
       }
-      setActionNotice('Task status updated.');
+
+      await saveBoardCardOrder({
+        listId: activeTaskList.id,
+        orders: nextBoard.orders,
+      });
+      setActionNotice(statusChanged ? 'Task status and order updated.' : 'Task order updated.');
     } catch (error) {
+      if (statusUpdated && previousStatusId) {
+        await updateTask(taskId, { statusId: previousStatusId }).catch(() => undefined);
+      }
       setTasks(previousTasks);
       setSelectedTask(previousSelectedTask);
       setActionError(getErrorMessage(error));
@@ -602,6 +659,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     statusId: statusFilter,
     assigneeIds: assigneeFilter,
     priority: priorityFilter,
+    scope: workspaceWideScope || 'list',
+    viewType: taskView,
   };
 
   const saveCurrentView = async () => {
@@ -609,7 +668,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     await runAction(async () => {
       const view = await createSavedView({
         workspaceId: workspace.id,
-        listId: activeTaskList?.id,
+        listId: isWorkspaceWide ? null : activeTaskList?.id,
         name: savedViewName.trim(),
         filters: currentFilters,
         visibility: savedViewVisibility,
@@ -633,20 +692,60 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       statusId?: string | null;
       assigneeIds?: string[];
       priority?: string | null;
+      scope?: string;
+      viewType?: string | null;
     };
     setTaskSearch(filters.search || '');
     setStatusFilter(filters.statusId || null);
     setAssigneeFilter(filters.assigneeIds || []);
     setPriorityFilter(filters.priority || null);
+    if (
+      filters.viewType === 'board' ||
+      filters.viewType === 'docs' ||
+      filters.viewType === 'tasks'
+    ) {
+      setTaskView(filters.viewType);
+    }
+    if (filters.scope === 'all') {
+      navigate(allTasksPath());
+    } else if (filters.scope === 'mine') {
+      navigate(myTasksPath());
+    } else if (activeSpace && activeFolder) {
+      navigate(folderPath(activeSpace.id, activeFolder.id));
+    }
   };
 
   const openTask = (task: Task) => {
-    if (!activeSpace || !activeFolder) return;
     setSelectedTask(task);
     setSelectedDoc(null);
-    navigate(taskPath(activeSpace.id, activeFolder.id, task.id));
+    setTaskReturnPath(location.pathname);
+    const taskSpaceId = task.departmentId || activeSpace?.id;
+    const taskFolderId = task.folderId || activeFolder?.id;
+    if (taskSpaceId) {
+      setSpaceId(taskSpaceId);
+    }
+    if (taskFolderId) {
+      setFolderId(taskFolderId);
+    }
+    if (task.taskListId) {
+      setTaskListId(task.taskListId);
+    }
+    if (taskSpaceId && taskFolderId) {
+      navigate(taskPath(taskSpaceId, taskFolderId, task.id));
+    }
     getTask(task.id)
-      .then(setSelectedTask)
+      .then((fullTask) => {
+        setSelectedTask(fullTask);
+        if (fullTask.departmentId) {
+          setSpaceId(fullTask.departmentId);
+        }
+        if (fullTask.folderId) {
+          setFolderId(fullTask.folderId);
+        }
+        if (fullTask.taskListId) {
+          setTaskListId(fullTask.taskListId);
+        }
+      })
       .catch((error) => setActionError(getErrorMessage(error)));
   };
 
@@ -659,17 +758,35 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   };
 
   const openSubtask = (task: Task) => {
-    const targetSpaceId = activeSpace?.id;
+    const targetSpaceId = task.departmentId || activeSpace?.id;
     const targetFolderId = task.folderId || activeFolder?.id;
     if (!targetSpaceId || !targetFolderId) return;
     setSelectedTask(task);
+    setTaskReturnPath(location.pathname);
+    setSpaceId(targetSpaceId);
+    setFolderId(targetFolderId);
+    if (task.taskListId) {
+      setTaskListId(task.taskListId);
+    }
     navigate(taskPath(targetSpaceId, targetFolderId, task.id));
   };
 
   const backToFolder = () => {
-    if (!activeSpace || !activeFolder) return;
     setSelectedTask(null);
     setSelectedDoc(null);
+    if (taskReturnPath && taskReturnPath !== location.pathname) {
+      navigate(taskReturnPath);
+      return;
+    }
+    if (workspaceWideScope === 'all') {
+      navigate(allTasksPath());
+      return;
+    }
+    if (workspaceWideScope === 'mine') {
+      navigate(myTasksPath());
+      return;
+    }
+    if (!activeSpace || !activeFolder) return;
     navigate(folderPath(activeSpace.id, activeFolder.id));
   };
 
@@ -982,16 +1099,38 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           </Text>
           <Stack gap={4} mb="md">
             <Button
-              variant={taskView === 'tasks' && !selectedTask && !selectedDoc ? 'light' : 'subtle'}
+              variant={
+                workspaceWideScope === 'all' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
+              }
               justify="flex-start"
               leftSection={<IconList size="1rem" />}
               onClick={() => {
                 setTaskView('tasks');
                 setSelectedTask(null);
                 setSelectedDoc(null);
+                navigate(allTasksPath());
               }}
             >
-              Open Tasks
+              All Tasks
+            </Button>
+            <Button
+              variant={
+                workspaceWideScope === 'mine' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
+              }
+              justify="flex-start"
+              leftSection={<IconCheck size="1rem" />}
+              disabled={!currentOpenProjectUser}
+              onClick={() => {
+                if (!currentOpenProjectUser) {
+                  return;
+                }
+                setTaskView('tasks');
+                setSelectedTask(null);
+                setSelectedDoc(null);
+                navigate(myTasksPath());
+              }}
+            >
+              My Tasks
             </Button>
             {docsAvailable && (
               <Button
@@ -1368,17 +1507,20 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       setTaskView('tasks');
                       setSelectedTask(null);
                       setSelectedDoc(null);
+                      navigate(allTasksPath());
                     }}
                   >
-                    Open Tasks
+                    Open All Tasks
                   </Button>
                   <Button
                     variant="light"
                     disabled={!currentOpenProjectUser}
                     onClick={() => {
                       if (!currentOpenProjectUser) return;
-                      setAssigneeFilter([currentOpenProjectUser.id]);
                       setTaskView('tasks');
+                      setSelectedTask(null);
+                      setSelectedDoc(null);
+                      navigate(myTasksPath());
                     }}
                   >
                     Open Assigned to me
@@ -1455,7 +1597,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         <Badge variant="light">Grouped by OpenProject status</Badge>
                       </Tooltip>
                       {!canWriteTasks && (
-                        <Tooltip label="Only workspace owners and admins can write to OpenProject in service-token mode.">
+                        <Tooltip label="Your current workspace role is read-only for OpenProject-backed task changes.">
                           <Badge color="yellow" variant="light">
                             Read-only
                           </Badge>

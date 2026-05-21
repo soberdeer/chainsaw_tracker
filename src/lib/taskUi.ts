@@ -1,4 +1,12 @@
-import type { Folder, Space, TaskList, TaskPriority, TaskStatus, Workspace } from './types.js';
+import type {
+  Folder,
+  Space,
+  Task,
+  TaskList,
+  TaskPriority,
+  TaskStatus,
+  Workspace,
+} from './types.js';
 
 export const statusMeta: Record<string, { label: string; color: string; tone: string }> = {
   complete: { label: 'Complete', color: '#5cc4a7', tone: 'mint' },
@@ -147,6 +155,12 @@ export function docPath(spaceId: string, docId: string) {
 }
 
 export function parseAppPath(pathname: string) {
+  if (pathname === '/tasks') {
+    return { scope: 'all' as const };
+  }
+  if (pathname === '/my-tasks') {
+    return { scope: 'mine' as const };
+  }
   const taskMatch = pathname.match(/^\/space\/([^/]+)\/folder\/([^/]+)\/task\/([^/]+)/);
   if (taskMatch) {
     return { spaceId: taskMatch[1], folderId: taskMatch[2], taskId: taskMatch[3] };
@@ -164,6 +178,83 @@ export function parseAppPath(pathname: string) {
     return { spaceId: spaceMatch[1] };
   }
   return {};
+}
+
+export function allTasksPath() {
+  return '/tasks';
+}
+
+export function myTasksPath() {
+  return '/my-tasks';
+}
+
+export function reorderBoardTasks(
+  tasks: Task[],
+  statuses: TaskStatus[],
+  input: { taskId: string; toStatusId: string; targetTaskId?: string | null }
+) {
+  const movedTask = tasks.find((task) => task.id === input.taskId);
+  if (!movedTask) {
+    return null;
+  }
+
+  const sourceStatusId = movedTask.statusId || statuses[0]?.id;
+  if (!sourceStatusId) {
+    return null;
+  }
+  if (input.targetTaskId && input.targetTaskId === input.taskId) {
+    return null;
+  }
+
+  const grouped = new Map<string, Task[]>();
+  statuses.forEach((status) => {
+    grouped.set(status.id, []);
+  });
+  tasks.forEach((task) => {
+    const statusId = task.statusId || statuses[0]?.id;
+    if (!statusId) {
+      return;
+    }
+    grouped.set(statusId, [...(grouped.get(statusId) || []), task]);
+  });
+
+  const sourceColumn = [...(grouped.get(sourceStatusId) || [])].filter(
+    (task) => task.id !== input.taskId
+  );
+  grouped.set(sourceStatusId, sourceColumn);
+
+  const destinationColumn =
+    sourceStatusId === input.toStatusId ? sourceColumn : [...(grouped.get(input.toStatusId) || [])];
+  const nextStatusName = statuses.find((status) => status.id === input.toStatusId)?.name;
+  const nextTask =
+    sourceStatusId === input.toStatusId && !nextStatusName
+      ? movedTask
+      : {
+          ...movedTask,
+          statusId: input.toStatusId,
+          ...(nextStatusName ? { status: nextStatusName } : {}),
+        };
+
+  const targetIndex = input.targetTaskId
+    ? destinationColumn.findIndex((task) => task.id === input.targetTaskId)
+    : -1;
+  if (targetIndex >= 0) {
+    destinationColumn.splice(targetIndex, 0, nextTask);
+  } else {
+    destinationColumn.push(nextTask);
+  }
+  grouped.set(input.toStatusId, destinationColumn);
+
+  const flattened = statuses.flatMap((status) => grouped.get(status.id) || []);
+  const affectedStatusIds = [...new Set([sourceStatusId, input.toStatusId])];
+  return {
+    tasks: flattened,
+    updatedTask: nextTask,
+    orders: affectedStatusIds.map((statusId) => ({
+      statusId,
+      orderedTaskIds: (grouped.get(statusId) || []).map((task) => task.id),
+    })),
+  };
 }
 
 export function workspaceHasWork(workspace: Workspace) {

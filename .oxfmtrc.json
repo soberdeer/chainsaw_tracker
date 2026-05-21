@@ -7,11 +7,7 @@
       "side_effect_style",
       "external",
       "internal",
-      [
-        "parent",
-        "sibling",
-        "index"
-      ],
+      ["parent", "sibling", "index"],
       "style",
       "unknown"
     ],

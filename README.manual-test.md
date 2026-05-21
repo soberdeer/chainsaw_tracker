@@ -63,10 +63,11 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 11. Log out and confirm the old password no longer works.
 12. Log in again with the new password.
 13. Open `My work` and click `Open Assigned to me`.
-14. Confirm it applies the existing assignee filter instead of opening a separate fake module.
+14. Confirm it opens the cross-project `My Tasks` scope and applies the existing assignee filter instead of opening a separate fake module.
 15. Open `Access` and confirm local workspace role, permission set, and OpenProject memberships are visible.
 16. Log out and confirm protected tracker UI is no longer available.
 17. Confirm the workspace overview shows connection status, latest import status, warnings/errors count, import coverage, and quick actions.
+18. Open `All Tasks` from the workspace sidebar and confirm tasks load across projects without selecting a single project first.
 
 Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
 
@@ -127,9 +128,9 @@ curl http://localhost:4000/api/openproject/workspaces
 
 ## Task List
 
-1. Select a project/space.
+1. Open either `All Tasks`, `My Tasks`, or a concrete project/subproject `Work packages` view.
 2. Confirm tasks load through `GET /api/openproject/tasks`.
-3. Confirm the request includes `listId` or another OpenProject adapter id and a finite `limit`.
+3. Confirm the request includes either `listId` for project-scoped queries or `workspaceId` for cross-project queries, plus a finite `limit`.
 4. Test status, assignee, priority, and search filters.
 5. Confirm filters are sent to the backend and OpenProject filter builder, not applied only to mock data.
 6. OpenProject-backed filters use API v3 work package filters:
@@ -148,11 +149,13 @@ curl http://localhost:4000/api/openproject/workspaces
 
 1. Open the Board tab.
 2. Confirm columns are real OpenProject statuses.
-3. Drag a card from one status column to another.
-4. Confirm the app sends `PATCH /api/openproject/tasks/:taskId`.
-5. Refresh and confirm the new status remains in OpenProject.
-6. Do not expect manual ordering inside a column to persist. The board only persists status changes.
-7. If OpenProject rejects a status move by workflow, confirm the card returns to the previous column and the UI shows a clear error.
+3. Drag a card within the same column and confirm the order changes immediately.
+4. Confirm the app saves board order through the backend after the drop.
+5. Refresh and confirm the manual order inside the column persists.
+6. Drag a card from one status column to another.
+7. Confirm the app sends `PATCH /api/openproject/tasks/:taskId`.
+8. Refresh and confirm the new status remains in OpenProject.
+9. If OpenProject rejects a status move by workflow, confirm the card returns to the previous column and the UI shows a clear error.
 
 ## Task Detail
 
@@ -187,7 +190,7 @@ curl http://localhost:4000/api/openproject/workspaces
 6. Update task fields and confirm `PATCH /api/openproject/tasks/:taskId`.
 7. Delete or duplicate through task actions if available and confirm the result in OpenProject.
 
-In service-token mode, write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD` and `MEMBER` are read-only for OpenProject writes until per-user OpenProject auth exists.
+In service-token mode, write actions are still protected on the backend, but `LEAD` and `MEMBER` can work with OpenProject-backed tasks according to the local runtime permission model.
 
 ## Status / Assignee / Priority / Dates
 
@@ -233,8 +236,10 @@ Existing GitHub code is optional and isolated.
 
 1. Start the tracker with no GitHub env values.
 2. Confirm workspaces, task list, task detail, CRUD, subtasks, and activity still work.
-3. For OpenProject-backed tasks, GitHub tab/actions are hidden because the old GitHub links use local Prisma task ids, while OpenProject tasks use work package ids.
-4. No fake GitHub data should be shown.
+3. Confirm no fake GitHub tab or repository selector appears until a repository is configured or a synced PR is linked.
+4. Configure a repository in workspace settings, sync pull requests, and open an OpenProject-backed task whose subject/branch contains a supported tracker task key.
+5. Confirm the GitHub tab appears for that work package and shows the linked PR.
+6. Manually link a synced PR by URL or number from task detail and confirm the PR stays attached after refresh.
 
 ## Unsupported Features
 
@@ -243,8 +248,6 @@ Currently unsupported or disabled:
 - OpenProject Wiki-backed docs.
 - Tags editing.
 - Folder/List creation inside the ClickUp-like hierarchy.
-- Board card order persistence inside a status column.
-- GitHub links for OpenProject-backed work packages until an explicit mapping exists.
 
 Unsupported features should be hidden or disabled with clear copy. They should not appear as active buttons.
 

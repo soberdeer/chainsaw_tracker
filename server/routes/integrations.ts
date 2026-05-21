@@ -1,8 +1,12 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
+import { openProjectRequest } from '../openproject/client.js';
+import { getOpenProjectRuntimeWorkspace } from '../openproject/localPermissions.js';
+import { requireOpenProjectTaskWrite } from '../openproject/permissions.js';
 import { logTaskActivity } from '../services/activity.js';
 import {
+  buildGitHubLinkTarget,
   logPrActivity,
   upsertPullRequest,
   upsertRepository,
@@ -35,30 +39,75 @@ function sendGitHubDisabled(res: { status: (code: number) => { json: (body: unkn
   res.status(503).json({ error: 'GitHub integration is disabled' });
 }
 
+async function resolveGitHubWorkspaceId(workspaceId: string) {
+  if (workspaceId !== 'openproject') {
+    return workspaceId;
+  }
+
+  const runtimeWorkspace = await getOpenProjectRuntimeWorkspace();
+  if (!runtimeWorkspace) {
+    const error = new Error('OpenProject runtime workspace is not configured');
+    Object.assign(error, { statusCode: 503 });
+    throw error;
+  }
+
+  return runtimeWorkspace.id;
+}
+
 async function requireTaskGithubAccess(req: Request, taskId: string) {
-  const task = await prisma.task.findUniqueOrThrow({
-    where: { id: taskId },
-    include: { folder: { include: { space: true } } },
-  });
-  const membership = await workspaceMembership(
-    req,
-    task.workspaceId || task.folder.space.workspaceId
-  );
-  if (!membership) {
-    const error = new Error('Missing workspace membership');
+  const task = await prisma.task
+    .findUniqueOrThrow({
+      where: { id: taskId },
+      include: { folder: { include: { space: true } } },
+    })
+    .catch(() => null);
+
+  if (task) {
+    const membership = await workspaceMembership(
+      req,
+      task.workspaceId || task.folder.space.workspaceId
+    );
+    if (!membership) {
+      const error = new Error('Missing workspace membership');
+      Object.assign(error, { statusCode: 403 });
+      throw error;
+    }
+    if (['OWNER', 'ADMIN', 'LEAD'].includes(membership.role)) {
+      return {
+        kind: 'local' as const,
+        task,
+        workspaceId: task.workspaceId || task.folder.space.workspaceId,
+      };
+    }
+    const userId = currentUserId(req);
+    if (
+      membership.role === 'MEMBER' &&
+      (task.assigneeId === userId || task.createdById === userId)
+    ) {
+      return {
+        kind: 'local' as const,
+        task,
+        workspaceId: task.workspaceId || task.folder.space.workspaceId,
+      };
+    }
+    const error = new Error('Missing GitHub task permission');
     Object.assign(error, { statusCode: 403 });
     throw error;
   }
-  if (['OWNER', 'ADMIN', 'LEAD'].includes(membership.role)) {
-    return task;
+
+  await requireOpenProjectTaskWrite(req);
+  await openProjectRequest(`/api/v3/work_packages/${taskId}`);
+  const runtimeWorkspace = await getOpenProjectRuntimeWorkspace();
+  if (!runtimeWorkspace) {
+    const error = new Error('OpenProject runtime workspace is not configured');
+    Object.assign(error, { statusCode: 503 });
+    throw error;
   }
-  const userId = currentUserId(req);
-  if (membership.role === 'MEMBER' && (task.assigneeId === userId || task.createdById === userId)) {
-    return task;
-  }
-  const error = new Error('Missing GitHub task permission');
-  Object.assign(error, { statusCode: 403 });
-  throw error;
+  return {
+    kind: 'openproject' as const,
+    workPackageId: taskId,
+    workspaceId: runtimeWorkspace.id,
+  };
 }
 
 integrationsRouter.post('/github/webhook', async (req, res) => {
@@ -144,7 +193,12 @@ integrationsRouter.post('/github/webhook', async (req, res) => {
     if (activity) {
       await logPrActivity({ ...pr, reviewStatus }, activity);
     }
-    res.json({ ok: true, pullRequestId: pr.id, taskId: pr.taskId });
+    res.json({
+      ok: true,
+      pullRequestId: pr.id,
+      taskId: pr.taskId,
+      workPackageId: pr.workPackageId,
+    });
     return;
   }
 
@@ -187,14 +241,15 @@ integrationsRouter.get('/github/repositories', async (req, res) => {
     res.json([]);
     return;
   }
-  const workspace = await prisma.workspace.findUnique({ where: { id: workspaceId } });
+  const resolvedWorkspaceId = await resolveGitHubWorkspaceId(workspaceId);
+  const workspace = await prisma.workspace.findUnique({ where: { id: resolvedWorkspaceId } });
   if (!workspace) {
     res.json([]);
     return;
   }
-  await requirePermission(req, workspaceId, 'manageTasks');
+  await requirePermission(req, resolvedWorkspaceId, 'manageTasks');
   const repositories = await prisma.gitHubRepository.findMany({
-    where: { workspaceId },
+    where: { workspaceId: resolvedWorkspaceId },
     orderBy: { createdAt: 'asc' },
   });
   res.json(repositories);
@@ -213,8 +268,12 @@ integrationsRouter.post('/github/repositories', async (req, res) => {
       defaultBranch: z.string().optional(),
     })
     .parse(req.body);
-  await requireGithubSettingsAccess(req, body.workspaceId);
-  const repository = await upsertRepository(body);
+  const workspaceId = await resolveGitHubWorkspaceId(body.workspaceId);
+  await requireGithubSettingsAccess(req, workspaceId);
+  const repository = await upsertRepository({
+    ...body,
+    workspaceId,
+  });
   res.status(201).json(repository);
 });
 
@@ -283,7 +342,7 @@ integrationsRouter.post('/github/repositories/:id/sync-pull-requests', async (re
                 : item.draft
                   ? 'NONE'
                   : 'IN_REVIEW';
-      const { linkedTaskId } = await upsertPullRequest(repository, {
+      const { linkedTaskId, linkedWorkPackageId } = await upsertPullRequest(repository, {
         githubPrId: String(item.id),
         number: item.number,
         title: item.title,
@@ -302,7 +361,7 @@ integrationsRouter.post('/github/repositories/:id/sync-pull-requests', async (re
       } else {
         summary.created += 1;
       }
-      if (linkedTaskId) {
+      if (linkedTaskId || linkedWorkPackageId) {
         summary.linked += 1;
       }
     } catch {
@@ -317,7 +376,7 @@ integrationsRouter.post('/github/tasks/:taskId/link-pr', async (req, res) => {
     sendGitHubDisabled(res);
     return;
   }
-  const task = await requireTaskGithubAccess(req, req.params.taskId);
+  const target = await requireTaskGithubAccess(req, req.params.taskId);
   const body = z
     .object({
       repositoryId: z.string(),
@@ -342,25 +401,38 @@ integrationsRouter.post('/github/tasks/:taskId/link-pr', async (req, res) => {
   }
   const updated = await prisma.gitHubPullRequest.update({
     where: { id: pr.id },
-    data: { taskId: task.id },
+    data: buildGitHubLinkTarget(
+      target.kind === 'local' ? { taskId: target.task.id } : { workPackageId: target.workPackageId }
+    ),
   });
-  await prisma.taskGitHubLink
-    .create({
-      data: {
-        taskId: task.id,
-        repositoryId: repository.id,
-        pullRequestId: pr.id,
-        linkType: 'PULL_REQUEST',
-      },
-    })
-    .catch(() => null);
-  await logTaskActivity({
-    workspaceId: task.workspaceId || task.folder.space.workspaceId,
-    taskId: task.id,
-    actorId: currentUserId(req),
-    type: 'TASK_LINKED_TO_GITHUB_PR',
-    message: `Linked PR #${number}`,
+  await prisma.gitHubBranch.updateMany({
+    where: {
+      repositoryId: repository.id,
+      name: pr.headBranch,
+    },
+    data: buildGitHubLinkTarget(
+      target.kind === 'local' ? { taskId: target.task.id } : { workPackageId: target.workPackageId }
+    ),
   });
+  if (target.kind === 'local') {
+    await prisma.taskGitHubLink
+      .create({
+        data: {
+          taskId: target.task.id,
+          repositoryId: repository.id,
+          pullRequestId: pr.id,
+          linkType: 'PULL_REQUEST',
+        },
+      })
+      .catch(() => null);
+    await logTaskActivity({
+      workspaceId: target.workspaceId,
+      taskId: target.task.id,
+      actorId: currentUserId(req),
+      type: 'TASK_LINKED_TO_GITHUB_PR',
+      message: `Linked PR #${number}`,
+    });
+  }
   res.json(updated);
 });
 
@@ -371,14 +443,39 @@ integrationsRouter.delete(
       sendGitHubDisabled(res);
       return;
     }
-    const task = await requireTaskGithubAccess(req, req.params.taskId);
+    const target = await requireTaskGithubAccess(req, req.params.taskId);
     await prisma.gitHubPullRequest.update({
       where: { id: req.params.pullRequestId },
-      data: { taskId: null },
+      data:
+        target.kind === 'local'
+          ? { taskId: null }
+          : {
+              workPackageId: null,
+            },
     });
-    await prisma.taskGitHubLink.deleteMany({
-      where: { taskId: task.id, pullRequestId: req.params.pullRequestId },
+    const pullRequest = await prisma.gitHubPullRequest.findUnique({
+      where: { id: req.params.pullRequestId },
+      select: { repositoryId: true, headBranch: true },
     });
+    if (pullRequest) {
+      await prisma.gitHubBranch.updateMany({
+        where: {
+          repositoryId: pullRequest.repositoryId,
+          name: pullRequest.headBranch,
+        },
+        data:
+          target.kind === 'local'
+            ? { taskId: null }
+            : {
+                workPackageId: null,
+              },
+      });
+    }
+    if (target.kind === 'local') {
+      await prisma.taskGitHubLink.deleteMany({
+        where: { taskId: target.task.id, pullRequestId: req.params.pullRequestId },
+      });
+    }
     res.status(204).send();
   }
 );
@@ -388,9 +485,14 @@ integrationsRouter.post('/github/tasks/:taskId/refresh', async (req, res) => {
     sendGitHubDisabled(res);
     return;
   }
-  const task = await requireTaskGithubAccess(req, req.params.taskId);
+  const target = await requireTaskGithubAccess(req, req.params.taskId);
   const pullRequest = await prisma.gitHubPullRequest.findFirst({
-    where: { taskId: task.id },
+    where:
+      target.kind === 'local'
+        ? { taskId: target.task.id }
+        : {
+            workPackageId: target.workPackageId,
+          },
     include: { repository: true },
     orderBy: { updatedAt: 'desc' },
   });

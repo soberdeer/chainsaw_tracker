@@ -45,8 +45,11 @@ export async function openProjectRequest<T>(
   const timeout = setTimeout(() => controller.abort(), timeoutMs);
   const url = buildUrl(path, options.query);
 
+  let response: Response;
+  let payload: any;
+
   try {
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method,
       signal: controller.signal,
       headers: {
@@ -58,34 +61,72 @@ export async function openProjectRequest<T>(
     });
 
     const text = await response.text();
-    const payload = text
+
+    payload = text
       ? (() => {
           try {
             return JSON.parse(text);
           } catch {
-            return { message: response.ok ? text : response.statusText, raw: text.slice(0, 500) };
+            return {
+              message: response.ok ? text : response.statusText,
+              raw: text.slice(0, 500),
+            };
           }
         })()
       : null;
-    const duration = Date.now() - start;
-    console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
-    if (!response.ok) {
-      const message =
-        payload?.message ||
-        payload?._embedded?.errors?.[0]?.message ||
-        statusMessage(response.status, response.statusText);
-      throw new OpenProjectApiError(response.status, String(message), payload);
-    }
-    return payload as T;
   } catch (error) {
-    if (error instanceof OpenProjectApiError || error instanceof OpenProjectConfigError)
+    if (error instanceof OpenProjectConfigError) {
       throw error;
+    }
+
     if ((error as Error).name === 'AbortError') {
       throw new OpenProjectApiError(504, 'OpenProject API request timed out');
     }
+
     throw new OpenProjectApiError(502, 'OpenProject API is unavailable');
   } finally {
     clearTimeout(timeout);
+  }
+
+  const duration = Date.now() - start;
+  console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
+
+  if (!response.ok) {
+    const message =
+      payload?.message ||
+      payload?._embedded?.errors?.[0]?.message ||
+      statusMessage(response.status, response.statusText);
+
+    throw new OpenProjectApiError(response.status, String(message), payload);
+  }
+
+  return payload as T;
+}
+
+async function fetchOpenProject(url: URL, init: RequestInit): Promise<Response> {
+  try {
+    return await fetch(url, init);
+  } catch (error) {
+    if ((error as Error).name === 'AbortError') {
+      throw new OpenProjectApiError(504, 'OpenProject API request timed out');
+    }
+
+    throw new OpenProjectApiError(502, 'OpenProject API is unavailable');
+  }
+}
+
+function parseOpenProjectPayload(text: string, response: Response): unknown {
+  if (!text) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return {
+      message: response.ok ? text : response.statusText,
+      raw: text.slice(0, 500),
+    };
   }
 }
 
@@ -104,7 +145,7 @@ export async function openProjectMultipartRequest<T>(
   const url = buildUrl(path, options.query);
 
   try {
-    const response = await fetch(url, {
+    const response = await fetchOpenProject(url, {
       method,
       signal: controller.signal,
       headers: {
@@ -115,32 +156,21 @@ export async function openProjectMultipartRequest<T>(
     });
 
     const text = await response.text();
-    const payload = text
-      ? (() => {
-          try {
-            return JSON.parse(text);
-          } catch {
-            return { message: response.ok ? text : response.statusText, raw: text.slice(0, 500) };
-          }
-        })()
-      : null;
+    const payload = parseOpenProjectPayload(text, response) as any;
+
     const duration = Date.now() - start;
     console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
+
     if (!response.ok) {
       const message =
         payload?.message ||
         payload?._embedded?.errors?.[0]?.message ||
         statusMessage(response.status, response.statusText);
+
       throw new OpenProjectApiError(response.status, String(message), payload);
     }
+
     return payload as T;
-  } catch (error) {
-    if (error instanceof OpenProjectApiError || error instanceof OpenProjectConfigError)
-      throw error;
-    if ((error as Error).name === 'AbortError') {
-      throw new OpenProjectApiError(504, 'OpenProject API request timed out');
-    }
-    throw new OpenProjectApiError(502, 'OpenProject API is unavailable');
   } finally {
     clearTimeout(timeout);
   }

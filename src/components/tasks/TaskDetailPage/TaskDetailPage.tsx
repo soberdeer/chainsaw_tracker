@@ -162,7 +162,7 @@ export function TaskDetailPage({
       manualPr: '',
     },
   });
-  const githubSupportedForTask = task.externalSource !== 'OPENPROJECT';
+  const githubSupportedForTask = true;
 
   useEffect(() => {
     detailsForm.setValues({
@@ -848,7 +848,10 @@ export function TaskDetailPage({
                   </Paper>
                 ))}
                 {!task.githubPullRequests?.length && !task.githubBranches?.length && (
-                  <Text c="dimmed">No linked GitHub branch or PR.</Text>
+                  <Text c="dimmed">
+                    No linked GitHub branch or PR yet. Link a synced pull request or let the GitHub
+                    webhook match this work package by task key.
+                  </Text>
                 )}
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <Select

@@ -25,9 +25,11 @@
     "lint": "npm run oxlint",
     "test:code": "tsx --test tests/*.test.ts",
     "test": "npm run format && npm run lint && npm run typecheck && npm run test:code",
-    "format": "oxfmt --write \"**/*.{ts,tsx,css}\""
+    "format": "oxfmt --write \"**/*.{ts,tsx,js,jsx,json,css}\" && prisma format",
+    "format:check": "oxfmt --check \"**/*.{ts,tsx,js,jsx,json,css}\""
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "@mantine/core": "9.2.1",
     "@mantine/dropzone": "9.2.1",
     "@mantine/form": "9.2.1",
@@ -46,8 +48,7 @@
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6",
-    "turndown": "^7.2.2",
-    "xlsx": "^0.18.5",
+    "turndown": "^7.2.4",
     "zod": "^4.1.12"
   },
   "devDependencies": {

@@ -325,6 +325,16 @@ export function bulkUpdateTasks(input: {
   });
 }
 
+export function saveBoardCardOrder(input: {
+  listId: string;
+  orders: Array<{ statusId: string; orderedTaskIds: string[] }>;
+}) {
+  return request<{ ok: true }>('/api/openproject/board-order', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
 export function getSavedViews(workspaceId: string) {
   return request<SavedView[]>(`/api/saved-views?workspaceId=${encodeURIComponent(workspaceId)}`);
 }

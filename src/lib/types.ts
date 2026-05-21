@@ -123,6 +123,7 @@ export type GitHubPullRequest = {
   id: string;
   repositoryId: string;
   taskId?: string;
+  workPackageId?: string;
   number: number;
   title: string;
   url: string;
@@ -142,6 +143,7 @@ export type GitHubBranch = {
   id: string;
   repositoryId: string;
   taskId?: string;
+  workPackageId?: string;
   name: string;
   lastCommitSha?: string;
   url?: string;

@@ -21,7 +21,11 @@ export interface TaskBoardProps {
   canWriteTasks: boolean;
   onOpenTask: (task: Task) => void;
   onAddTask: (statusId: string) => void;
-  onMoveTask: (taskId: string, statusId: string) => Promise<void> | void;
+  onMoveTask: (
+    taskId: string,
+    statusId: string,
+    targetTaskId?: string | null
+  ) => Promise<void> | void;
 }
 
 export function TaskBoard({
@@ -56,7 +60,7 @@ export function TaskBoard({
               onDrop={async (event) => {
                 event.preventDefault();
                 if (!canWriteTasks || !draggingTaskId) return;
-                await onMoveTask(draggingTaskId, status.id);
+                await onMoveTask(draggingTaskId, status.id, null);
                 setDraggingTaskId(null);
               }}
             >
@@ -90,6 +94,18 @@ export function TaskBoard({
                     draggable={canWriteTasks}
                     onDragStart={() => setDraggingTaskId(task.id)}
                     onDragEnd={() => setDraggingTaskId(null)}
+                    onDragOver={(event) => {
+                      if (canWriteTasks) {
+                        event.preventDefault();
+                      }
+                    }}
+                    onDrop={async (event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      if (!canWriteTasks || !draggingTaskId) return;
+                      await onMoveTask(draggingTaskId, status.id, task.id);
+                      setDraggingTaskId(null);
+                    }}
                     onClick={() => onOpenTask(task)}
                   >
                     <Group gap="xs" wrap="nowrap" align="flex-start">

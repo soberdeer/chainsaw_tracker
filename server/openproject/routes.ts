@@ -113,6 +113,7 @@ openProjectRouter.get('/task-statuses', async (req, res) => {
 openProjectRouter.get('/tasks', async (req, res) => {
   const query = z
     .object({
+      workspaceId: z.string().optional(),
       listId: z.string().optional(),
       taskListId: z.string().optional(),
       statusId: z.string().optional(),
@@ -124,10 +125,10 @@ openProjectRouter.get('/tasks', async (req, res) => {
     })
     .parse(req.query);
   const projectId = query.listId || query.taskListId;
-  if (!projectId) {
-    res
-      .status(400)
-      .json({ error: 'listId/projectId is required for OpenProject work package loading' });
+  if (!projectId && !query.workspaceId) {
+    res.status(400).json({
+      error: 'listId/projectId is required unless a workspace-wide task query is requested',
+    });
     return;
   }
   res.json(
@@ -143,6 +144,25 @@ openProjectRouter.get('/tasks', async (req, res) => {
       limit: query.limit,
     })
   );
+});
+
+openProjectRouter.post('/board-order', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      listId: z.string().min(1),
+      orders: z
+        .array(
+          z.object({
+            statusId: z.string().min(1),
+            orderedTaskIds: z.array(z.string().min(1)),
+          })
+        )
+        .min(1),
+    })
+    .parse(req.body);
+  await service.saveBoardCardOrder(body.listId, body.orders);
+  res.json({ ok: true });
 });
 
 openProjectRouter.post('/tasks', async (req, res) => {

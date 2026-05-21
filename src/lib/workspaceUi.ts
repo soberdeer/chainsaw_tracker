@@ -114,10 +114,18 @@ export function buildWorkspaceBreadcrumbs(input: {
   selectedTaskTitle?: string | null;
   selectedDocTitle?: string | null;
   currentView?: 'tasks' | 'board' | 'docs';
+  workspaceWideLabel?: string | null;
 }) {
   const items: BreadcrumbItem[] = [];
   if (input.workspace) {
     items.push({ label: input.workspace.name });
+  }
+  if (input.workspaceWideLabel) {
+    items.push({ label: input.workspaceWideLabel });
+    if (input.selectedTaskTitle) {
+      items.push({ label: input.selectedTaskTitle });
+    }
+    return items;
   }
   if (input.activeSpace) {
     items.push({ label: input.activeSpace.name });

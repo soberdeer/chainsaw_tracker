@@ -1,6 +1,6 @@
+import * as XLSX from '@e965/xlsx';
 import mammoth from 'mammoth';
 import TurndownService from 'turndown';
-import XLSX from 'xlsx';
 import { promises as fs } from 'node:fs';
 import path from 'node:path';
 
@@ -26,9 +26,11 @@ export async function convertUploadToMarkdown(
 
   if (['.xlsx', '.xls', '.ods'].includes(ext)) {
     const workbook = XLSX.readFile(filePath);
+
     return workbook.SheetNames.map((sheetName) => {
       const sheet = workbook.Sheets[sheetName];
       const markdownTable = XLSX.utils.sheet_to_html(sheet);
+
       return `## ${sheetName}\n\n${turndown.turndown(markdownTable)}`;
     }).join('\n\n');
   }

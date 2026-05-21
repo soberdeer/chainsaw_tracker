@@ -12,9 +12,7 @@
     "noEmit": true,
     "types": ["node"],
     "paths": {
-      "@/*": [
-        "./src/*"
-      ]
+      "@/*": ["./src/*"]
     }
   },
   "include": ["vite.config.ts"]

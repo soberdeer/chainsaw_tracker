@@ -5,6 +5,8 @@ import type {
   GitHubReviewStatus,
 } from '@prisma/client';
 import { prisma } from '../db.js';
+import { openProjectRequest } from '../openproject/client.js';
+import type { HalCollection, OpenProjectWorkPackage } from '../openproject/types.js';
 import { logTaskActivity } from './activity.js';
 import { findTaskKey } from './taskKeys.js';
 import crypto from 'node:crypto';
@@ -38,6 +40,91 @@ export async function findTaskForGitHubLink(
     where: {
       workspaceId: repository.workspaceId,
       taskKey,
+    },
+  });
+}
+
+export function buildGitHubLinkTarget(input: {
+  taskId?: string | null;
+  workPackageId?: string | null;
+}) {
+  if (input.taskId) {
+    return { taskId: input.taskId, workPackageId: null };
+  }
+  if (input.workPackageId) {
+    return { taskId: null, workPackageId: input.workPackageId };
+  }
+  return { taskId: null, workPackageId: null };
+}
+
+export function buildGitHubBranchUrl(
+  repository: Pick<GitHubRepository, 'owner' | 'repo'>,
+  branchName: string
+) {
+  const encodedBranch = branchName
+    .split('/')
+    .map((part) => encodeURIComponent(part))
+    .join('/');
+  return `https://github.com/${repository.owner}/${repository.repo}/tree/${encodedBranch}`;
+}
+
+export async function findOpenProjectWorkPackageForGitHubLink(
+  ...values: Array<string | null | undefined>
+) {
+  const taskKey = findTaskKey(...values);
+  if (!taskKey) {
+    return null;
+  }
+
+  const filters = JSON.stringify([
+    { subject: { operator: '~', values: [taskKey] } },
+    { status: { operator: '*', values: [] } },
+  ]);
+  const page = await openProjectRequest<HalCollection<OpenProjectWorkPackage>>(
+    '/api/v3/work_packages',
+    {
+      query: {
+        pageSize: 50,
+        filters,
+      },
+    }
+  ).catch(() => null);
+  const workPackage = page?._embedded?.elements?.find(
+    (item) => findTaskKey(item.subject) === taskKey
+  );
+  return workPackage ? String(workPackage.id) : null;
+}
+
+export async function upsertBranch(
+  repository: GitHubRepository,
+  payload: {
+    name: string;
+    lastCommitSha?: string | null;
+    taskId?: string | null;
+    workPackageId?: string | null;
+  }
+) {
+  const target = buildGitHubLinkTarget(payload);
+  const targetFields = payload.taskId || payload.workPackageId ? target : {};
+
+  return prisma.gitHubBranch.upsert({
+    where: {
+      repositoryId_name: {
+        repositoryId: repository.id,
+        name: payload.name,
+      },
+    },
+    create: {
+      repositoryId: repository.id,
+      name: payload.name,
+      lastCommitSha: payload.lastCommitSha || undefined,
+      url: buildGitHubBranchUrl(repository, payload.name),
+      ...target,
+    },
+    update: {
+      lastCommitSha: payload.lastCommitSha || undefined,
+      url: buildGitHubBranchUrl(repository, payload.name),
+      ...targetFields,
     },
   });
 }
@@ -139,13 +226,28 @@ export async function upsertPullRequest(
   }
 ) {
   const task = await findTaskForGitHubLink(repository, payload.title, payload.headBranch);
+  const workPackageId = task
+    ? null
+    : await findOpenProjectWorkPackageForGitHubLink(payload.title, payload.headBranch);
+  const target = task
+    ? buildGitHubLinkTarget({ taskId: task.id })
+    : workPackageId
+      ? buildGitHubLinkTarget({ workPackageId })
+      : null;
+  await upsertBranch(repository, {
+    name: payload.headBranch,
+    lastCommitSha: payload.headSha,
+    taskId: task?.id,
+    workPackageId,
+  });
   const pr = await prisma.gitHubPullRequest.upsert({
     where: {
       repositoryId_githubPrId: { repositoryId: repository.id, githubPrId: payload.githubPrId },
     },
     create: {
       repositoryId: repository.id,
-      taskId: task?.id,
+      taskId: target?.taskId || undefined,
+      workPackageId: target?.workPackageId || undefined,
       githubPrId: payload.githubPrId,
       number: payload.number,
       title: payload.title,
@@ -161,7 +263,7 @@ export async function upsertPullRequest(
       syncedAt: new Date(),
     },
     update: {
-      taskId: task?.id,
+      ...(target || {}),
       title: payload.title,
       url: payload.url,
       state: payload.state,
@@ -178,7 +280,11 @@ export async function upsertPullRequest(
   if (task) {
     await linkPullRequestToTask(pr, task.id).catch(() => undefined);
   }
-  return { pr, linkedTaskId: task?.id || null };
+  return {
+    pr,
+    linkedTaskId: target?.taskId || null,
+    linkedWorkPackageId: target?.workPackageId || null,
+  };
 }
 
 export async function logPrActivity(pr: GitHubPullRequest, type: ActivityEventType) {
