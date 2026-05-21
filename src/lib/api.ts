@@ -1,5 +1,6 @@
 import type {
   ActivityLog,
+  AuthSetupStatus,
   DocumentItem,
   GitHubPullRequest,
   GitHubRepository,
@@ -64,6 +65,23 @@ export type CurrentUser = {
 
 export function getCurrentUser() {
   return request<CurrentUser>('/api/auth/me');
+}
+
+export function getSetupStatus() {
+  return request<AuthSetupStatus>('/api/auth/setup-status');
+}
+
+export function completeFirstRunSetup(input: {
+  workspaceName?: string;
+  name: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}) {
+  return request<CurrentUser>('/api/auth/setup-owner', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function login(input: { email: string; password: string }) {

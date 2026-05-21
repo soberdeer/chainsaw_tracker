@@ -136,7 +136,17 @@ The remaining ClickUp helper files live under `scripts/migration/clickup`. They 
 
 ## Permissions
 
-The app currently uses a local session cookie plus one OpenProject service token. A default local owner is created on first login:
+The app currently uses a local session cookie plus one OpenProject service token.
+
+On first run, the app requires creating the first local owner through the setup screen. No production-ready default password is created automatically.
+
+For local development only, you can still opt into a seeded owner account by setting:
+
+```text
+DEV_DEFAULT_OWNER_ENABLED=true
+```
+
+When that flag is enabled, the development owner credentials are:
 
 ```text
 email: owner@local.app
@@ -145,7 +155,14 @@ password: admin123
 
 Set `DEV_ADMIN_PASSWORD` to override the development password.
 
-To avoid letting every local demo user write through the service token, OpenProject write actions are restricted to local `OWNER` and `ADMIN` roles. `LEAD`, `MEMBER`, and `VIEWER` are read-only until per-user OpenProject auth is implemented.
+To avoid letting every local user write through the service token, OpenProject write actions are still checked against local runtime permissions on the backend:
+
+- `OWNER` and `ADMIN` manage workspace settings, users, OpenProject project actions, imports, and task writes
+- `LEAD` can create and edit tasks, move statuses, comment, attach files, and manage saved views
+- `MEMBER` can create and edit accessible tasks, change statuses, comment, and log time
+- `VIEWER` stays read-only
+
+Workspace-level admin actions such as member management and OpenProject project changes remain restricted even though task writes are allowed for `LEAD` and `MEMBER`.
 
 ## Workspace Settings And Account UI
 

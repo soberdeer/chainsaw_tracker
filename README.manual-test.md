@@ -45,26 +45,28 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 ## Login / Session
 
 1. Open `http://localhost:5173`.
-2. Log in with the development owner account:
+2. If the app has no owner yet, confirm the first-run setup screen appears instead of a hidden default login.
+3. Create the first owner account and sign in automatically.
+4. If you explicitly enabled `DEV_DEFAULT_OWNER_ENABLED=true` for local development, you can still log in with:
 
    ```text
    email: owner@local.app
    password: admin123
    ```
 
-3. If `DEV_ADMIN_PASSWORD` is set, use that password instead.
-4. Confirm the sidebar shows the current local user.
-5. Open the profile modal from the sidebar.
-6. Change display name or avatar URL.
-7. Refresh and confirm the local profile stays changed.
-8. Open `Security` and change the password.
-9. Log out and confirm the old password no longer works.
-10. Log in again with the new password.
-11. Open `My work` and click `Open Assigned to me`.
-12. Confirm it applies the existing assignee filter instead of opening a separate fake module.
-13. Open `Access` and confirm local workspace role, permission set, and OpenProject memberships are visible.
-14. Log out and confirm protected tracker UI is no longer available.
-15. Confirm the workspace overview shows connection status, latest import status, warnings/errors count, import coverage, and quick actions.
+5. If `DEV_ADMIN_PASSWORD` is set, use that password instead.
+6. Confirm the sidebar shows the current local user.
+7. Open the profile modal from the sidebar.
+8. Change display name or avatar URL.
+9. Refresh and confirm the local profile stays changed.
+10. Open `Security` and change the password.
+11. Log out and confirm the old password no longer works.
+12. Log in again with the new password.
+13. Open `My work` and click `Open Assigned to me`.
+14. Confirm it applies the existing assignee filter instead of opening a separate fake module.
+15. Open `Access` and confirm local workspace role, permission set, and OpenProject memberships are visible.
+16. Log out and confirm protected tracker UI is no longer available.
+17. Confirm the workspace overview shows connection status, latest import status, warnings/errors count, import coverage, and quick actions.
 
 Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
 
@@ -83,6 +85,7 @@ Important: if a user display name is empty, the tracker should keep it empty ins
 11. Open `Imports` and confirm recent migration runs appear when they exist.
 12. Open `Danger Zone` as owner and confirm destructive reset is described as a guarded CLI-only action in this MVP.
 13. Confirm invite, role change, remove, and workspace save actions show toast feedback.
+14. Invite a `LEAD` or `MEMBER` user and confirm they can later create or edit tasks, not just read them.
 
 ## Space / Project Access
 

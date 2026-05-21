@@ -1,4 +1,17 @@
 export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+
+export type AuthSetupStatus = {
+  setupRequired: boolean;
+  ownerCount: number;
+  userCount: number;
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  devDefaultOwnerEnabled: boolean;
+};
+
 export type TaskDevelopmentStatus =
   | 'NOT_STARTED'
   | 'IN_PROGRESS'

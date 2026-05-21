@@ -165,23 +165,14 @@ export function buildProjectSpaces(
 export function mapWorkspace(
   projects: OpenProjectProject[],
   statuses: TaskStatus[],
-  users: User[]
+  _users: User[]
 ): Workspace {
   return {
     id: 'openproject',
     name: 'OpenProject',
     slug: 'openproject',
     spaces: buildProjectSpaces(projects, statuses),
-    memberships: [
-      {
-        id: 'openproject:local-user',
-        role: 'OWNER',
-        user: { id: 'local-user', email: 'owner@local.app', name: 'Workspace Owner' },
-      },
-      ...users
-        .filter((user) => user.id !== 'local-user')
-        .map((user) => ({ id: `openproject:${user.id}`, role: 'MEMBER' as const, user })),
-    ],
+    memberships: [],
     permissionSets: [
       {
         role: 'OWNER',
@@ -204,7 +195,7 @@ export function mapWorkspace(
         manageWorkspace: false,
         manageSpaces: false,
         manageDocs: false,
-        manageTasks: false,
+        manageTasks: true,
         inviteMembers: false,
       },
       {
@@ -212,7 +203,7 @@ export function mapWorkspace(
         manageWorkspace: false,
         manageSpaces: false,
         manageDocs: false,
-        manageTasks: false,
+        manageTasks: true,
         inviteMembers: false,
       },
       {

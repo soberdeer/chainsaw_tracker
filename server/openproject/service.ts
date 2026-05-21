@@ -247,18 +247,7 @@ export async function getWorkspaceTree() {
   ]);
   const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   if (seeded) {
-    return [
-      applyRuntimeWorkspaceState(
-        {
-          ...seeded,
-          permissionSets: seeded.permissionSets.map((set) =>
-            set.role === 'LEAD' || set.role === 'MEMBER' ? { ...set, manageTasks: false } : set
-          ),
-        },
-        runtimeWorkspace,
-        users
-      ),
-    ];
+    return [applyRuntimeWorkspaceState(seeded, runtimeWorkspace, users)];
   }
   return [
     applyRuntimeWorkspaceState(mapWorkspace(projects, statuses, users), runtimeWorkspace, users),

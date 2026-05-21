@@ -13,8 +13,8 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [loading, setLoading] = useState(false);
   const form = useForm({
     initialValues: {
-      email: 'owner@local.app',
-      password: 'admin123',
+      email: '',
+      password: '',
     },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
@@ -53,8 +53,8 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
             Sign in
           </Button>
           <Text size="xs" c="dimmed">
-            Development default: owner@local.app / admin123. OpenProject access still uses the
-            backend service token.
+            OpenProject access stays on the backend service token. Your login here only controls the
+            local tracker account and permissions.
           </Text>
         </Stack>
       </Paper>

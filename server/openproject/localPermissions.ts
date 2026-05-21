@@ -1,5 +1,5 @@
 import { prisma } from '../db.js';
-import { ensureDefaultOwner } from '../services/auth.js';
+import { devDefaultOwnerEnabled, ensureDefaultOwner } from '../services/auth.js';
 
 export const openProjectRuntimeWorkspaceSlug = 'openproject-runtime';
 
@@ -14,9 +14,7 @@ export async function getOpenProjectRuntimeWorkspace() {
   });
 }
 
-export async function bootstrapOpenProjectLocalPermissions() {
-  const user = await ensureDefaultOwner();
-
+export async function ensureOpenProjectRuntimeWorkspaceScaffold() {
   const workspace = await prisma.workspace.upsert({
     where: { slug: openProjectRuntimeWorkspaceSlug },
     update: {
@@ -85,14 +83,14 @@ export async function bootstrapOpenProjectLocalPermissions() {
       where: { workspaceId_role: { workspaceId: workspace.id, role: 'LEAD' } },
       update: {
         manageDocs: false,
-        manageTasks: false,
+        manageTasks: true,
         viewReports: true,
       },
       create: {
         workspaceId: workspace.id,
         role: 'LEAD',
         manageDocs: false,
-        manageTasks: false,
+        manageTasks: true,
         viewReports: true,
       },
     }),
@@ -100,9 +98,9 @@ export async function bootstrapOpenProjectLocalPermissions() {
       where: { workspaceId_role: { workspaceId: workspace.id, role: 'MEMBER' } },
       update: {
         manageDocs: false,
-        manageTasks: false,
+        manageTasks: true,
       },
-      create: { workspaceId: workspace.id, role: 'MEMBER', manageDocs: false, manageTasks: false },
+      create: { workspaceId: workspace.id, role: 'MEMBER', manageDocs: false, manageTasks: true },
     }),
     prisma.permissionSet.upsert({
       where: { workspaceId_role: { workspaceId: workspace.id, role: 'VIEWER' } },
@@ -111,9 +109,23 @@ export async function bootstrapOpenProjectLocalPermissions() {
     }),
   ]);
 
+  return workspace;
+}
+
+export async function bootstrapOpenProjectLocalPermissions() {
+  const workspace = await ensureOpenProjectRuntimeWorkspaceScaffold();
+
+  if (!devDefaultOwnerEnabled()) {
+    return workspace;
+  }
+
+  const user = await ensureDefaultOwner();
+
   await prisma.membership.upsert({
     where: { userId_workspaceId: { userId: user.id, workspaceId: workspace.id } },
     update: { role: 'OWNER' },
     create: { userId: user.id, workspaceId: workspace.id, role: 'OWNER' },
   });
+
+  return workspace;
 }

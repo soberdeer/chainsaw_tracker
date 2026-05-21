@@ -29,6 +29,7 @@ async function withServer(run: (baseUrl: string) => Promise<void> | void) {
 test('core API routers are mounted and return auth errors instead of 404', async () => {
   await withServer(async (baseUrl) => {
     const checks = [
+      ['/api/auth/setup-status', 200],
       ['/api/auth/me', 401],
       ['/api/users/me', 401],
       ['/api/users/me/my-work', 401],

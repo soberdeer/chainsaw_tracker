@@ -1,35 +1,66 @@
 import type { Request } from 'express';
 import { prisma } from '../db.js';
 import { currentUserId } from '../services/auth.js';
+import { openProjectRuntimeWorkspaceSlug } from './localPermissions.js';
 
-const writeRoles = new Set(['OWNER', 'ADMIN']);
-const projectRoles = new Set(['OWNER', 'ADMIN']);
+type RuntimePermission = 'manageTasks' | 'manageSpaces';
 
 function userId(req: Request) {
   return currentUserId(req) || '';
 }
 
-async function hasMembership(req: Request, allowedRoles: Set<string>) {
-  const membership = await prisma.membership.findFirst({
+async function runtimeMembership(req: Request) {
+  const id = userId(req);
+  if (!id) {
+    return null;
+  }
+
+  return prisma.membership.findFirst({
     where: {
-      userId: userId(req),
-      role: {
-        in: Array.from(allowedRoles) as Array<'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER'>,
+      userId: id,
+      workspace: { slug: openProjectRuntimeWorkspaceSlug },
+    },
+    include: {
+      workspace: {
+        include: {
+          permissionSets: true,
+        },
       },
     },
   });
-  return Boolean(membership);
+}
+
+function hasRuntimePermission(
+  membership: Awaited<ReturnType<typeof runtimeMembership>> | null,
+  permission: RuntimePermission
+) {
+  if (!membership) {
+    return false;
+  }
+
+  if (membership.role === 'OWNER') {
+    return true;
+  }
+
+  const set = membership.workspace.permissionSets.find((item) => item.role === membership.role);
+  return Boolean(set?.[permission]);
 }
 
 export async function requireOpenProjectTaskWrite(req: Request) {
-  if (await hasMembership(req, writeRoles)) return;
+  const membership = await runtimeMembership(req);
+  if (hasRuntimePermission(membership, 'manageTasks')) {
+    return;
+  }
   const error = new Error('You do not have permission to write OpenProject work packages');
   Object.assign(error, { statusCode: 403 });
   throw error;
 }
 
 export async function requireOpenProjectProjectWrite(req: Request) {
-  if (await hasMembership(req, projectRoles)) return;
+  const membership = await runtimeMembership(req);
+  if (hasRuntimePermission(membership, 'manageSpaces')) {
+    return;
+  }
   const error = new Error('You do not have permission to change OpenProject projects');
   Object.assign(error, { statusCode: 403 });
   throw error;

@@ -1,3 +1,4 @@
+import type { PermissionSet, WorkspaceRole } from '@prisma/client';
 import type { Request } from 'express';
 import { prisma } from '../server/db.js';
 import {
@@ -27,19 +28,56 @@ function req(userId = 'local-user') {
   } as Request;
 }
 
-test('OpenProject task writes allow owner/admin in service-token mode', async () => {
-  prisma.membership.findFirst = (async () => ({ id: 'm1' })) as typeof prisma.membership.findFirst;
-  await assert.doesNotReject(() => requireOpenProjectTaskWrite(req()));
+function permissionSet(role: WorkspaceRole, overrides: Partial<PermissionSet> = {}): PermissionSet {
+  return {
+    id: `${role}-set`,
+    workspaceId: 'runtime-workspace',
+    role,
+    manageWorkspace: role === 'OWNER' || role === 'ADMIN',
+    manageSpaces: role === 'OWNER' || role === 'ADMIN',
+    manageDocs: false,
+    manageTasks: role !== 'VIEWER',
+    inviteMembers: role === 'OWNER' || role === 'ADMIN',
+    manageIntegrations: role === 'OWNER' || role === 'ADMIN',
+    manageImports: role === 'OWNER' || role === 'ADMIN',
+    viewReports: role !== 'VIEWER',
+    ...overrides,
+  };
+}
+
+function runtimeMembership(role: WorkspaceRole) {
+  return {
+    id: `membership-${role}`,
+    userId: 'local-user',
+    workspaceId: 'runtime-workspace',
+    role,
+    createdAt: new Date(),
+    updatedAt: new Date(),
+    workspace: {
+      id: 'runtime-workspace',
+      slug: 'openproject-runtime',
+      permissionSets: [
+        permissionSet('OWNER'),
+        permissionSet('ADMIN'),
+        permissionSet('LEAD'),
+        permissionSet('MEMBER'),
+        permissionSet('VIEWER', { manageTasks: false, viewReports: false }),
+      ],
+    },
+  };
+}
+
+test('OpenProject task writes allow roles with manageTasks in runtime workspace', async () => {
+  prisma.membership.findFirst = (async () =>
+    runtimeMembership('MEMBER')) as unknown as typeof prisma.membership.findFirst;
+  await assert.doesNotReject(() => requireOpenProjectTaskWrite(req('member')));
 });
 
-test('OpenProject task writes reject non-admin roles in service-token mode', async () => {
-  prisma.membership.findFirst = (async (args: unknown) => {
-    const roles = (args as { where?: { role?: { in?: string[] } } })?.where?.role?.in || [];
-    assert.deepEqual(roles, ['OWNER', 'ADMIN']);
-    return null;
-  }) as typeof prisma.membership.findFirst;
+test('OpenProject task writes reject viewer roles without manageTasks', async () => {
+  prisma.membership.findFirst = (async () =>
+    runtimeMembership('VIEWER')) as unknown as typeof prisma.membership.findFirst;
   await assert.rejects(
-    () => requireOpenProjectTaskWrite(req('member')),
+    () => requireOpenProjectTaskWrite(req('viewer')),
     (error: unknown) =>
       error instanceof Error && (error as { statusCode?: number }).statusCode === 403
   );
@@ -55,10 +93,16 @@ test('OpenProject task writes reject users without an allowed membership', async
 });
 
 test('OpenProject project writes require admin-level roles', async () => {
-  prisma.membership.findFirst = (async (_args: unknown) =>
-    null) as typeof prisma.membership.findFirst;
+  prisma.membership.findFirst = (async () =>
+    runtimeMembership('LEAD')) as unknown as typeof prisma.membership.findFirst;
   await assert.rejects(
     () => requireOpenProjectProjectWrite(req()),
     (error: unknown) => error instanceof Error && error.message.includes('OpenProject projects')
   );
+});
+
+test('OpenProject project writes allow roles with manageSpaces in runtime workspace', async () => {
+  prisma.membership.findFirst = (async () =>
+    runtimeMembership('ADMIN')) as unknown as typeof prisma.membership.findFirst;
+  await assert.doesNotReject(() => requireOpenProjectProjectWrite(req()));
 });

@@ -55,10 +55,7 @@ test('maps OpenProject workspace permissions to service-token write model', () =
 
   assert.equal(permissionByRole.get('OWNER')?.manageTasks, true);
   assert.equal(permissionByRole.get('ADMIN')?.manageTasks, true);
-  assert.equal(permissionByRole.get('LEAD')?.manageTasks, false);
-  assert.equal(permissionByRole.get('MEMBER')?.manageTasks, false);
-  assert.equal(
-    workspace.memberships.find((membership) => membership.user.id === 'local-user')?.role,
-    'OWNER'
-  );
+  assert.equal(permissionByRole.get('LEAD')?.manageTasks, true);
+  assert.equal(permissionByRole.get('MEMBER')?.manageTasks, true);
+  assert.equal(workspace.memberships.length, 0);
 });

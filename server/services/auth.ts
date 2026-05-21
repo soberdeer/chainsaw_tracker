@@ -4,6 +4,9 @@ import crypto from 'node:crypto';
 
 const cookieName = 'tracker_session';
 const defaultPassword = process.env.DEV_ADMIN_PASSWORD || 'admin123';
+export const defaultOwnerEmail = 'owner@local.app';
+export const defaultOwnerId = 'local-user';
+export const defaultOwnerName = 'Workspace Owner';
 
 function secret() {
   return process.env.SESSION_SECRET || process.env.OPENPROJECT_API_TOKEN || 'dev-session-secret';
@@ -40,9 +43,13 @@ export function verifyPassword(password: string, stored?: string | null) {
   return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(expected));
 }
 
+export function devDefaultOwnerEnabled() {
+  return process.env.DEV_DEFAULT_OWNER_ENABLED === 'true';
+}
+
 export async function ensureDefaultOwner() {
   const passwordHash = hashPassword(defaultPassword);
-  const existing = await prisma.user.findUnique({ where: { email: 'owner@local.app' } });
+  const existing = await prisma.user.findUnique({ where: { email: defaultOwnerEmail } });
   if (existing) {
     if (!existing.passwordHash) {
       return prisma.user.update({
@@ -57,9 +64,9 @@ export async function ensureDefaultOwner() {
   }
   return prisma.user.create({
     data: {
-      id: 'local-user',
-      email: 'owner@local.app',
-      name: 'Workspace Owner',
+      id: defaultOwnerId,
+      email: defaultOwnerEmail,
+      name: defaultOwnerName,
       passwordHash,
       source: 'OWNER_SEED',
     },
