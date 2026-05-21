@@ -11,12 +11,14 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconCalendarDue, IconFlag, IconListCheck, IconUsers, IconX } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
   createTask,
   displayStatus,
   getErrorMessage,
+  showToast,
   type Task,
   type TaskList,
   type TaskPriority,
@@ -46,52 +48,73 @@ export function TaskCreateModal({
   onCreated,
   onError,
 }: TaskCreateModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [statusId, setStatusId] = useState('');
-  const [priority, setPriority] = useState<TaskPriority>('NORMAL');
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const form = useForm({
+    initialValues: {
+      title: '',
+      description: '',
+      statusId: '',
+      priority: 'NORMAL' as TaskPriority,
+      assigneeIds: [] as string[],
+      startDate: '',
+      dueDate: '',
+    },
+    validate: {
+      title: (value) => (value.trim().length ? null : 'Task title is required'),
+    },
+  });
 
   useEffect(() => {
     if (!opened) {
       return;
     }
-    setTitle('');
-    setDescription('');
-    setStatusId(initialStatusId || statuses[0]?.id || '');
-    setPriority('NORMAL');
-    setAssigneeIds([]);
-    setStartDate('');
-    setDueDate('');
-  }, [opened, initialStatusId, statuses]);
+    form.setValues({
+      title: '',
+      description: '',
+      statusId: initialStatusId || statuses[0]?.id || '',
+      priority: 'NORMAL',
+      assigneeIds: [],
+      startDate: '',
+      dueDate: '',
+    });
+    form.resetDirty();
+  }, [opened, initialStatusId, statuses, form]);
 
-  const submit = async () => {
-    if (!taskList?.id || !title.trim()) {
+  const submit = form.onSubmit(async (values) => {
+    if (!taskList?.id || !values.title.trim()) {
       return;
     }
     try {
       setSaving(true);
       const task = await createTask({
         taskListId: taskList.id,
-        title: title.trim(),
-        description: description.trim() || undefined,
-        statusId: statusId || undefined,
-        priority,
-        assigneeIds,
-        startDate: startDate || undefined,
-        dueDate: dueDate || undefined,
+        title: values.title.trim(),
+        description: values.description.trim() || undefined,
+        statusId: values.statusId || undefined,
+        priority: values.priority,
+        assigneeIds: values.assigneeIds,
+        startDate: values.startDate || undefined,
+        dueDate: values.dueDate || undefined,
       });
       onCreated(task as Task);
+      showToast({
+        tone: 'success',
+        title: 'Task created',
+        message: `${task.title} was created in OpenProject.`,
+      });
       onClose();
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not create task',
+        message,
+      });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   return (
     <Modal
@@ -102,132 +125,120 @@ export function TaskCreateModal({
       withCloseButton={false}
       classNames={{ content: classes.modalContent, body: classes.modalBody }}
     >
-      <Stack gap={0}>
-        <Group className={classes.header} justify="space-between">
-          <Text className={classes.modalTitle}>Task</Text>
-          <Tooltip label="Close task creator">
-            <Button
-              variant="subtle"
-              className={classes.closeButton}
-              onClick={onClose}
-              aria-label="Close task creator"
-            >
-              <IconX size="1.25rem" />
-            </Button>
-          </Tooltip>
-        </Group>
-
-        <Stack gap="lg" className={classes.body}>
-          <Group gap="sm">
-            <Button variant="default" leftSection={<IconListCheck size="1rem" />}>
-              {taskList?.name || 'Task list'}
-            </Button>
-            <Select
-              value={statusId}
-              onChange={(value) => setStatusId(value || '')}
-              data={statuses.map((status) => ({
-                value: status.id,
-                label: displayStatus(status).label,
-              }))}
-              className={classes.statusSelect}
-              leftSection={
-                <span
-                  className={classes.statusDot}
-                  style={{
-                    background: displayStatus(
-                      statuses.find((status) => status.id === statusId),
-                      statusId
-                    ).color,
-                  }}
-                />
-              }
-            />
+      <form onSubmit={submit}>
+        <Stack gap={0}>
+          <Group className={classes.header} justify="space-between">
+            <Text className={classes.modalTitle}>Task</Text>
+            <Tooltip label="Close task creator">
+              <Button
+                variant="subtle"
+                className={classes.closeButton}
+                onClick={onClose}
+                aria-label="Close task creator"
+              >
+                <IconX size="1.25rem" />
+              </Button>
+            </Tooltip>
           </Group>
 
-          <TextInput
-            value={title}
-            onChange={(event) => setTitle(event.currentTarget.value)}
-            placeholder="Task Name or type '/' for commands"
-            classNames={{ input: classes.titleInput }}
-            autoFocus
-          />
+          <Stack gap="lg" className={classes.body}>
+            <Group gap="sm">
+              <Button variant="default" leftSection={<IconListCheck size="1rem" />}>
+                {taskList?.name || 'Task list'}
+              </Button>
+              <Select
+                {...form.getInputProps('statusId')}
+                data={statuses.map((status) => ({
+                  value: status.id,
+                  label: displayStatus(status).label,
+                }))}
+                className={classes.statusSelect}
+                leftSection={
+                  <span
+                    className={classes.statusDot}
+                    style={{
+                      background: displayStatus(
+                        statuses.find((status) => status.id === form.values.statusId),
+                        form.values.statusId
+                      ).color,
+                    }}
+                  />
+                }
+              />
+            </Group>
 
-          <Textarea
-            value={description}
-            onChange={(event) => setDescription(event.currentTarget.value)}
-            placeholder="Add description"
-            minRows={4}
-            autosize
-            classNames={{ input: classes.descriptionInput }}
-          />
+            <TextInput
+              placeholder="Task Name or type '/' for commands"
+              classNames={{ input: classes.titleInput }}
+              autoFocus
+              {...form.getInputProps('title')}
+            />
 
-          <Group gap="sm">
-            <Select
-              value={statusId}
-              onChange={(value) => setStatusId(value || '')}
-              data={statuses.map((status) => ({
-                value: status.id,
-                label: displayStatus(status).label,
-              }))}
-              className={classes.compactField}
+            <Textarea
+              placeholder="Add description"
+              minRows={4}
+              autosize
+              classNames={{ input: classes.descriptionInput }}
+              {...form.getInputProps('description')}
             />
-            <MultiSelect
-              placeholder="Assignee / responsible"
-              leftSection={<IconUsers size="1rem" />}
-              value={assigneeIds}
-              onChange={setAssigneeIds}
-              data={users.map((user) => ({ value: user.id, label: user.name }))}
-              searchable
-              clearable
-              maxValues={2}
-              className={classes.wideField}
-            />
-            <TextInput
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.currentTarget.value)}
-              leftSection={<IconCalendarDue size="1rem" />}
-              className={classes.dateField}
-              aria-label="Start date"
-            />
-            <TextInput
-              type="date"
-              value={dueDate}
-              onChange={(event) => setDueDate(event.currentTarget.value)}
-              leftSection={<IconCalendarDue size="1rem" />}
-              className={classes.dateField}
-              aria-label="Due date"
-            />
-            <Select
-              value={priority}
-              onChange={(value) => setPriority((value || 'NORMAL') as TaskPriority)}
-              data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-              leftSection={<IconFlag size="1rem" />}
-              className={classes.compactField}
-            />
+
+            <Group gap="sm">
+              <Select
+                {...form.getInputProps('statusId')}
+                data={statuses.map((status) => ({
+                  value: status.id,
+                  label: displayStatus(status).label,
+                }))}
+                className={classes.compactField}
+              />
+              <MultiSelect
+                placeholder="Assignee / responsible"
+                leftSection={<IconUsers size="1rem" />}
+                data={users.map((user) => ({ value: user.id, label: user.name }))}
+                searchable
+                clearable
+                maxValues={2}
+                className={classes.wideField}
+                {...form.getInputProps('assigneeIds')}
+              />
+              <TextInput
+                type="date"
+                leftSection={<IconCalendarDue size="1rem" />}
+                className={classes.dateField}
+                aria-label="Start date"
+                {...form.getInputProps('startDate')}
+              />
+              <TextInput
+                type="date"
+                leftSection={<IconCalendarDue size="1rem" />}
+                className={classes.dateField}
+                aria-label="Due date"
+                {...form.getInputProps('dueDate')}
+              />
+              <Select
+                data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+                leftSection={<IconFlag size="1rem" />}
+                className={classes.compactField}
+                {...form.getInputProps('priority')}
+              />
+            </Group>
+
+            <Alert color="blue" variant="light" title="OpenProject-backed fields">
+              Tags and custom field definitions are managed in OpenProject. This form only shows
+              fields that can be created reliably through the current runtime adapter.
+            </Alert>
+          </Stack>
+
+          <Group className={classes.footer} justify="space-between">
+            <Text size="sm" c="dimmed">
+              OpenProject stores one assignee and one responsible user per task.
+            </Text>
+            <Button color="teal" size="lg" loading={saving} disabled={!taskList?.id} type="submit">
+              Create Task
+            </Button>
           </Group>
-
-          <Alert color="blue" variant="light" title="OpenProject-backed fields">
-            Tags and custom field definitions are managed in OpenProject. This form only shows
-            fields that can be created reliably through the current runtime adapter.
-          </Alert>
         </Stack>
-
-        <Group className={classes.footer} justify="space-between">
-          <Text size="sm" c="dimmed">
-            OpenProject stores one assignee and one responsible user per task.
-          </Text>
-          <Button
-            color="teal"
-            size="lg"
-            loading={saving}
-            disabled={!title.trim() || !taskList?.id}
-            onClick={submit}
-          >
-            Create Task
-          </Button>
-        </Group>
-      </Stack>
+      </form>
     </Modal>
   );
 }

@@ -13,6 +13,7 @@ import {
   TextInput,
   Title,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconMailPlus } from '@tabler/icons-react';
 import { useState } from 'react';
 import {
@@ -26,7 +27,7 @@ import {
 } from '@/lib';
 import classes from './TeamPanel.module.css';
 
-const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
+const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'];
 const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = [
   'manageWorkspace',
   'manageSpaces',
@@ -43,10 +44,17 @@ export interface TeamPanelProps {
 
 export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<WorkspaceRole>('MEMBER');
   const [inviteUrl, setInviteUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const inviteForm = useForm({
+    initialValues: {
+      email: '',
+      role: 'MEMBER' as WorkspaceRole,
+    },
+    validate: {
+      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
+    },
+  });
 
   const run = async (action: () => Promise<unknown>) => {
     try {
@@ -60,16 +68,13 @@ export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
     }
   };
 
-  const sendInvite = async () => {
-    if (!email.trim()) {
-      return;
-    }
+  const sendInvite = inviteForm.onSubmit(async (values) => {
     await run(async () => {
-      const invite = await inviteMember(workspace.id, { email, role });
+      const invite = await inviteMember(workspace.id, { email: values.email, role: values.role });
       setInviteUrl(invite.inviteUrl);
-      setEmail('');
+      inviteForm.reset();
     });
-  };
+  });
 
   return (
     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
@@ -80,40 +85,28 @@ export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
         centered
         classNames={{ content: classes.modalContent }}
       >
-        <Stack>
-          <TextInput
-            label="Email"
-            value={email}
-            onChange={(event) => setEmail(event.currentTarget.value)}
-            autoFocus
-          />
-          <Select
-            label="Role"
-            value={role}
-            onChange={(value) => setRole((value || 'MEMBER') as WorkspaceRole)}
-            data={roles}
-          />
-          {inviteUrl && (
-            <Paper withBorder p="sm">
-              <Text size="sm" c="dimmed">
-                Invite link
-              </Text>
-              <Text size="sm">{inviteUrl}</Text>
-            </Paper>
-          )}
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => setInviteOpen(false)}>
-              Close
-            </Button>
-            <Button
-              loading={saving}
-              leftSection={<IconMailPlus size="1rem" />}
-              onClick={sendInvite}
-            >
-              Invite
-            </Button>
-          </Group>
-        </Stack>
+        <form onSubmit={sendInvite}>
+          <Stack>
+            <TextInput label="Email" autoFocus {...inviteForm.getInputProps('email')} />
+            <Select label="Role" data={roles} {...inviteForm.getInputProps('role')} />
+            {inviteUrl && (
+              <Paper withBorder p="sm">
+                <Text size="sm" c="dimmed">
+                  Invite link
+                </Text>
+                <Text size="sm">{inviteUrl}</Text>
+              </Paper>
+            )}
+            <Group justify="flex-end">
+              <Button type="button" variant="light" onClick={() => setInviteOpen(false)}>
+                Close
+              </Button>
+              <Button loading={saving} leftSection={<IconMailPlus size="1rem" />} type="submit">
+                Invite
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
       <Stack>
         <Group justify="space-between">

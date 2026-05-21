@@ -9,6 +9,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useEffect, useMemo, useState } from 'react';
 import { createSpace, getErrorMessage, type Space, type Workspace } from '@/lib';
 import classes from './SpaceCreateModal.module.css';
@@ -21,37 +22,40 @@ export interface SpaceCreateModalProps {
 }
 
 export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: SpaceCreateModalProps) {
-  const [name, setName] = useState('');
-  const [identifier, setIdentifier] = useState('');
-  const [description, setDescription] = useState('');
-  const [parentId, setParentId] = useState<string | null>(null);
-  const [isPublic, setIsPublic] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const form = useForm({
+    initialValues: {
+      name: '',
+      identifier: '',
+      description: '',
+      parentId: null as string | null,
+      isPublic: false,
+    },
+    validate: {
+      name: (value) => (value.trim().length ? null : 'Name is required'),
+    },
+  });
 
   useEffect(() => {
     if (!opened) return;
-    setName('');
-    setIdentifier('');
-    setDescription('');
-    setParentId(null);
-    setIsPublic(false);
+    form.reset();
     setError(null);
-  }, [opened]);
+  }, [opened, form]);
 
   const projectOptions = useMemo(() => flattenSpaces(workspace.spaces), [workspace.spaces]);
 
-  const submit = async () => {
+  const submit = form.onSubmit(async (values) => {
     try {
       setSaving(true);
       setError(null);
       await createSpace({
         workspaceId: workspace.id,
-        name,
-        identifier: identifier || undefined,
-        description: description || undefined,
-        parentId: parentId || undefined,
-        public: isPublic,
+        name: values.name,
+        identifier: values.identifier || undefined,
+        description: values.description || undefined,
+        parentId: values.parentId || undefined,
+        public: values.isPublic,
       });
       onCreated();
       onClose();
@@ -60,54 +64,52 @@ export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: Spac
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   return (
     <Modal opened={opened} onClose={onClose} title="New OpenProject project" centered>
-      <Stack>
-        {error && (
-          <Alert color="red" title="Could not create project">
-            {error}
-          </Alert>
-        )}
-        <TextInput label="Name" value={name} onChange={(event) => setName(event.target.value)} />
-        <TextInput
-          label="Identifier"
-          value={identifier}
-          onChange={(event) => setIdentifier(event.target.value)}
-          placeholder="auto-generated if empty"
-        />
-        <Select
-          label="Parent project"
-          value={parentId}
-          onChange={setParentId}
-          data={projectOptions}
-          clearable
-          searchable
-          placeholder="Top-level project"
-        />
-        <Textarea
-          label="Description"
-          value={description}
-          onChange={(event) => setDescription(event.target.value)}
-          autosize
-          minRows={3}
-        />
-        <Switch
-          className={classes.publicSwitch}
-          label="Public project"
-          checked={isPublic}
-          onChange={(event) => setIsPublic(event.currentTarget.checked)}
-        />
-        <Group className={classes.actions} justify="flex-end">
-          <Button variant="light" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button loading={saving} disabled={!name.trim()} onClick={submit}>
-            Create project
-          </Button>
-        </Group>
-      </Stack>
+      <form onSubmit={submit}>
+        <Stack>
+          {error && (
+            <Alert color="red" title="Could not create project">
+              {error}
+            </Alert>
+          )}
+          <TextInput label="Name" {...form.getInputProps('name')} />
+          <TextInput
+            label="Identifier"
+            placeholder="auto-generated if empty"
+            {...form.getInputProps('identifier')}
+          />
+          <Select
+            label="Parent project"
+            data={projectOptions}
+            clearable
+            searchable
+            placeholder="Top-level project"
+            {...form.getInputProps('parentId')}
+          />
+          <Textarea
+            label="Description"
+            autosize
+            minRows={3}
+            {...form.getInputProps('description')}
+          />
+          <Switch
+            className={classes.publicSwitch}
+            label="Public project"
+            {...form.getInputProps('isPublic', { type: 'checkbox' })}
+          />
+          <Group className={classes.actions} justify="flex-end">
+            <Button type="button" variant="light" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button loading={saving} type="submit">
+              Create project
+            </Button>
+          </Group>
+        </Stack>
+      </form>
     </Modal>
   );
 }

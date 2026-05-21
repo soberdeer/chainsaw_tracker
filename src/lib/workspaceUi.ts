@@ -61,7 +61,9 @@ export function summarizeImportRun(run?: MigrationRun | null) {
     errorsCount:
       numericValue(summary, ['errorCount']) +
       countCollection(run?.errors) +
-      numericValue(summary, ['assigneeMappingErrors', 'openProjectMembershipErrors']),
+      countCollection(summary.assigneeMappingErrors) +
+      countCollection(summary.openProjectMembershipErrors) +
+      countCollection(summary.openProjectUserErrors),
   };
 }
 

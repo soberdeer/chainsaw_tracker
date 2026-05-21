@@ -40,7 +40,8 @@ import {
 } from './migration/openprojectPermissions.js';
 import { randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname } from 'node:path';
+import path, { dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const prisma = new PrismaClient();
 
@@ -2524,11 +2525,16 @@ async function main() {
   );
 }
 
-main()
-  .catch((error) => {
-    console.error(error instanceof Error ? error.message : error);
-    process.exitCode = 1;
-  })
-  .finally(async () => {
-    await prisma.$disconnect();
-  });
+const isMainModule =
+  process.argv[1] && path.resolve(process.argv[1]) === path.resolve(fileURLToPath(import.meta.url));
+
+if (isMainModule) {
+  main()
+    .catch((error) => {
+      console.error(error instanceof Error ? error.message : error);
+      process.exitCode = 1;
+    })
+    .finally(async () => {
+      await prisma.$disconnect();
+    });
+}

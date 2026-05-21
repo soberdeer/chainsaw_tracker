@@ -9,6 +9,7 @@ import {
   TextInput,
   ThemeIcon,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
 import {
   IconCheck,
@@ -17,6 +18,7 @@ import {
   IconFolderOpen,
   IconList,
   IconPlus,
+  IconX,
 } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
@@ -169,7 +171,7 @@ export function GlobalSearchModal({
           />
           <Tooltip label="Close search">
             <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">
-              ×
+              <IconX size="1rem" />
             </ActionIcon>
           </Tooltip>
         </Group>
@@ -185,9 +187,8 @@ export function GlobalSearchModal({
               Results
             </Text>
             {results.map((result) => (
-              <button
+              <UnstyledButton
                 key={`${result.type}:${result.id}`}
-                type="button"
                 className={classes.resultRow}
                 disabled={actionDisabled(result)}
                 onClick={() => runSearchAction(result)}
@@ -201,7 +202,7 @@ export function GlobalSearchModal({
                 {result.subtitle && (
                   <span className={classes.resultSubtitle}>{result.subtitle}</span>
                 )}
-              </button>
+              </UnstyledButton>
             ))}
             {!results.length && !loading && <Text c="dimmed">Nothing found</Text>}
           </Stack>

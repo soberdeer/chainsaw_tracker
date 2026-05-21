@@ -1,4 +1,14 @@
-import { Badge, Box, Group, ScrollArea, Stack, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Badge,
+  Box,
+  Group,
+  ScrollArea,
+  Stack,
+  Text,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
 import { IconGripVertical, IconPlus } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { Task, TaskStatus } from '@/lib';
@@ -60,13 +70,13 @@ export function TaskBoard({
                   </Text>
                   {canWriteTasks && (
                     <Tooltip label={`Add task to ${status.name}`}>
-                      <button
-                        type="button"
+                      <ActionIcon
+                        variant="subtle"
                         className={classes.iconButton}
                         onClick={() => onAddTask(status.id)}
                       >
                         <IconPlus size="1rem" />
-                      </button>
+                      </ActionIcon>
                     </Tooltip>
                   )}
                 </Group>
@@ -74,9 +84,8 @@ export function TaskBoard({
 
               <Stack gap="sm" className={classes.cards}>
                 {columnTasks.map((task) => (
-                  <button
+                  <UnstyledButton
                     key={task.id}
-                    type="button"
                     className={classes.card}
                     draggable={canWriteTasks}
                     onDragStart={() => setDraggingTaskId(task.id)}
@@ -108,7 +117,7 @@ export function TaskBoard({
                         </Group>
                       </Box>
                     </Group>
-                  </button>
+                  </UnstyledButton>
                 ))}
                 {!columnTasks.length && (
                   <Text size="sm" c="dimmed" className={classes.emptyColumn}>

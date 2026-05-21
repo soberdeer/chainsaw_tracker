@@ -9,6 +9,7 @@ import {
   Textarea,
   TextInput,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useEffect, useState } from 'react';
 import {
   createTask,
@@ -41,24 +42,34 @@ export function SubtaskModal({
   onCreated,
   onError,
 }: SubtaskModalProps) {
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [statusId, setStatusId] = useState(statuses[0]?.id || '');
-  const [priority, setPriority] = useState<TaskPriority>('NORMAL');
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState('');
-  const [dueDate, setDueDate] = useState('');
   const [saving, setSaving] = useState(false);
+  const form = useForm({
+    initialValues: {
+      title: '',
+      description: '',
+      statusId: statuses[0]?.id || '',
+      priority: 'NORMAL' as TaskPriority,
+      assigneeIds: [] as string[],
+      startDate: '',
+      dueDate: '',
+    },
+    validate: {
+      title: (value) => (value.trim().length ? null : 'Subtask name is required'),
+    },
+  });
 
   useEffect(() => {
     if (opened) {
-      setTitle('');
-      setDescription('');
-      setStatusId(parentTask.statusId || statuses[0]?.id || '');
-      setPriority(parentTask.priority || 'NORMAL');
-      setAssigneeIds(parentTask.assignees?.map((user) => user.id) || []);
-      setStartDate('');
-      setDueDate('');
+      form.setValues({
+        title: '',
+        description: '',
+        statusId: parentTask.statusId || statuses[0]?.id || '',
+        priority: parentTask.priority || 'NORMAL',
+        assigneeIds: parentTask.assignees?.map((user) => user.id) || [],
+        startDate: '',
+        dueDate: '',
+      });
+      form.resetDirty();
     }
   }, [
     opened,
@@ -67,10 +78,11 @@ export function SubtaskModal({
     parentTask.statusId,
     parentTask.assignees,
     statuses,
+    form,
   ]);
 
-  const create = async () => {
-    if (!parentTask.taskListId || !title.trim()) {
+  const create = form.onSubmit(async (values) => {
+    if (!parentTask.taskListId || !values.title.trim()) {
       return;
     }
     try {
@@ -78,13 +90,13 @@ export function SubtaskModal({
       await createTask({
         taskListId: parentTask.taskListId,
         parentId: parentTask.id,
-        title: title.trim(),
-        description,
-        statusId: statusId || undefined,
-        priority,
-        assigneeIds,
-        startDate: startDate || undefined,
-        dueDate: dueDate || undefined,
+        title: values.title.trim(),
+        description: values.description,
+        statusId: values.statusId || undefined,
+        priority: values.priority,
+        assigneeIds: values.assigneeIds,
+        startDate: values.startDate || undefined,
+        dueDate: values.dueDate || undefined,
       });
       onCreated(await getTask(parentTask.id));
       onClose();
@@ -93,7 +105,7 @@ export function SubtaskModal({
     } finally {
       setSaving(false);
     }
-  };
+  });
 
   return (
     <Modal
@@ -104,64 +116,47 @@ export function SubtaskModal({
       centered
       classNames={{ content: classes.modalContent }}
     >
-      <Stack>
-        <TextInput
-          label="Name"
-          value={title}
-          onChange={(event) => setTitle(event.currentTarget.value)}
-          autoFocus
-        />
-        <SimpleGrid cols={{ base: 1, sm: 2 }}>
-          <Select
-            label="Status"
-            value={statusId}
-            onChange={(value) => setStatusId(value || '')}
-            data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
+      <form onSubmit={create}>
+        <Stack>
+          <TextInput label="Name" autoFocus {...form.getInputProps('title')} />
+          <SimpleGrid cols={{ base: 1, sm: 2 }}>
+            <Select
+              label="Status"
+              data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
+              {...form.getInputProps('statusId')}
+            />
+            <Select
+              label="Priority"
+              data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+              {...form.getInputProps('priority')}
+            />
+            <MultiSelect
+              label="Assignee / responsible"
+              data={users.map((user) => ({ value: user.id, label: user.name }))}
+              searchable
+              clearable
+              maxValues={2}
+              {...form.getInputProps('assigneeIds')}
+            />
+            <TextInput label="Start date" type="date" {...form.getInputProps('startDate')} />
+            <TextInput label="Due date" type="date" {...form.getInputProps('dueDate')} />
+          </SimpleGrid>
+          <Textarea
+            label="Description"
+            minRows={7}
+            autosize
+            {...form.getInputProps('description')}
           />
-          <Select
-            label="Priority"
-            value={priority}
-            onChange={(value) => setPriority((value || 'NORMAL') as TaskPriority)}
-            data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-          />
-          <MultiSelect
-            label="Assignee / responsible"
-            value={assigneeIds}
-            onChange={setAssigneeIds}
-            data={users.map((user) => ({ value: user.id, label: user.name }))}
-            searchable
-            clearable
-            maxValues={2}
-          />
-          <TextInput
-            label="Start date"
-            type="date"
-            value={startDate}
-            onChange={(event) => setStartDate(event.currentTarget.value)}
-          />
-          <TextInput
-            label="Due date"
-            type="date"
-            value={dueDate}
-            onChange={(event) => setDueDate(event.currentTarget.value)}
-          />
-        </SimpleGrid>
-        <Textarea
-          label="Description"
-          minRows={7}
-          autosize
-          value={description}
-          onChange={(event) => setDescription(event.currentTarget.value)}
-        />
-        <Group justify="flex-end">
-          <Button variant="light" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button loading={saving} disabled={!title.trim()} onClick={create}>
-            Create subtask
-          </Button>
-        </Group>
-      </Stack>
+          <Group justify="flex-end">
+            <Button variant="light" onClick={onClose}>
+              Cancel
+            </Button>
+            <Button loading={saving} type="submit">
+              Create subtask
+            </Button>
+          </Group>
+        </Stack>
+      </form>
     </Modal>
   );
 }

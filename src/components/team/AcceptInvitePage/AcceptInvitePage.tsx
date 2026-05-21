@@ -2,7 +2,6 @@ import {
   Alert,
   Box,
   Button,
-  Loader,
   Paper,
   PasswordInput,
   Stack,
@@ -11,6 +10,7 @@ import {
   Title,
   Tooltip,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconMailCheck } from '@tabler/icons-react';
 import { useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
@@ -28,12 +28,22 @@ export function AcceptInvitePage({
   const [acceptedWorkspace, setAcceptedWorkspace] = useState<{ id: string; name: string } | null>(
     null
   );
-  const [name, setName] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const form = useForm({
+    initialValues: {
+      name: '',
+      password: '',
+      confirmPassword: '',
+    },
+    validate: {
+      password: (value) =>
+        value.trim().length >= 8 ? null : 'Password must be at least 8 characters long',
+      confirmPassword: (value, values) =>
+        value === values.password ? null : 'Password confirmation does not match',
+    },
+  });
 
-  const accept = async () => {
+  const accept = form.onSubmit(async (values) => {
     if (!token) {
       return;
     }
@@ -41,9 +51,9 @@ export function AcceptInvitePage({
       setLoading(true);
       setError(null);
       const result = await acceptInvite(token, {
-        name,
-        password,
-        confirmPassword,
+        name: values.name,
+        password: values.password,
+        confirmPassword: values.confirmPassword,
       });
       setAcceptedWorkspace({ id: result.workspaceId, name: result.workspaceName });
       onAccepted(result.user);
@@ -52,11 +62,11 @@ export function AcceptInvitePage({
     } finally {
       setLoading(false);
     }
-  };
+  });
 
   return (
     <Box className={`${classes.center} ${classes.setupScreen}`}>
-      <Paper withBorder className={classes.inviteCard}>
+      <Paper withBorder className={classes.inviteCard} component="form" onSubmit={accept}>
         <Stack gap="md" align="flex-start">
           <Tooltip label="Workspace invite">
             <IconMailCheck size="2rem" />
@@ -80,24 +90,11 @@ export function AcceptInvitePage({
                   {error}
                 </Alert>
               )}
-              <TextInput
-                label="Name"
-                value={name}
-                onChange={(event) => setName(event.currentTarget.value)}
-                placeholder="Your name"
-              />
-              <PasswordInput
-                label="Password"
-                value={password}
-                onChange={(event) => setPassword(event.currentTarget.value)}
-              />
-              <PasswordInput
-                label="Confirm password"
-                value={confirmPassword}
-                onChange={(event) => setConfirmPassword(event.currentTarget.value)}
-              />
-              <Button loading={loading} disabled={!token} onClick={accept}>
-                {loading ? <Loader size="xs" /> : 'Accept invite'}
+              <TextInput label="Name" placeholder="Your name" {...form.getInputProps('name')} />
+              <PasswordInput label="Password" {...form.getInputProps('password')} />
+              <PasswordInput label="Confirm password" {...form.getInputProps('confirmPassword')} />
+              <Button loading={loading} disabled={!token} type="submit">
+                Accept invite
               </Button>
             </>
           )}

@@ -147,7 +147,10 @@ export function createTask(input: {
   dueDate?: string;
   githubUrl?: string;
 }) {
-  return request('/api/openproject/tasks', { method: 'POST', body: JSON.stringify(input) });
+  return request<Task>('/api/openproject/tasks', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
 }
 
 export function getTask(taskId: string) {

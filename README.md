@@ -168,6 +168,9 @@ The tracker includes:
   - Security
   - My work
   - Access
+- Action feedback:
+  - transient toast notifications for save, invite, password, task, relation, attachment, and bulk actions
+  - inline warning/error banners for longer OpenProject or import issues
 
 Task detail opens in a right-side drawer so list and board context stay visible. Breadcrumbs show the current workspace, space, folder, list, and the open task or local doc.
 

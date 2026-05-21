@@ -3,6 +3,7 @@ import {
   Alert,
   AppShell,
   Badge,
+  Breadcrumbs,
   Box,
   Button,
   Drawer,
@@ -21,6 +22,7 @@ import {
   ThemeIcon,
   Title,
   Tooltip,
+  UnstyledButton,
   useMantineColorScheme,
 } from '@mantine/core';
 import {
@@ -67,6 +69,7 @@ import {
   buildWorkspaceBreadcrumbs,
   buildWorkspaceChecklist,
   describeTaskCollectionState,
+  showToast,
   summarizeImportRun,
   taskPath,
   workspaceHasWork,
@@ -81,6 +84,7 @@ import {
   type User,
   type Workspace,
 } from '@/lib';
+import { confirmAction, promptForText } from '@/lib/modals';
 import { ProfileModal } from '../../auth/ProfileModal/ProfileModal';
 import { AvatarStack } from '../../common/AvatarStack';
 import { DocumentPage } from '../../docs/DocumentPage/DocumentPage';
@@ -221,6 +225,25 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     const timeout = window.setTimeout(() => setActionNotice(null), 3500);
     return () => window.clearTimeout(timeout);
   }, [actionNotice]);
+
+  useEffect(() => {
+    if (!actionNotice) return;
+    showToast({
+      tone: 'success',
+      title: 'Saved',
+      message: actionNotice,
+    });
+  }, [actionNotice]);
+
+  useEffect(() => {
+    if (!actionError) return;
+    showToast({
+      tone: 'error',
+      title: 'Could not complete action',
+      message: actionError,
+      autoCloseMs: 5600,
+    });
+  }, [actionError]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -701,8 +724,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     const list = firstTaskList(folder);
     return (
       <Box key={folder.id}>
-        <button
-          type="button"
+        <UnstyledButton
           className={
             folder.id === activeFolder?.id
               ? `${classes.folderTreeRow} ${classes.active}`
@@ -727,11 +749,10 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           </span>
           <span>{folder.name}</span>
           {folder.locked && <IconLock size="0.875rem" className={classes.mutedIcon} />}
-        </button>
+        </UnstyledButton>
         {folder.taskLists?.map((taskList) => (
-          <button
+          <UnstyledButton
             key={taskList.id}
-            type="button"
             className={
               taskList.id === activeTaskList?.id
                 ? `${classes.taskListNav} ${classes.active}`
@@ -749,7 +770,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             >
               <Badge variant="light">{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
             </Tooltip>
-          </button>
+          </UnstyledButton>
         ))}
         {isExpanded && folder.folders?.map((child) => renderFolder(spaceIdValue, child, depth + 1))}
       </Box>
@@ -931,11 +952,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               )}
             </Group>
           </Group>
-          <button
-            type="button"
-            className={classes.profileButton}
-            onClick={() => setProfileOpen(true)}
-          >
+          <UnstyledButton className={classes.profileButton} onClick={() => setProfileOpen(true)}>
             <AvatarStack users={[profileUser]} size="1.75rem" />
             <span>
               <Text size="sm" fw={700}>
@@ -948,7 +965,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                   : 'not linked to OpenProject'}
               </Text>
             </span>
-          </button>
+          </UnstyledButton>
           <Button
             variant="subtle"
             size="compact-sm"
@@ -1026,8 +1043,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               return (
                 <Box key={space.id} className={classes.spaceTreeBlock}>
                   <Group wrap="nowrap" gap={0}>
-                    <button
-                      type="button"
+                    <UnstyledButton
                       className={
                         isActiveSpace
                           ? `${classes.spaceTreeRow} ${classes.active}`
@@ -1063,7 +1079,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                           <IconLock size="1rem" className={classes.mutedIcon} />
                         </Tooltip>
                       )}
-                    </button>
+                    </UnstyledButton>
                     {isActiveSpace && (
                       <Menu width="22rem" position="right-start">
                         <Menu.Target>
@@ -1125,16 +1141,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               );
             })}
             {canManageSpaces && (
-              <button
+              <UnstyledButton
                 className={classes.newSpaceRow}
-                type="button"
                 onClick={async () => {
                   setSpaceCreateOpen(true);
                 }}
               >
                 <IconPlus size="1.125rem" />
                 New Space
-              </button>
+              </UnstyledButton>
             )}
           </ScrollArea>
         </AppShell.Navbar>
@@ -1164,7 +1179,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               </Alert>
             )}
             <Group className={classes.topBar} justify="space-between">
-              <Group gap="xs" wrap="nowrap">
+              <Breadcrumbs separator="/" separatorMargin="xs">
                 {breadcrumbItems.map((item, index) => (
                   <Group gap="xs" wrap="nowrap" key={`${item.label}:${index}`}>
                     {index === 0 && activeSpace ? (
@@ -1181,10 +1196,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                     >
                       {item.label}
                     </Text>
-                    {index < breadcrumbItems.length - 1 && <Text c="dimmed">/</Text>}
                   </Group>
                 ))}
-              </Group>
+              </Breadcrumbs>
               <Group gap="md">
                 <Menu width="22rem" position="bottom-end">
                   <Menu.Target>
@@ -1489,10 +1503,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                               <Box key={view.id}>
                                 <Menu.Item
                                   onClick={async () => {
-                                    const nextName = window.prompt('Rename saved view', view.name);
-                                    if (!nextName?.trim()) return;
+                                    const nextName = await promptForText({
+                                      title: 'Rename saved view',
+                                      label: 'View name',
+                                      initialValue: view.name,
+                                      confirmLabel: 'Rename',
+                                    });
+                                    if (!nextName) return;
                                     const updated = await updateSavedView(view.id, {
-                                      name: nextName.trim(),
+                                      name: nextName,
                                     }).catch((error) => {
                                       setActionError(getErrorMessage(error));
                                       return null;
@@ -1532,7 +1551,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                                 <Menu.Item
                                   color="red"
                                   onClick={async () => {
-                                    if (!window.confirm(`Delete saved view "${view.name}"?`)) {
+                                    const confirmed = await confirmAction({
+                                      title: 'Delete saved view',
+                                      message: `Delete saved view "${view.name}"?`,
+                                      confirmLabel: 'Delete view',
+                                      confirmColor: 'red',
+                                    });
+                                    if (!confirmed) {
                                       return;
                                     }
                                     await deleteSavedView(view.id).catch((error) =>
@@ -1840,6 +1865,12 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                     >
                       {summary.warningsCount} / {summary.errorsCount}
                     </Alert>
+                    <Alert variant="light" color="indigo" title="Responsible mapped">
+                      {summary.responsibleMapped}
+                    </Alert>
+                    <Alert variant="light" color="cyan" title="Additional assignees stored">
+                      {summary.additionalAssigneesStored}
+                    </Alert>
                   </>
                 );
               })()}
@@ -1870,9 +1901,10 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             <Group>
               <Button
                 variant="subtle"
-                onClick={() =>
-                  navigator.clipboard?.writeText(JSON.stringify(activeImportReport, null, 2))
-                }
+                onClick={() => {
+                  navigator.clipboard?.writeText(JSON.stringify(activeImportReport, null, 2));
+                  setActionNotice('Import report JSON copied.');
+                }}
               >
                 Copy JSON
               </Button>

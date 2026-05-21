@@ -17,7 +17,9 @@ import {
   TextInput,
   Title,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import {
   IconCalendarDue,
   IconExternalLink,
@@ -46,6 +48,7 @@ import {
   getTaskTimeEntries,
   linkTaskPullRequest,
   refreshTaskGitHub,
+  showToast,
   uploadTaskAttachment,
   unlinkTaskPullRequest,
   updateTaskCustomField,
@@ -94,48 +97,93 @@ export function TaskDetailPage({
   const due = formatDueDate(task.dueDate);
   const start = formatDueDate(task.startDate);
   const status = displayStatus(undefined, task.status);
-  const [title, setTitle] = useState(task.title);
-  const [description, setDescription] = useState(task.description || '');
-  const [statusId, setStatusId] = useState(task.statusId || '');
-  const [priority, setPriority] = useState<TaskPriority>(task.priority);
-  const [assigneeIds, setAssigneeIds] = useState<string[]>([]);
-  const [startDate, setStartDate] = useState(toDateInput(task.startDate));
-  const [dueDate, setDueDate] = useState(toDateInput(task.dueDate));
   const [saving, setSaving] = useState(false);
   const [subtaskModalOpen, setSubtaskModalOpen] = useState(false);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
-  const [comment, setComment] = useState('');
   const [commentSaving, setCommentSaving] = useState(false);
   const [relations, setRelations] = useState<OpenProjectRelationItem[]>([]);
-  const [relationTargetId, setRelationTargetId] = useState('');
-  const [relationType, setRelationType] = useState('relates');
   const [relationSaving, setRelationSaving] = useState(false);
   const [timeEntries, setTimeEntries] = useState<OpenProjectTimeEntryItem[]>([]);
   const [totalHours, setTotalHours] = useState(0);
-  const [timeHours, setTimeHours] = useState<number | string>(1);
-  const [timeSpentOn, setTimeSpentOn] = useState(toDateInput(new Date().toISOString()));
-  const [timeComment, setTimeComment] = useState('');
   const [timeSaving, setTimeSaving] = useState(false);
   const [attachments, setAttachments] = useState<OpenProjectAttachmentItem[]>([]);
-  const [attachmentFile, setAttachmentFile] = useState<File | null>(null);
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [customFields, setCustomFields] = useState<OpenProjectCustomFieldItem[]>([]);
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
-  const [selectedRepositoryId, setSelectedRepositoryId] = useState('');
-  const [manualPr, setManualPr] = useState('');
   const [githubBusy, setGithubBusy] = useState(false);
+  const detailsForm = useForm({
+    initialValues: {
+      title: task.title,
+      description: task.description || '',
+      statusId: task.statusId || '',
+      priority: task.priority,
+      assigneeIds: [] as string[],
+      startDate: toDateInput(task.startDate),
+      dueDate: toDateInput(task.dueDate),
+    },
+    validate: {
+      title: (value) => (value.trim().length ? null : 'Task title is required'),
+    },
+  });
+  const commentForm = useForm({
+    initialValues: {
+      comment: '',
+    },
+  });
+  const relationForm = useForm({
+    initialValues: {
+      relationTargetId: '',
+      relationType: 'relates',
+    },
+    validate: {
+      relationTargetId: (value) =>
+        value.trim().length ? null : 'Target work package ID is required',
+    },
+  });
+  const timeForm = useForm({
+    initialValues: {
+      timeHours: 1 as number | string,
+      timeSpentOn: toDateInput(new Date().toISOString()),
+      timeComment: '',
+    },
+    validate: {
+      timeHours: (value) => (Number(value) > 0 ? null : 'Hours must be greater than zero'),
+      timeSpentOn: (value) => (value ? null : 'Spent on date is required'),
+    },
+  });
+  const attachmentForm = useForm({
+    initialValues: {
+      attachmentFile: null as File | null,
+    },
+  });
+  const githubForm = useForm({
+    initialValues: {
+      selectedRepositoryId: '',
+      manualPr: '',
+    },
+  });
   const githubSupportedForTask = task.externalSource !== 'OPENPROJECT';
 
   useEffect(() => {
-    setTitle(task.title);
-    setDescription(task.description || '');
-    setStatusId(task.statusId || '');
-    setPriority(task.priority);
-    setAssigneeIds(
-      (task.assignees || (task.assignee ? [task.assignee] : [])).map((user) => user.id)
-    );
-    setStartDate(toDateInput(task.startDate));
-    setDueDate(toDateInput(task.dueDate));
+    detailsForm.setValues({
+      title: task.title,
+      description: task.description || '',
+      statusId: task.statusId || '',
+      priority: task.priority,
+      assigneeIds: (task.assignees || (task.assignee ? [task.assignee] : [])).map(
+        (user) => user.id
+      ),
+      startDate: toDateInput(task.startDate),
+      dueDate: toDateInput(task.dueDate),
+    });
+    commentForm.reset();
+    relationForm.reset();
+    timeForm.setValues({
+      timeHours: 1,
+      timeSpentOn: toDateInput(new Date().toISOString()),
+      timeComment: '',
+    });
+    attachmentForm.reset();
     getTaskActivity(task.id)
       .then((page) => setActivity(page.items))
       .catch((error) => onError(getErrorMessage(error)));
@@ -161,14 +209,28 @@ export function TaskDetailPage({
       getGitHubRepositories(workspace.id)
         .then((items) => {
           setRepositories(items);
-          setSelectedRepositoryId((current) => current || items[0]?.id || '');
+          githubForm.setValues({
+            selectedRepositoryId: items[0]?.id || '',
+            manualPr: '',
+          });
         })
         .catch(() => setRepositories([]));
     } else {
       setRepositories([]);
-      setSelectedRepositoryId('');
+      githubForm.reset();
     }
-  }, [task, workspace, onError, githubSupportedForTask]);
+  }, [
+    task,
+    workspace,
+    onError,
+    githubSupportedForTask,
+    detailsForm,
+    commentForm,
+    relationForm,
+    timeForm,
+    attachmentForm,
+    githubForm,
+  ]);
 
   const showGitHubTab = Boolean(
     githubSupportedForTask &&
@@ -183,109 +245,180 @@ export function TaskDetailPage({
     }
     try {
       onSaved(await updateTask(task.id, input));
+      showToast({
+        tone: 'success',
+        title: 'Task updated',
+        message: 'The OpenProject task was updated.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not update task',
+        message,
+      });
     }
   };
 
-  const save = async () => {
+  const save = detailsForm.onSubmit(async (values) => {
     if (!canWriteTasks) {
       return;
     }
     try {
       setSaving(true);
       const saved = await updateTask(task.id, {
-        title,
-        description,
-        statusId: statusId || undefined,
-        priority,
-        assigneeIds,
-        startDate: startDate || null,
-        dueDate: dueDate || null,
+        title: values.title,
+        description: values.description,
+        statusId: values.statusId || undefined,
+        priority: values.priority,
+        assigneeIds: values.assigneeIds,
+        startDate: values.startDate || null,
+        dueDate: values.dueDate || null,
       });
       onSaved(saved);
+      showToast({
+        tone: 'success',
+        title: 'Task saved',
+        message: 'Task details were saved to OpenProject.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not save task',
+        message,
+      });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const submitComment = async () => {
-    if (!canWriteTasks || !comment.trim()) {
+  const submitComment = commentForm.onSubmit(async (values) => {
+    if (!canWriteTasks || !values.comment.trim()) {
       return;
     }
     try {
       setCommentSaving(true);
-      await addTaskComment(task.id, comment.trim());
-      setComment('');
+      await addTaskComment(task.id, values.comment.trim());
+      commentForm.reset();
       const page = await getTaskActivity(task.id);
       setActivity(page.items);
+      showToast({
+        tone: 'success',
+        title: 'Comment posted',
+        message: 'Your comment was saved in OpenProject activity.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not post comment',
+        message,
+      });
     } finally {
       setCommentSaving(false);
     }
-  };
+  });
 
-  const submitRelation = async () => {
-    if (!canWriteTasks || !relationTargetId.trim() || relationTargetId.trim() === task.id) {
+  const submitRelation = relationForm.onSubmit(async (values) => {
+    const trimmedTargetId = values.relationTargetId.trim();
+    if (!canWriteTasks || !trimmedTargetId || trimmedTargetId === task.id) {
       return;
     }
     try {
       setRelationSaving(true);
       await addTaskRelation(task.id, {
-        targetTaskId: relationTargetId.trim(),
-        type: relationType,
+        targetTaskId: trimmedTargetId,
+        type: values.relationType,
       });
-      setRelationTargetId('');
+      relationForm.reset();
       const page = await getTaskRelations(task.id);
       setRelations(page.items);
+      showToast({
+        tone: 'success',
+        title: 'Relation added',
+        message: 'The dependency was saved in OpenProject.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not add relation',
+        message,
+      });
     } finally {
       setRelationSaving(false);
     }
-  };
+  });
 
-  const submitTimeEntry = async () => {
-    if (!canWriteTasks || !Number(timeHours) || !timeSpentOn) {
+  const submitTimeEntry = timeForm.onSubmit(async (values) => {
+    if (!canWriteTasks || !Number(values.timeHours) || !values.timeSpentOn) {
       return;
     }
     try {
       setTimeSaving(true);
       await addTaskTimeEntry(task.id, {
-        hours: Number(timeHours),
-        spentOn: timeSpentOn,
-        comment: timeComment,
+        hours: Number(values.timeHours),
+        spentOn: values.timeSpentOn,
+        comment: values.timeComment,
       });
-      setTimeComment('');
+      timeForm.setValues({
+        timeHours: 1,
+        timeSpentOn: toDateInput(new Date().toISOString()),
+        timeComment: '',
+      });
       const page = await getTaskTimeEntries(task.id);
       setTimeEntries(page.items);
       setTotalHours(page.totalHours);
+      showToast({
+        tone: 'success',
+        title: 'Time logged',
+        message: 'The OpenProject time entry was created.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not log time',
+        message,
+      });
     } finally {
       setTimeSaving(false);
     }
-  };
+  });
 
-  const submitAttachment = async () => {
-    if (!canWriteTasks || !attachmentFile) {
+  const submitAttachment = attachmentForm.onSubmit(async (values) => {
+    if (!canWriteTasks || !values.attachmentFile) {
       return;
     }
     try {
       setAttachmentSaving(true);
-      await uploadTaskAttachment(task.id, attachmentFile);
-      setAttachmentFile(null);
+      await uploadTaskAttachment(task.id, values.attachmentFile);
+      attachmentForm.reset();
       const page = await getTaskAttachments(task.id);
       setAttachments(page.items);
+      showToast({
+        tone: 'success',
+        title: 'Attachment uploaded',
+        message: 'The file is now attached to the OpenProject task.',
+      });
     } catch (error) {
-      onError(getErrorMessage(error));
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not upload attachment',
+        message,
+      });
     } finally {
       setAttachmentSaving(false);
     }
-  };
+  });
 
   const renderCustomFieldInput = (field: OpenProjectCustomFieldItem) => {
     const commonDescription = field.editable
@@ -431,18 +564,17 @@ export function TaskDetailPage({
       />
       <Group justify="space-between" mb="lg">
         <TextInput
-          value={title}
-          onChange={(event) => setTitle(event.currentTarget.value)}
           className={classes.titleInput}
           readOnly={!canWriteTasks}
+          {...detailsForm.getInputProps('title')}
         />
         <Group>
           {canWriteTasks && (
-            <Button loading={saving} onClick={save}>
+            <Button loading={saving} onClick={() => save()}>
               Save
             </Button>
           )}
-          <Button variant="light" onClick={onBack}>
+          <Button type="button" variant="light" onClick={onBack}>
             Close
           </Button>
         </Group>
@@ -452,9 +584,9 @@ export function TaskDetailPage({
         <Select
           label="Status"
           leftSection={<span className={classes.statusDot} style={{ background: status.color }} />}
-          value={statusId}
+          value={detailsForm.values.statusId}
           onChange={(value) => {
-            setStatusId(value || '');
+            detailsForm.setFieldValue('statusId', value || '');
             void updateAndRefresh({ statusId: value || undefined });
           }}
           data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
@@ -467,9 +599,9 @@ export function TaskDetailPage({
         <MultiSelect
           label="Assignee / responsible"
           leftSection={<IconUsers size="1rem" />}
-          value={assigneeIds}
+          value={detailsForm.values.assigneeIds}
           onChange={(value) => {
-            setAssigneeIds(value);
+            detailsForm.setFieldValue('assigneeIds', value);
             void updateAndRefresh({ assigneeIds: value });
           }}
           data={workspace.memberships.map((membership) => ({
@@ -486,9 +618,9 @@ export function TaskDetailPage({
           label="Start date"
           leftSection={<IconCalendarDue size="1rem" />}
           type="date"
-          value={startDate}
-          onChange={(event) => setStartDate(event.currentTarget.value)}
-          onBlur={() => void updateAndRefresh({ startDate: startDate || null })}
+          value={detailsForm.values.startDate}
+          onChange={(event) => detailsForm.setFieldValue('startDate', event.currentTarget.value)}
+          onBlur={() => void updateAndRefresh({ startDate: detailsForm.values.startDate || null })}
           placeholder={start || 'No start'}
           readOnly={!canWriteTasks}
         />
@@ -496,19 +628,19 @@ export function TaskDetailPage({
           label="Due date"
           leftSection={<IconCalendarDue size="1rem" />}
           type="date"
-          value={dueDate}
-          onChange={(event) => setDueDate(event.currentTarget.value)}
-          onBlur={() => void updateAndRefresh({ dueDate: dueDate || null })}
+          value={detailsForm.values.dueDate}
+          onChange={(event) => detailsForm.setFieldValue('dueDate', event.currentTarget.value)}
+          onBlur={() => void updateAndRefresh({ dueDate: detailsForm.values.dueDate || null })}
           placeholder={due || 'No due'}
           readOnly={!canWriteTasks}
         />
         <Select
           label="Priority"
           leftSection={<IconFlag size="1rem" />}
-          value={priority}
+          value={detailsForm.values.priority}
           onChange={(value) => {
             const next = (value || 'NORMAL') as TaskPriority;
-            setPriority(next);
+            detailsForm.setFieldValue('priority', next);
             void updateAndRefresh({ priority: next });
           }}
           data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
@@ -564,10 +696,9 @@ export function TaskDetailPage({
         label="Description"
         minRows={8}
         autosize
-        value={description}
-        onChange={(event) => setDescription(event.currentTarget.value)}
         mb="lg"
         readOnly={!canWriteTasks}
+        {...detailsForm.getInputProps('description')}
       />
 
       <Tabs defaultValue="subtasks">
@@ -722,8 +853,10 @@ export function TaskDetailPage({
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <Select
                     label="Repository"
-                    value={selectedRepositoryId}
-                    onChange={(value) => setSelectedRepositoryId(value || '')}
+                    value={githubForm.values.selectedRepositoryId}
+                    onChange={(value) =>
+                      githubForm.setFieldValue('selectedRepositoryId', value || '')
+                    }
                     data={repositories.map((repo) => ({
                       value: repo.id,
                       label: `${repo.owner}/${repo.repo}`,
@@ -732,28 +865,29 @@ export function TaskDetailPage({
                   />
                   <TextInput
                     label="PR URL or number"
-                    value={manualPr}
-                    onChange={(event) => setManualPr(event.currentTarget.value)}
+                    {...githubForm.getInputProps('manualPr')}
                     placeholder="https://github.com/.../pull/12"
                   />
                   <Stack justify="flex-end">
                     <Group gap="xs">
                       <Button
                         leftSection={<IconGitPullRequest size="1rem" />}
-                        disabled={!selectedRepositoryId || !manualPr.trim()}
+                        disabled={
+                          !githubForm.values.selectedRepositoryId ||
+                          !githubForm.values.manualPr.trim()
+                        }
                         loading={githubBusy}
                         onClick={async () => {
                           try {
                             setGithubBusy(true);
-                            const number = /^\d+$/.test(manualPr.trim())
-                              ? Number(manualPr.trim())
-                              : undefined;
+                            const trimmedPr = githubForm.values.manualPr.trim();
+                            const number = /^\d+$/.test(trimmedPr) ? Number(trimmedPr) : undefined;
                             await linkTaskPullRequest(task.id, {
-                              repositoryId: selectedRepositoryId,
+                              repositoryId: githubForm.values.selectedRepositoryId,
                               number,
-                              url: number ? undefined : manualPr.trim(),
+                              url: number ? undefined : trimmedPr,
                             });
-                            setManualPr('');
+                            githubForm.setFieldValue('manualPr', '');
                             onSaved(await getTask(task.id));
                           } catch (error) {
                             onError(getErrorMessage(error));
@@ -818,9 +952,8 @@ export function TaskDetailPage({
               <Text>Due date</Text>
             </div>
             {(task.subtasks || []).map((subtask) => (
-              <button
+              <UnstyledButton
                 key={subtask.id}
-                type="button"
                 className={classes.subtaskRow}
                 onClick={() => onOpenSubtask(subtask)}
               >
@@ -846,36 +979,31 @@ export function TaskDetailPage({
                 <Text c={formatDueDate(subtask.dueDate).includes('ago') ? 'red' : 'dimmed'}>
                   {formatDueDate(subtask.dueDate) || '-'}
                 </Text>
-              </button>
+              </UnstyledButton>
             ))}
             {!task.subtasks?.length && (
-              <button
-                className={classes.addTask}
-                type="button"
-                onClick={() => setSubtaskModalOpen(true)}
-              >
+              <UnstyledButton className={classes.addTask} onClick={() => setSubtaskModalOpen(true)}>
                 <IconPlus size="1.125rem" />
                 Add Task
-              </button>
+              </UnstyledButton>
             )}
           </Paper>
         </Tabs.Panel>
         <Tabs.Panel value="activity" pt="md">
           <Stack gap="xs">
             {canWriteTasks && (
-              <Paper withBorder p="sm">
+              <Paper component="form" withBorder p="sm" onSubmit={submitComment}>
                 <Textarea
                   label="Add OpenProject comment"
-                  value={comment}
-                  onChange={(event) => setComment(event.currentTarget.value)}
                   minRows={3}
                   autosize
+                  {...commentForm.getInputProps('comment')}
                 />
                 <Group justify="flex-end" mt="sm">
                   <Button
                     loading={commentSaving}
-                    disabled={!comment.trim()}
-                    onClick={submitComment}
+                    disabled={!commentForm.values.comment.trim()}
+                    type="submit"
                   >
                     Add comment
                   </Button>
@@ -913,18 +1041,19 @@ export function TaskDetailPage({
         <Tabs.Panel value="relations" pt="md">
           <Stack>
             {canWriteTasks && (
-              <Paper withBorder p="sm">
+              <Paper component="form" withBorder p="sm" onSubmit={submitRelation}>
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <TextInput
                     label="Target work package ID"
-                    value={relationTargetId}
-                    onChange={(event) => setRelationTargetId(event.currentTarget.value)}
                     leftSection={<IconLink size="1rem" />}
+                    {...relationForm.getInputProps('relationTargetId')}
                   />
                   <Select
                     label="Relation type"
-                    value={relationType}
-                    onChange={(value) => setRelationType(value || 'relates')}
+                    value={relationForm.values.relationType}
+                    onChange={(value) =>
+                      relationForm.setFieldValue('relationType', value || 'relates')
+                    }
                     data={[
                       { value: 'relates', label: 'Relates' },
                       { value: 'blocks', label: 'Blocks' },
@@ -934,7 +1063,7 @@ export function TaskDetailPage({
                     ]}
                   />
                   <Stack justify="flex-end">
-                    <Button loading={relationSaving} onClick={submitRelation}>
+                    <Button loading={relationSaving} type="submit">
                       Add relation
                     </Button>
                   </Stack>
@@ -961,8 +1090,19 @@ export function TaskDetailPage({
                             await deleteTaskRelation(task.id, relation.id);
                             const page = await getTaskRelations(task.id);
                             setRelations(page.items);
+                            showToast({
+                              tone: 'success',
+                              title: 'Relation removed',
+                              message: 'The OpenProject relation was deleted.',
+                            });
                           } catch (error) {
-                            onError(getErrorMessage(error));
+                            const message = getErrorMessage(error);
+                            onError(message);
+                            showToast({
+                              tone: 'error',
+                              title: 'Could not remove relation',
+                              message,
+                            });
                           }
                         }}
                       >
@@ -990,28 +1130,26 @@ export function TaskDetailPage({
               </Tooltip>
             </Group>
             {canWriteTasks && (
-              <Paper withBorder p="sm">
+              <Paper component="form" withBorder p="sm" onSubmit={submitTimeEntry}>
                 <SimpleGrid cols={{ base: 1, sm: 4 }}>
                   <NumberInput
                     label="Hours"
                     min={0.01}
                     step={0.25}
-                    value={timeHours}
-                    onChange={setTimeHours}
+                    value={timeForm.values.timeHours}
+                    onChange={(value) => timeForm.setFieldValue('timeHours', value)}
                   />
                   <TextInput
                     label="Spent on"
                     type="date"
-                    value={timeSpentOn}
-                    onChange={(event) => setTimeSpentOn(event.currentTarget.value)}
+                    value={timeForm.values.timeSpentOn}
+                    onChange={(event) =>
+                      timeForm.setFieldValue('timeSpentOn', event.currentTarget.value)
+                    }
                   />
-                  <TextInput
-                    label="Comment"
-                    value={timeComment}
-                    onChange={(event) => setTimeComment(event.currentTarget.value)}
-                  />
+                  <TextInput label="Comment" {...timeForm.getInputProps('timeComment')} />
                   <Stack justify="flex-end">
-                    <Button loading={timeSaving} onClick={submitTimeEntry}>
+                    <Button loading={timeSaving} type="submit">
                       Log time
                     </Button>
                   </Stack>
@@ -1040,18 +1178,18 @@ export function TaskDetailPage({
         <Tabs.Panel value="files" pt="md">
           <Stack>
             {canWriteTasks && (
-              <Paper withBorder p="sm">
+              <Paper component="form" withBorder p="sm" onSubmit={submitAttachment}>
                 <Group align="end">
                   <FileInput
                     label="Upload attachment"
-                    value={attachmentFile}
-                    onChange={setAttachmentFile}
+                    value={attachmentForm.values.attachmentFile}
+                    onChange={(value) => attachmentForm.setFieldValue('attachmentFile', value)}
                     leftSection={<IconPaperclip size="1rem" />}
                   />
                   <Button
                     loading={attachmentSaving}
-                    disabled={!attachmentFile}
-                    onClick={submitAttachment}
+                    disabled={!attachmentForm.values.attachmentFile}
+                    type="submit"
                   >
                     Upload
                   </Button>

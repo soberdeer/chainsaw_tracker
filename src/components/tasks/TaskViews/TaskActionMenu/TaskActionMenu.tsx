@@ -8,6 +8,7 @@ import {
   getErrorMessage,
   type Task,
 } from '@/lib';
+import { confirmAction, promptForText } from '@/lib/modals';
 import classes from './TaskActionMenu.module.css';
 
 export interface TaskActionMenuProps {
@@ -54,10 +55,18 @@ export function TaskActionsMenu({ task, onChanged, onError, canWriteTasks }: Tas
             <Divider />
             <Menu.Item
               onClick={() => {
-                const title = window.prompt('Task name', task.title);
-                if (title) {
-                  void run(() => updateTask(task.id, { title }));
-                }
+                void (async () => {
+                  const title = await promptForText({
+                    title: 'Rename task',
+                    label: 'Task name',
+                    initialValue: task.title,
+                    confirmLabel: 'Rename',
+                  });
+                  if (!title) {
+                    return;
+                  }
+                  await run(() => updateTask(task.id, { title }));
+                })();
               }}
             >
               Rename
@@ -82,9 +91,18 @@ export function TaskActionsMenu({ task, onChanged, onError, canWriteTasks }: Tas
             <Menu.Item
               color="red"
               onClick={() => {
-                if (window.confirm(`Delete "${task.title}"?`)) {
-                  void run(() => deleteTask(task.id));
-                }
+                void (async () => {
+                  const confirmed = await confirmAction({
+                    title: 'Delete task',
+                    message: `Delete "${task.title}"? This cannot be undone.`,
+                    confirmLabel: 'Delete task',
+                    confirmColor: 'red',
+                  });
+                  if (!confirmed) {
+                    return;
+                  }
+                  await run(() => deleteTask(task.id));
+                })();
               }}
             >
               Delete

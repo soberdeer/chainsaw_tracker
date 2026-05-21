@@ -1,4 +1,5 @@
 import {
+  Alert,
   Avatar,
   Badge,
   Button,
@@ -6,14 +7,20 @@ import {
   Modal,
   Select,
   Stack,
-  Switch,
   Text,
   TextInput,
   Tooltip,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconLock, IconMailPlus } from '@tabler/icons-react';
-import { useState } from 'react';
-import { inviteMember, getErrorMessage, type Space, type Workspace } from '@/lib';
+import { useEffect, useState } from 'react';
+import {
+  inviteMember,
+  getErrorMessage,
+  type Space,
+  type Workspace,
+  type WorkspaceRole,
+} from '@/lib';
 import classes from './ShareSpaceModal.module.css';
 
 export interface ShareSpaceModalProps {
@@ -31,24 +38,35 @@ export function ShareSpaceModal({
   onClose,
   onError,
 }: ShareSpaceModalProps) {
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState('MEMBER');
   const [sending, setSending] = useState(false);
+  const form = useForm({
+    initialValues: {
+      email: '',
+      role: 'MEMBER' as WorkspaceRole,
+    },
+    validate: {
+      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
+    },
+  });
 
-  const invite = async () => {
-    if (!email.trim()) {
+  useEffect(() => {
+    if (!opened) {
       return;
     }
+    form.reset();
+  }, [opened, form]);
+
+  const invite = form.onSubmit(async (values) => {
     try {
       setSending(true);
-      await inviteMember(workspace.id, { email, role });
-      setEmail('');
+      await inviteMember(workspace.id, { email: values.email, role: values.role });
+      form.reset();
     } catch (error) {
       onError(getErrorMessage(error));
     } finally {
       setSending(false);
     }
-  };
+  });
 
   return (
     <Modal
@@ -71,23 +89,23 @@ export function ShareSpaceModal({
             </Tooltip>
           )}
         </Text>
-        <Group align="end">
-          <TextInput
-            className={classes.grow}
-            label="Invite by name or email"
-            value={email}
-            onChange={(event) => setEmail(event.currentTarget.value)}
-          />
-          <Select
-            label="Role"
-            value={role}
-            onChange={(value) => setRole(value || 'MEMBER')}
-            data={['ADMIN', 'MEMBER', 'VIEWER']}
-          />
-          <Button leftSection={<IconMailPlus size="1rem" />} loading={sending} onClick={invite}>
-            Invite
-          </Button>
-        </Group>
+        <form onSubmit={invite}>
+          <Group align="end">
+            <TextInput
+              className={classes.grow}
+              label="Invite by email"
+              {...form.getInputProps('email')}
+            />
+            <Select
+              label="Role"
+              data={['ADMIN', 'LEAD', 'MEMBER', 'VIEWER']}
+              {...form.getInputProps('role')}
+            />
+            <Button leftSection={<IconMailPlus size="1rem" />} loading={sending} type="submit">
+              Invite
+            </Button>
+          </Group>
+        </form>
         <Group justify="space-between">
           <div>
             <Text fw={700}>Private link</Text>
@@ -117,20 +135,16 @@ export function ShareSpaceModal({
                   <Badge variant="light">{membership.role}</Badge>
                 </Tooltip>
               </Group>
-              <Group>
-                <Select
-                  size="xs"
-                  value={membership.role === 'VIEWER' ? 'View only' : 'Full edit'}
-                  data={['Full edit', 'View only']}
-                />
-                <Switch defaultChecked={membership.role !== 'VIEWER'} />
-              </Group>
+              <Text size="sm" c="dimmed">
+                Managed in workspace settings
+              </Text>
             </Group>
           ))}
         </Stack>
-        <Button variant="light" leftSection={<IconLock size="1rem" />}>
-          Make Public
-        </Button>
+        <Alert color="blue" title="Managed in OpenProject">
+          Space visibility and project access are managed through workspace members and OpenProject
+          project memberships. This dialog only sends workspace invites.
+        </Alert>
       </Stack>
     </Modal>
   );

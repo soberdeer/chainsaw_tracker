@@ -60,8 +60,11 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 8. Open `Security` and change the password.
 9. Log out and confirm the old password no longer works.
 10. Log in again with the new password.
-11. Log out and confirm protected tracker UI is no longer available.
-12. Confirm the workspace overview shows connection status, latest import status, import coverage, and quick actions.
+11. Open `My work` and click `Open Assigned to me`.
+12. Confirm it applies the existing assignee filter instead of opening a separate fake module.
+13. Open `Access` and confirm local workspace role, permission set, and OpenProject memberships are visible.
+14. Log out and confirm protected tracker UI is no longer available.
+15. Confirm the workspace overview shows connection status, latest import status, import coverage, and quick actions.
 
 Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
 
@@ -79,6 +82,7 @@ Important: if a user display name is empty, the tracker should keep it empty ins
 10. Open `OpenProject` and confirm the connection status loads without exposing the token.
 11. Open `Imports` and confirm recent migration runs appear when they exist.
 12. Open `Danger Zone` as owner and confirm destructive reset is described as a guarded CLI-only action in this MVP.
+13. Confirm invite, role change, remove, and workspace save actions show toast feedback.
 
 ## Space / Project Access
 
@@ -168,6 +172,7 @@ curl http://localhost:4000/api/openproject/workspaces
 10. Confirm task detail opens in a right-side drawer and the list or board stays visible behind it.
 11. Press `Esc` and confirm the drawer closes.
 12. Confirm breadcrumbs match the selected workspace / space / folder / list / task path.
+13. Change a field, post a comment, add a relation, log time, or upload a file and confirm a toast appears for success or failure.
 
 ## Create / Update / Delete
 

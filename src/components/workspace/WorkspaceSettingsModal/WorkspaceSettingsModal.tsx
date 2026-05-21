@@ -15,6 +15,7 @@ import {
   TextInput,
   Textarea,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useEffect, useState } from 'react';
 import {
   getErrorMessage,
@@ -25,6 +26,7 @@ import {
   getWorkspaceSettings,
   inviteWorkspaceMember,
   removeWorkspaceMember,
+  showToast,
   summarizeImportRun,
   updateWorkspaceMemberRole,
   updateWorkspaceSettings,
@@ -35,6 +37,7 @@ import {
   type WorkspaceRole,
   type WorkspaceSettings,
 } from '@/lib';
+import { confirmAction } from '@/lib/modals';
 
 const roleOptions: WorkspaceRole[] = ['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'];
 
@@ -71,11 +74,31 @@ export function WorkspaceSettingsModal({
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  const [inviteEmail, setInviteEmail] = useState('');
-  const [inviteName, setInviteName] = useState('');
-  const [inviteRole, setInviteRole] = useState<WorkspaceRole>('MEMBER');
-  const [createOpenProjectUser, setCreateOpenProjectUser] = useState(true);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const generalForm = useForm({
+    initialValues: {
+      name: '',
+      slug: '',
+      description: '',
+      avatarUrl: '',
+      color: '#228be6',
+    },
+    validate: {
+      name: (value) => (value.trim().length ? null : 'Workspace name is required'),
+      slug: (value) => (value.trim().length ? null : 'Workspace slug is required'),
+    },
+  });
+  const inviteForm = useForm({
+    initialValues: {
+      email: '',
+      name: '',
+      role: 'MEMBER' as WorkspaceRole,
+      createOpenProjectUser: true,
+    },
+    validate: {
+      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
+    },
+  });
 
   useEffect(() => {
     if (!opened) return;
@@ -85,7 +108,16 @@ export function WorkspaceSettingsModal({
     setInviteResult(null);
     setActiveTab(initialTab || 'general');
     Promise.all([
-      getWorkspaceSettings(workspaceId).then(setSettings),
+      getWorkspaceSettings(workspaceId).then((workspaceSettings) => {
+        setSettings(workspaceSettings);
+        generalForm.setValues({
+          name: workspaceSettings.name,
+          slug: workspaceSettings.slug,
+          description: workspaceSettings.description || '',
+          avatarUrl: workspaceSettings.avatarUrl || '',
+          color: workspaceSettings.color || '#228be6',
+        });
+      }),
       getWorkspaceMembers(workspaceId).then((payload) => setMembers(payload.items)),
       getWorkspacePermissionSets(workspaceId).then((payload) => setPermissionSets(payload.items)),
       getWorkspaceOpenProjectStatus(workspaceId).then(setConnectionStatus),
@@ -93,41 +125,59 @@ export function WorkspaceSettingsModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, workspaceId, initialTab]);
+  }, [opened, workspaceId, initialTab, generalForm]);
 
-  const saveGeneral = async () => {
+  const saveGeneral = generalForm.onSubmit(async (values) => {
     if (!settings) return;
     try {
       setSaving(true);
       setError(null);
       setSuccess(null);
       const updated = await updateWorkspaceSettings(workspaceId, {
-        name: settings.name,
-        slug: settings.slug,
-        description: settings.description || null,
-        avatarUrl: settings.avatarUrl || null,
-        color: settings.color || null,
+        name: values.name,
+        slug: values.slug,
+        description: values.description || null,
+        avatarUrl: values.avatarUrl || null,
+        color: values.color || null,
       });
       setSettings(updated);
+      generalForm.setValues({
+        name: updated.name,
+        slug: updated.slug,
+        description: updated.description || '',
+        avatarUrl: updated.avatarUrl || '',
+        color: updated.color || '#228be6',
+      });
       onUpdated(updated);
       setSuccess('Workspace settings saved.');
+      showToast({
+        tone: 'success',
+        title: 'Workspace updated',
+        message: 'General workspace settings were saved.',
+      });
     } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
+      const message = getErrorMessage(caughtError);
+      setError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not save workspace',
+        message,
+      });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const submitInvite = async () => {
+  const submitInvite = inviteForm.onSubmit(async (values) => {
     try {
       setError(null);
       setSuccess(null);
       setInviteResult(null);
       const result = await inviteWorkspaceMember(workspaceId, {
-        email: inviteEmail,
-        name: inviteName || undefined,
-        role: inviteRole,
-        createOpenProjectUser,
+        email: values.email,
+        name: values.name || undefined,
+        role: values.role,
+        createOpenProjectUser: values.createOpenProjectUser,
       });
       setMembers((current) =>
         [
@@ -135,10 +185,7 @@ export function WorkspaceSettingsModal({
           result.membership,
         ].sort((left, right) => left.user.email.localeCompare(right.user.email))
       );
-      setInviteEmail('');
-      setInviteName('');
-      setInviteRole('MEMBER');
-      setCreateOpenProjectUser(true);
+      inviteForm.reset();
       setInviteResult(
         [
           result.temporaryPassword
@@ -152,10 +199,24 @@ export function WorkspaceSettingsModal({
           .join(' ')
       );
       setSuccess('Workspace member access updated.');
+      showToast({
+        tone: 'success',
+        title: 'Member invited',
+        message:
+          result.temporaryPassword || result.openProjectTemporaryPassword
+            ? 'The workspace member was invited and temporary credentials were generated.'
+            : 'The workspace member already existed and access was updated.',
+      });
     } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
+      const message = getErrorMessage(caughtError);
+      setError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not invite member',
+        message,
+      });
     }
-  };
+  });
 
   return (
     <Modal opened={opened} onClose={onClose} title="Workspace settings" size="72rem" centered>
@@ -191,61 +252,40 @@ export function WorkspaceSettingsModal({
             </Tabs.List>
 
             <Tabs.Panel value="general" pt="md">
-              <Stack>
-                <TextInput
-                  label="Workspace name"
-                  value={settings.name}
-                  onChange={(event) =>
-                    setSettings((current) =>
-                      current ? { ...current, name: event.currentTarget.value } : current
-                    )
-                  }
-                  disabled={!canManageWorkspace}
-                />
-                <TextInput
-                  label="Workspace slug"
-                  value={settings.slug}
-                  onChange={(event) =>
-                    setSettings((current) =>
-                      current ? { ...current, slug: event.currentTarget.value } : current
-                    )
-                  }
-                  disabled={!canManageWorkspace}
-                />
-                <Textarea
-                  label="Description"
-                  value={settings.description || ''}
-                  onChange={(event) =>
-                    setSettings((current) =>
-                      current ? { ...current, description: event.currentTarget.value } : current
-                    )
-                  }
-                  disabled={!canManageWorkspace}
-                />
-                <TextInput
-                  label="Avatar URL"
-                  value={settings.avatarUrl || ''}
-                  onChange={(event) =>
-                    setSettings((current) =>
-                      current ? { ...current, avatarUrl: event.currentTarget.value } : current
-                    )
-                  }
-                  disabled={!canManageWorkspace}
-                />
-                <ColorInput
-                  label="Accent color"
-                  value={settings.color || '#228be6'}
-                  onChange={(value) =>
-                    setSettings((current) => (current ? { ...current, color: value } : current))
-                  }
-                  disabled={!canManageWorkspace}
-                />
-                <Group justify="flex-end">
-                  <Button onClick={saveGeneral} loading={saving} disabled={!canManageWorkspace}>
-                    Save workspace
-                  </Button>
-                </Group>
-              </Stack>
+              <form onSubmit={saveGeneral}>
+                <Stack>
+                  <TextInput
+                    label="Workspace name"
+                    disabled={!canManageWorkspace}
+                    {...generalForm.getInputProps('name')}
+                  />
+                  <TextInput
+                    label="Workspace slug"
+                    disabled={!canManageWorkspace}
+                    {...generalForm.getInputProps('slug')}
+                  />
+                  <Textarea
+                    label="Description"
+                    disabled={!canManageWorkspace}
+                    {...generalForm.getInputProps('description')}
+                  />
+                  <TextInput
+                    label="Avatar URL"
+                    disabled={!canManageWorkspace}
+                    {...generalForm.getInputProps('avatarUrl')}
+                  />
+                  <ColorInput
+                    label="Accent color"
+                    disabled={!canManageWorkspace}
+                    {...generalForm.getInputProps('color')}
+                  />
+                  <Group justify="flex-end">
+                    <Button type="submit" loading={saving} disabled={!canManageWorkspace}>
+                      Save workspace
+                    </Button>
+                  </Group>
+                </Stack>
+              </form>
             </Tabs.Panel>
 
             <Tabs.Panel value="members" pt="md">
@@ -260,30 +300,24 @@ export function WorkspaceSettingsModal({
                   </Text>
                 )}
                 {canManageWorkspace && (
-                  <Group align="flex-end" grow>
-                    <TextInput
-                      label="Email"
-                      value={inviteEmail}
-                      onChange={(event) => setInviteEmail(event.currentTarget.value)}
-                    />
-                    <TextInput
-                      label="Name"
-                      value={inviteName}
-                      onChange={(event) => setInviteName(event.currentTarget.value)}
-                    />
-                    <Select
-                      label="Role"
-                      value={inviteRole}
-                      onChange={(value) => setInviteRole((value as WorkspaceRole) || 'MEMBER')}
-                      data={roleOptions}
-                    />
-                    <Checkbox
-                      label="Create linked OpenProject user"
-                      checked={createOpenProjectUser}
-                      onChange={(event) => setCreateOpenProjectUser(event.currentTarget.checked)}
-                    />
-                    <Button onClick={submitInvite}>Invite user</Button>
-                  </Group>
+                  <form onSubmit={submitInvite}>
+                    <Group align="flex-end" grow>
+                      <TextInput label="Email" {...inviteForm.getInputProps('email')} />
+                      <TextInput label="Name" {...inviteForm.getInputProps('name')} />
+                      <Select
+                        label="Role"
+                        data={roleOptions}
+                        {...inviteForm.getInputProps('role')}
+                      />
+                      <Checkbox
+                        label="Create linked OpenProject user"
+                        {...inviteForm.getInputProps('createOpenProjectUser', {
+                          type: 'checkbox',
+                        })}
+                      />
+                      <Button type="submit">Invite user</Button>
+                    </Group>
+                  </form>
                 )}
                 <Table striped highlightOnHover withTableBorder>
                   <Table.Thead>
@@ -318,8 +352,19 @@ export function WorkspaceSettingsModal({
                                     current.map((item) => (item.id === updated.id ? updated : item))
                                   );
                                   setSuccess('Workspace role updated.');
+                                  showToast({
+                                    tone: 'success',
+                                    title: 'Role updated',
+                                    message: `${updated.user.email} is now ${updated.role}.`,
+                                  });
                                 } catch (caughtError) {
-                                  setError(getErrorMessage(caughtError));
+                                  const message = getErrorMessage(caughtError);
+                                  setError(message);
+                                  showToast({
+                                    tone: 'error',
+                                    title: 'Could not update role',
+                                    message,
+                                  });
                                 }
                               }}
                               data={roleOptions}
@@ -352,11 +397,13 @@ export function WorkspaceSettingsModal({
                               color="red"
                               variant="light"
                               onClick={async () => {
-                                if (
-                                  !window.confirm(
-                                    `Remove ${member.user.email} from this workspace?`
-                                  )
-                                ) {
+                                const confirmed = await confirmAction({
+                                  title: 'Remove workspace member',
+                                  message: `Remove ${member.user.email} from this workspace?`,
+                                  confirmLabel: 'Remove member',
+                                  confirmColor: 'red',
+                                });
+                                if (!confirmed) {
                                   return;
                                 }
                                 try {
@@ -365,8 +412,19 @@ export function WorkspaceSettingsModal({
                                     current.filter((item) => item.user.id !== member.user.id)
                                   );
                                   setSuccess('Workspace member removed.');
+                                  showToast({
+                                    tone: 'success',
+                                    title: 'Member removed',
+                                    message: `${member.user.email} no longer has workspace access.`,
+                                  });
                                 } catch (caughtError) {
-                                  setError(getErrorMessage(caughtError));
+                                  const message = getErrorMessage(caughtError);
+                                  setError(message);
+                                  showToast({
+                                    tone: 'error',
+                                    title: 'Could not remove member',
+                                    message,
+                                  });
                                 }
                               }}
                             >
@@ -426,8 +484,19 @@ export function WorkspaceSettingsModal({
                       try {
                         setError(null);
                         setConnectionStatus(await getWorkspaceOpenProjectStatus(workspaceId));
+                        showToast({
+                          tone: 'success',
+                          title: 'Connection checked',
+                          message: 'OpenProject connection status was refreshed.',
+                        });
                       } catch (caughtError) {
-                        setError(getErrorMessage(caughtError));
+                        const message = getErrorMessage(caughtError);
+                        setError(message);
+                        showToast({
+                          tone: 'error',
+                          title: 'Could not reach OpenProject',
+                          message,
+                        });
                       }
                     }}
                   >

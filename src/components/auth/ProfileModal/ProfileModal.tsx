@@ -13,12 +13,14 @@ import {
   Text,
   TextInput,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { useEffect, useState } from 'react';
 import {
   changePassword,
   getErrorMessage,
   getMyWorkSummary,
   getUserProfile,
+  showToast,
   updateUserProfile,
   type CurrentUser,
   type MyWorkSummary,
@@ -45,11 +47,6 @@ export function ProfileModal({
 }: ProfileModalProps) {
   const [profile, setProfile] = useState<UserProfile | null>(null);
   const [myWork, setMyWork] = useState<MyWorkSummary | null>(null);
-  const [name, setName] = useState(user.name || '');
-  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl || '');
-  const [currentPassword, setCurrentPassword] = useState('');
-  const [newPassword, setNewPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
   const [myWorkError, setMyWorkError] = useState<string | null>(null);
@@ -57,14 +54,34 @@ export function ProfileModal({
   const [saving, setSaving] = useState(false);
   const [changingPassword, setChangingPassword] = useState(false);
   const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const profileForm = useForm({
+    initialValues: {
+      name: user.name || '',
+      avatarUrl: user.avatarUrl || '',
+    },
+  });
+  const passwordForm = useForm({
+    initialValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+    validate: {
+      currentPassword: (value) => (value.trim().length ? null : 'Current password is required'),
+      newPassword: (value) =>
+        value.trim().length >= 8 ? null : 'New password must be at least 8 characters long',
+      confirmPassword: (value, values) =>
+        value === values.newPassword ? null : 'Password confirmation does not match',
+    },
+  });
 
   useEffect(() => {
     if (!opened) return;
-    setName(user.name || '');
-    setAvatarUrl(user.avatarUrl || '');
-    setCurrentPassword('');
-    setNewPassword('');
-    setConfirmPassword('');
+    profileForm.setValues({
+      name: user.name || '',
+      avatarUrl: user.avatarUrl || '',
+    });
+    passwordForm.reset();
     setPasswordMessage(null);
     setSuccess(null);
     setError(null);
@@ -82,14 +99,17 @@ export function ProfileModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, user]);
+  }, [opened, user, profileForm, passwordForm]);
 
-  const save = async () => {
+  const save = profileForm.onSubmit(async (values) => {
     try {
       setSaving(true);
       setError(null);
       setSuccess(null);
-      const updated = await updateUserProfile({ name, avatarUrl: avatarUrl || null });
+      const updated = await updateUserProfile({
+        name: values.name,
+        avatarUrl: values.avatarUrl || null,
+      });
       onSaved(updated);
       setProfile((current) =>
         current
@@ -101,30 +121,64 @@ export function ProfileModal({
           : current
       );
       setSuccess('Profile saved.');
+      showToast({
+        tone: 'success',
+        title: 'Profile saved',
+        message: 'Your local tracker profile was updated.',
+      });
     } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
+      const message = getErrorMessage(caughtError);
+      setError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not save profile',
+        message,
+      });
     } finally {
       setSaving(false);
     }
-  };
+  });
 
-  const submitPassword = async () => {
+  const submitPassword = passwordForm.onSubmit(async (values) => {
     try {
       setChangingPassword(true);
       setPasswordMessage(null);
       setError(null);
       setSuccess(null);
-      await changePassword({ currentPassword, newPassword, confirmPassword });
+      await changePassword(values);
       setPasswordMessage('Password changed successfully.');
-      setCurrentPassword('');
-      setNewPassword('');
-      setConfirmPassword('');
+      showToast({
+        tone: 'success',
+        title: 'Password changed',
+        message: 'Your local tracker password was updated.',
+      });
+      passwordForm.reset();
     } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
+      const message = getErrorMessage(caughtError);
+      setError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not change password',
+        message,
+      });
     } finally {
       setChangingPassword(false);
     }
-  };
+  });
+
+  const permissionSummary = (permissions?: UserProfile['memberships'][number]['permissions']) =>
+    permissions
+      ? [
+          permissions.manageWorkspace && 'Workspace',
+          permissions.manageSpaces && 'Spaces',
+          permissions.manageTasks && 'Tasks',
+          permissions.manageDocs && 'Local Docs',
+          permissions.inviteMembers && 'Members',
+          permissions.viewReports && 'Reports',
+        ]
+          .filter(Boolean)
+          .join(', ') || 'Read-only'
+      : 'Inherited from the workspace role';
 
   return (
     <Modal opened={opened} onClose={onClose} title="Account" centered size="56rem">
@@ -153,87 +207,101 @@ export function ProfileModal({
             </Tabs.List>
 
             <Tabs.Panel value="profile" pt="md">
-              <Stack>
-                <Group align="flex-start">
-                  <Avatar src={avatarUrl || undefined} name={name || undefined} size="lg" />
-                  <div>
-                    <Text fw={700}>{profile?.email || user.email}</Text>
-                    <Group gap="xs" mt={4}>
-                      <Badge variant="light">{role || 'No role'}</Badge>
-                      {profile?.source && <Badge variant="default">{profile.source}</Badge>}
-                    </Group>
-                  </div>
-                </Group>
-                <TextInput
-                  label="Display name"
-                  value={name}
-                  onChange={(event) => setName(event.currentTarget.value)}
-                  placeholder="Leave blank if you do not want a display name"
-                />
-                <TextInput
-                  label="Avatar URL"
-                  value={avatarUrl}
-                  onChange={(event) => setAvatarUrl(event.currentTarget.value)}
-                  placeholder="https://..."
-                />
-                <Stack gap={4}>
-                  <Text size="sm" fw={600}>
-                    Linked OpenProject user
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    {profile?.openProjectUserId
-                      ? `${profile.openProjectLogin || profile.openProjectUserId} (${profile.openProjectUserId})`
-                      : 'Not linked yet'}
-                  </Text>
-                  <Text size="sm" c="dimmed">
-                    {profile?.openProjectUserId
-                      ? 'This local tracker account is linked to a real OpenProject user.'
-                      : 'Ask an owner or admin to link this local tracker account to an OpenProject user if you need assignee-based task filters.'}
-                  </Text>
-                  <Text size="sm" c="dimmed" className={classes.note}>
-                    This edits the local tracker profile only. OpenProject account details and
-                    project memberships are managed separately.
-                  </Text>
+              <form onSubmit={save}>
+                <Stack>
+                  <Group align="flex-start">
+                    <Avatar
+                      src={profileForm.values.avatarUrl || undefined}
+                      name={profileForm.values.name || undefined}
+                      size="lg"
+                    />
+                    <div>
+                      <Text fw={700}>{profile?.email || user.email}</Text>
+                      <Group gap="xs" mt={4}>
+                        <Badge variant="light">{role || 'No role'}</Badge>
+                        {profile?.source && <Badge variant="default">{profile.source}</Badge>}
+                      </Group>
+                    </div>
+                  </Group>
+                  <TextInput
+                    label="Display name"
+                    placeholder="Leave blank if you do not want a display name"
+                    {...profileForm.getInputProps('name')}
+                  />
+                  <TextInput label="Email" value={profile?.email || user.email} readOnly />
+                  <TextInput
+                    label="Avatar URL"
+                    placeholder="https://..."
+                    {...profileForm.getInputProps('avatarUrl')}
+                  />
+                  <TextInput label="Source" value={profile?.source || 'LOCAL'} readOnly />
+                  <TextInput
+                    label="Linked OpenProject user"
+                    value={
+                      profile?.openProjectUserId
+                        ? `${profile.openProjectLogin || profile.openProjectUserId} (${profile.openProjectUserId})`
+                        : 'Not linked yet'
+                    }
+                    readOnly
+                  />
+                  <Stack gap={4}>
+                    <Text size="sm" fw={600}>
+                      Linked OpenProject user
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      {profile?.openProjectUserId
+                        ? `${profile.openProjectLogin || profile.openProjectUserId} (${profile.openProjectUserId})`
+                        : 'Not linked yet'}
+                    </Text>
+                    <Text size="sm" c="dimmed">
+                      {profile?.openProjectUserId
+                        ? 'This local tracker account is linked to a real OpenProject user.'
+                        : 'Ask an owner or admin to link this local tracker account to an OpenProject user if you need assignee-based task filters.'}
+                    </Text>
+                    <Text size="sm" c="dimmed" className={classes.note}>
+                      This edits the local tracker profile only. OpenProject account details and
+                      project memberships are managed separately.
+                    </Text>
+                  </Stack>
+                  <Group justify="flex-end">
+                    <Button variant="light" onClick={onClose}>
+                      Close
+                    </Button>
+                    <Button loading={saving} type="submit">
+                      Save profile
+                    </Button>
+                  </Group>
                 </Stack>
-                <Group justify="flex-end">
-                  <Button variant="light" onClick={onClose}>
-                    Close
-                  </Button>
-                  <Button loading={saving} onClick={save}>
-                    Save profile
-                  </Button>
-                </Group>
-              </Stack>
+              </form>
             </Tabs.Panel>
 
             <Tabs.Panel value="security" pt="md">
-              <Stack>
-                {passwordMessage && (
-                  <Alert color="green" title="Password updated">
-                    {passwordMessage}
-                  </Alert>
-                )}
-                <PasswordInput
-                  label="Current password"
-                  value={currentPassword}
-                  onChange={(event) => setCurrentPassword(event.currentTarget.value)}
-                />
-                <PasswordInput
-                  label="New password"
-                  value={newPassword}
-                  onChange={(event) => setNewPassword(event.currentTarget.value)}
-                />
-                <PasswordInput
-                  label="Confirm new password"
-                  value={confirmPassword}
-                  onChange={(event) => setConfirmPassword(event.currentTarget.value)}
-                />
-                <Group justify="flex-end">
-                  <Button loading={changingPassword} onClick={submitPassword}>
-                    Change password
-                  </Button>
-                </Group>
-              </Stack>
+              <form onSubmit={submitPassword}>
+                <Stack>
+                  {passwordMessage && (
+                    <Alert color="green" title="Password updated">
+                      {passwordMessage}
+                    </Alert>
+                  )}
+                  <PasswordInput
+                    label="Current password"
+                    {...passwordForm.getInputProps('currentPassword')}
+                  />
+                  <PasswordInput
+                    label="New password"
+                    {...passwordForm.getInputProps('newPassword')}
+                  />
+                  <PasswordInput
+                    label="Confirm new password"
+                    {...passwordForm.getInputProps('confirmPassword')}
+                  />
+                  <Group justify="flex-end">
+                    <Button loading={changingPassword} type="submit">
+                      Change password
+                    </Button>
+                  </Group>
+                </Stack>
+              </form>
             </Tabs.Panel>
 
             <Tabs.Panel value="my-work" pt="md">
@@ -300,6 +368,7 @@ export function ProfileModal({
                       <Table.Tr>
                         <Table.Th>Workspace</Table.Th>
                         <Table.Th>Role</Table.Th>
+                        <Table.Th>Permission set</Table.Th>
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
@@ -307,6 +376,7 @@ export function ProfileModal({
                         <Table.Tr key={membership.id}>
                           <Table.Td>{membership.workspaceName}</Table.Td>
                           <Table.Td>{membership.role}</Table.Td>
+                          <Table.Td>{permissionSummary(membership.permissions)}</Table.Td>
                         </Table.Tr>
                       ))}
                     </Table.Tbody>

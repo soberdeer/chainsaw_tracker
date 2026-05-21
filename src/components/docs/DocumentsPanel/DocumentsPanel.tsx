@@ -6,7 +6,6 @@ import {
   FileButton,
   Group,
   Menu,
-  Paper,
   SimpleGrid,
   Stack,
   Text,
@@ -14,19 +13,21 @@ import {
   ThemeIcon,
   Title,
   Tooltip,
+  UnstyledButton,
 } from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconDots, IconFileText, IconPaperclip, IconPhoto, IconPlus } from '@tabler/icons-react';
-import { useState } from 'react';
 import {
   createEmbedDoc,
   createMarkdownDoc,
   deleteDocument,
   duplicateDocument,
-  updateDocument,
   uploadDocument,
   getErrorMessage,
+  updateDocument,
   type DocumentItem,
 } from '@/lib';
+import { confirmAction, promptForText } from '@/lib/modals';
 import classes from './DocumentsPanel.module.css';
 
 export interface DocumentsPanelProps {
@@ -44,7 +45,17 @@ export function DocumentsPanel({
   onChanged,
   onError,
 }: DocumentsPanelProps) {
-  const [embedUrl, setEmbedUrl] = useState('https://drive.google.com/file/d/example/preview');
+  const embedForm = useForm({
+    initialValues: {
+      title: 'Embedded document',
+      embedUrl: 'https://drive.google.com/file/d/example/preview',
+    },
+    validate: {
+      title: (value) => (value.trim().length ? null : 'Embed title is required'),
+      embedUrl: (value) => (value.trim().length ? null : 'Embed link is required'),
+    },
+  });
+
   const run = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -55,18 +66,31 @@ export function DocumentsPanel({
   };
 
   const createMd = async () => {
-    const title = window.prompt('Doc title');
+    const title = await promptForText({
+      title: 'New Markdown doc',
+      label: 'Doc title',
+      placeholder: 'Release notes',
+      confirmLabel: 'Create doc',
+    });
     if (!title) {
       return;
     }
     await run(() => createMarkdownDoc({ spaceId, title, markdown: `# ${title}\n` }));
   };
 
-  const createEmbed = async () => {
-    const title = window.prompt('Embed title') || 'Embedded document';
-    await run(() => createEmbedDoc({ spaceId, title, embedUrl }));
-    setEmbedUrl('');
-  };
+  const createEmbed = embedForm.onSubmit(async (values) => {
+    await run(() =>
+      createEmbedDoc({
+        spaceId,
+        title: values.title.trim(),
+        embedUrl: values.embedUrl.trim(),
+      })
+    );
+    embedForm.setValues({
+      title: 'Embedded document',
+      embedUrl: '',
+    });
+  });
 
   return (
     <Stack gap="md">
@@ -95,7 +119,7 @@ export function DocumentsPanel({
       </Group>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
         {documents.map((doc) => (
-          <Paper key={doc.id} withBorder className={classes.docCard} onClick={() => onOpen(doc)}>
+          <UnstyledButton key={doc.id} className={classes.docCard} onClick={() => onOpen(doc)}>
             <Group justify="space-between" mb="xs">
               <Group gap="xs">
                 <Tooltip label={`Document type: ${doc.kind}`}>
@@ -120,6 +144,7 @@ export function DocumentsPanel({
                   <Menu.Target>
                     <Tooltip label="Document settings">
                       <ActionIcon
+                        component="div"
                         variant="subtle"
                         aria-label="Doc settings"
                         onClick={(event) => event.stopPropagation()}
@@ -135,10 +160,18 @@ export function DocumentsPanel({
                     <Menu.Label>Doc settings</Menu.Label>
                     <Menu.Item
                       onClick={() => {
-                        const title = window.prompt('Doc name', doc.title);
-                        if (title) {
-                          void run(() => updateDocument(doc.id, { title }));
-                        }
+                        void (async () => {
+                          const title = await promptForText({
+                            title: 'Rename doc',
+                            label: 'Doc name',
+                            initialValue: doc.title,
+                            confirmLabel: 'Rename',
+                          });
+                          if (!title) {
+                            return;
+                          }
+                          await run(() => updateDocument(doc.id, { title }));
+                        })();
                       }}
                     >
                       Rename
@@ -158,15 +191,26 @@ export function DocumentsPanel({
                     <Menu.Item
                       color="red"
                       onClick={() => {
-                        if (window.confirm(`Delete "${doc.title}"?`)) {
-                          void run(() => deleteDocument(doc.id));
-                        }
+                        void (async () => {
+                          const confirmed = await confirmAction({
+                            title: 'Delete doc',
+                            message: `Delete "${doc.title}"? This removes the local tracker document.`,
+                            confirmLabel: 'Delete doc',
+                            confirmColor: 'red',
+                          });
+                          if (!confirmed) {
+                            return;
+                          }
+                          await run(() => deleteDocument(doc.id));
+                        })();
                       }}
                     >
                       Delete
                     </Menu.Item>
                     <Menu.Divider />
-                    <Menu.Item disabled>Sharing and Permissions</Menu.Item>
+                    <Menu.Item disabled>
+                      Managed through workspace members and project access
+                    </Menu.Item>
                   </Menu.Dropdown>
                 </Menu>
               </Group>
@@ -182,23 +226,32 @@ export function DocumentsPanel({
                 {doc.markdown || doc.sourceName || 'Image asset'}
               </Text>
             )}
-          </Paper>
+          </UnstyledButton>
         ))}
       </SimpleGrid>
-      <Paper withBorder p="md">
+      <Box component="form" onSubmit={createEmbed}>
         <Group align="end">
           <TextInput
-            label="Embed link"
-            value={embedUrl}
-            onChange={(event) => setEmbedUrl(event.currentTarget.value)}
-            placeholder="Miro, Google Drive PDF, Figma preview..."
+            label="Embed title"
+            placeholder="Prototype board"
+            {...embedForm.getInputProps('title')}
             className={classes.grow}
           />
-          <Button variant="light" disabled={!embedUrl.trim()} onClick={createEmbed}>
+          <TextInput
+            label="Embed link"
+            placeholder="Miro, Google Drive PDF, Figma preview..."
+            {...embedForm.getInputProps('embedUrl')}
+            className={classes.grow}
+          />
+          <Button
+            type="submit"
+            variant="light"
+            disabled={!embedForm.values.embedUrl.trim() || !embedForm.values.title.trim()}
+          >
             Add embed
           </Button>
         </Group>
-      </Paper>
+      </Box>
     </Stack>
   );
 }
