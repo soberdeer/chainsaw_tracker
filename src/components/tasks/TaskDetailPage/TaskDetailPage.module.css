@@ -34,14 +34,6 @@
   border: 0.1875rem solid #777;
 }
 
-.dependencyPicker {
-  background: var(--app-panel);
-  border-color: var(--app-border);
-  color: var(--app-text);
-  border-radius: var(--mantine-radius-md);
-}
-
-.dependencyResult,
 .relationshipRow {
   width: 100%;
   min-height: 3.25rem;
@@ -53,17 +45,6 @@
   align-items: center;
   gap: var(--mantine-spacing-sm);
   padding: 0 var(--mantine-spacing-sm);
-}
-
-.dependencyResult {
-  grid-template-columns: 1.5rem minmax(0, 1fr);
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-}
-
-.dependencyResult:hover {
-  background: var(--app-hover);
 }
 
 .relationshipRow {
@@ -124,8 +105,4 @@
   font: inherit;
   font-size: var(--mantine-font-size-lg);
   cursor: pointer;
-}
-
-.mutedIcon {
-  color: var(--app-muted);
 }

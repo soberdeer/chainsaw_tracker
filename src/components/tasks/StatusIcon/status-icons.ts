@@ -1,0 +1,31 @@
+import {
+  IconBan,
+  IconBlur,
+  IconCircle,
+  IconCircleCheck,
+  IconCircleCheckFilled,
+  IconCircleDashed,
+  IconCircleDotted,
+  IconClockPause,
+  IconNoiseReduction,
+  IconPacman,
+  IconProgress,
+} from '@tabler/icons-react';
+
+export const statusIcons = {
+  backlog: IconCircleDashed,
+  'to do': IconCircleDashed,
+  scoping: IconCircleDotted,
+  'in review': IconNoiseReduction,
+  'in design': IconProgress,
+  'in progress': IconCircle,
+  'in development': IconCircle,
+  testing: IconBlur,
+  waiting: IconClockPause,
+  blocked: IconBan,
+  'ready for development': IconPacman,
+  ready: IconCircleCheckFilled,
+  shipped: IconCircleCheckFilled,
+  complete: IconCircleCheckFilled,
+  cancelled: IconCircleCheck,
+};

@@ -1,5 +1,27 @@
 export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
-export type TaskDevelopmentStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BRANCH_CREATED' | 'PR_OPEN' | 'CODE_REVIEW' | 'APPROVED' | 'CHANGES_REQUESTED' | 'MERGED' | 'CLOSED';
+
+export type AuthSetupStatus = {
+  setupRequired: boolean;
+  ownerCount: number;
+  userCount: number;
+  workspace: {
+    id: string;
+    name: string;
+    slug: string;
+  };
+  devDefaultOwnerEnabled: boolean;
+};
+
+export type TaskDevelopmentStatus =
+  | 'NOT_STARTED'
+  | 'IN_PROGRESS'
+  | 'BRANCH_CREATED'
+  | 'PR_OPEN'
+  | 'CODE_REVIEW'
+  | 'APPROVED'
+  | 'CHANGES_REQUESTED'
+  | 'MERGED'
+  | 'CLOSED';
 export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
 export type DocumentKind = 'MARKDOWN' | 'IMAGE' | 'SPREADSHEET' | 'EMBED';
 
@@ -8,6 +30,10 @@ export type User = {
   email: string;
   name: string;
   avatarUrl?: string;
+  source?: string;
+  openProjectUserId?: string;
+  openProjectLogin?: string;
+  lastLoginAt?: string | null;
 };
 
 export type PermissionSet = {
@@ -17,6 +43,9 @@ export type PermissionSet = {
   manageDocs: boolean;
   manageTasks: boolean;
   inviteMembers: boolean;
+  manageIntegrations?: boolean;
+  manageImports?: boolean;
+  viewReports?: boolean;
 };
 
 export type Task = {
@@ -36,7 +65,7 @@ export type Task = {
   startDate?: string;
   dueDate?: string;
   githubUrl?: string;
-  externalSource?: 'CLICKUP' | 'LOCAL';
+  externalSource?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
   externalId?: string;
   externalUrl?: string;
   syncedAt?: string;
@@ -53,6 +82,7 @@ export type Task = {
   taskList?: TaskList;
   statusRef?: TaskStatus;
   assignee?: User;
+  assignees: User[];
   tags: { tag: Tag }[];
   subtasks?: Task[];
   dependencies?: TaskDependency[];
@@ -126,6 +156,46 @@ export type TaskDependency = {
   task?: Task;
 };
 
+export type OpenProjectRelationItem = {
+  id: string;
+  type: string;
+  reverseType?: string;
+  fromId?: string;
+  fromTitle?: string;
+  toId?: string;
+  toTitle?: string;
+  description?: string;
+};
+
+export type OpenProjectTimeEntryItem = {
+  id: string;
+  hours: string;
+  spentOn?: string;
+  comment?: string;
+  user?: User;
+  activity?: string;
+  createdAt?: string;
+};
+
+export type OpenProjectAttachmentItem = {
+  id: string;
+  fileName: string;
+  fileSize?: number;
+  contentType?: string;
+  description?: string;
+  downloadUrl?: string;
+  createdAt?: string;
+};
+
+export type OpenProjectCustomFieldItem = {
+  key: string;
+  label: string;
+  value: string;
+  rawValue: string | number | boolean | null;
+  kind: 'text' | 'textarea' | 'integer' | 'float' | 'date' | 'boolean' | 'readonly';
+  editable: boolean;
+};
+
 export type Tag = {
   id: string;
   name: string;
@@ -138,6 +208,7 @@ export type Folder = {
   name: string;
   kind?: 'DOCS' | 'TEAM' | 'LIST';
   locked?: boolean;
+  folders?: Folder[];
   taskLists?: TaskList[];
   tasks?: Task[];
   _count?: { tasks: number };
@@ -203,13 +274,123 @@ export type Workspace = {
   id: string;
   name: string;
   slug: string;
+  description?: string;
+  avatarUrl?: string;
+  color?: string;
   spaces: Space[];
   memberships: Membership[];
   permissionSets: PermissionSet[];
+  openProjectUsers?: User[];
   githubIntegration?: {
     organization?: string;
     repository?: string;
   };
+};
+
+export type WorkspaceSettings = {
+  id: string;
+  persistedId: string;
+  name: string;
+  slug: string;
+  description?: string | null;
+  avatarUrl?: string | null;
+  color?: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkspaceMemberItem = {
+  id: string;
+  role: WorkspaceRole;
+  createdAt: string;
+  updatedAt?: string;
+  user: User;
+};
+
+export type OpenProjectProjectMember = {
+  membershipId: string;
+  openProjectUserId: string;
+  openProjectLogin?: string;
+  openProjectName: string;
+  openProjectEmail?: string;
+  roles: string[];
+  linkedLocalUser?: User;
+  source?: string;
+};
+
+export type OpenProjectConnectionStatus = {
+  ok: boolean;
+  baseUrl: string;
+  authMode: 'basic' | 'bearer';
+  apiUser: null;
+  projectsVisible?: number;
+  usersVisible?: number;
+  runtimeWorkspaceId?: string | null;
+  lastImportReportId?: string | null;
+  error?: string;
+};
+
+export type UserProfile = User & {
+  memberships: Array<{
+    id: string;
+    workspaceId: string;
+    workspaceName: string;
+    workspaceSlug: string;
+    role: WorkspaceRole;
+    permissions?: PermissionSet | null;
+  }>;
+  openProjectMemberships: Array<{
+    membershipId: string;
+    projectId: string;
+    projectName: string;
+    projectIdentifier?: string;
+    roles: string[];
+    projectUrl: string;
+  }>;
+};
+
+export type MyWorkSummary = {
+  assignedCount: number;
+  overdueCount: number;
+  dueThisWeekCount: number;
+  recentlyUpdated: Task[];
+};
+
+export type SavedView = {
+  id: string;
+  workspaceId: string;
+  ownerUserId?: string | null;
+  projectId?: string | null;
+  listId?: string | null;
+  name: string;
+  filters: Record<string, unknown>;
+  sort?: Record<string, unknown> | null;
+  visibility: 'PRIVATE' | 'WORKSPACE';
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NotificationItem = {
+  id: string;
+  userId: string;
+  type: string;
+  title: string;
+  message?: string | null;
+  taskId?: string | null;
+  workPackageId?: string | null;
+  readAt?: string | null;
+  createdAt: string;
+};
+
+export type MigrationRun = {
+  id: string;
+  source: string;
+  startedAt: string;
+  finishedAt?: string | null;
+  status: 'RUNNING' | 'SUCCESS' | 'FAILED';
+  summary?: unknown;
+  warnings?: unknown;
+  errors?: unknown;
 };
 
 export type SearchResultType = 'action' | 'task' | 'doc' | 'space' | 'folder' | 'list';
@@ -220,5 +401,12 @@ export type SearchResult = {
   title: string;
   subtitle?: string;
   url?: string;
-  action?: 'create-task' | 'create-doc' | 'create-space' | 'create-folder' | 'open-board' | 'open-docs' | 'open-permissions';
+  action?:
+    | 'create-task'
+    | 'create-doc'
+    | 'create-space'
+    | 'create-folder'
+    | 'open-board'
+    | 'open-docs'
+    | 'open-permissions';
 };

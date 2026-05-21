@@ -1,93 +1,142 @@
-import { useState } from "react";
-import type { Task, TaskStatus } from "../../../../lib/types";
-import { displayStatus } from "../../../../lib/taskUi";
-import { ActionIcon, Badge, Box, Group, Text } from "@mantine/core";
-import { IconChevronDown,  IconPlus } from "@tabler/icons-react";
-import { CompactTaskRow } from "../CompactTaskRow/CompactTaskRow";
+import { ActionIcon, Box, Group, Text, Tooltip } from '@mantine/core';
+import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
+import { useMemo, useState } from 'react';
+import { displayStatus, type Task, type TaskStatus } from '@/lib';
+import { StatusIcon } from '../../StatusIcon/StatusIcon';
+import { CompactTaskRow } from '../CompactTaskRow/CompactTaskRow';
 import classes from './GroupedTaskList.module.css';
+
+export interface GroupedTaskListProps {
+  tasks: Task[];
+  statuses: TaskStatus[];
+  onAddTask: (statusId: string) => void;
+  onOpenTask: (task: Task) => void;
+  onMoveTask: (taskId: string, statusId: string) => void;
+  onChanged: () => void;
+  onError: (message: string) => void;
+  canWriteTasks: boolean;
+  selectedTaskIds?: Set<string>;
+  onSelectedTaskChange?: (taskId: string, selected: boolean) => void;
+}
 
 export function GroupedTaskList({
   tasks,
   statuses,
   onAddTask,
   onOpenTask,
-  // onMoveTask,
-  onReorderTasks,
+  onMoveTask,
   onChanged,
-  onError
-}: {
-  tasks: Task[];
-  statuses: TaskStatus[];
-  onAddTask: (statusId: string) => void;
-  onOpenTask: (task: Task) => void;
-  onMoveTask: (taskId: string, statusId: string) => void;
-  onReorderTasks: (taskId: string, statusId: string, orderedTaskIds: string[]) => void;
-  onChanged: () => void;
-  onError: (message: string) => void;
-}) {
-  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  onError,
+  canWriteTasks,
+  selectedTaskIds,
+  onSelectedTaskChange,
+}: GroupedTaskListProps) {
+  const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
+  const orderedStatuses = useMemo(
+    () => [...statuses].sort((a, b) => a.position - b.position),
+    [statuses]
+  );
+
+  const toggleStatus = (statusId: string) => {
+    setCollapsedStatuses((current) => {
+      const next = new Set(current);
+      if (next.has(statusId)) {
+        next.delete(statusId);
+      } else {
+        next.add(statusId);
+      }
+      return next;
+    });
+  };
 
   return (
     <Box className={classes.taskList}>
-      {statuses.map((status) => {
+      {orderedStatuses.map((status) => {
         const meta = displayStatus(status);
         const groupTasks = tasks
           .filter((task) => task.statusId === status.id || task.status === status.name)
           .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
-
-        const reorderIntoGroup = (taskId: string, targetTaskId?: string) => {
-          const withoutDragged = groupTasks.filter((task) => task.id !== taskId).map((task) => task.id);
-          const targetIndex = targetTaskId ? withoutDragged.indexOf(targetTaskId) : -1;
-          const nextIds = [...withoutDragged];
-          nextIds.splice(targetIndex >= 0 ? targetIndex : nextIds.length, 0, taskId);
-          onReorderTasks(taskId, status.id, nextIds);
-        };
+        const isCollapsed = collapsedStatuses.has(status.id);
 
         return (
-          <section
-            className={classes.statusSection}
-            key={status.id}
-            onDragOver={(event) => event.preventDefault()}
-            onDrop={(event) => {
-              event.preventDefault();
-              const taskId = draggedTaskId || event.dataTransfer.getData('text/task-id');
-              if (taskId) reorderIntoGroup(taskId);
-              setDraggedTaskId(null);
-            }}
-          >
+          <section className={classes.statusSection} key={status.id}>
             <Group gap="sm" className={classes.statusHeading}>
-              <IconChevronDown size="1rem" className={classes.mutedIcon} />
-              <Badge className={`${classes.statusBadge} ${classes[meta.tone as 'mint' | 'pink' | 'gray' | 'blue']}`}>{meta.label}</Badge>
-              <Text c="dimmed" fw={700}>{groupTasks.length}</Text>
+              <Tooltip label={isCollapsed ? `Expand ${meta.label}` : `Collapse ${meta.label}`}>
+                <ActionIcon
+                  variant="subtle"
+                  aria-label={isCollapsed ? `Expand ${meta.label}` : `Collapse ${meta.label}`}
+                  onClick={() => toggleStatus(status.id)}
+                >
+                  {isCollapsed ? <IconChevronRight size="1rem" /> : <IconChevronDown size="1rem" />}
+                </ActionIcon>
+              </Tooltip>
+              <Tooltip label={`Status: ${meta.label}`}>
+                <Box
+                  className={classes.statusPill}
+                  style={{
+                    background: meta.color,
+                    color: meta.tone === 'mint' ? '#07110f' : '#fff',
+                  }}
+                >
+                  <StatusIcon statusId={status.id} />
+                  <span className={classes.statusPillName}>{meta.label}</span>
+                </Box>
+              </Tooltip>
+              <Text c="dimmed" fw={700}>
+                {groupTasks.length}
+              </Text>
+              {canWriteTasks && (
+                <Tooltip label={`Create task in ${meta.label}`}>
+                  <ActionIcon
+                    variant="subtle"
+                    aria-label={`Create task in ${meta.label}`}
+                    onClick={() => onAddTask(status.id)}
+                  >
+                    <IconPlus size="1.25rem" />
+                  </ActionIcon>
+                </Tooltip>
+              )}
             </Group>
-            <div className={classes.tableHead}>
-              <Text>Name</Text>
-              <Text>Assignee</Text>
-              <Text>Due date</Text>
-              <Text>Priority</Text>
-              <Text>Updated</Text>
-              <ActionIcon variant="subtle" className={classes.addColumn} aria-label="Add column"><IconPlus size="1.0625rem" /></ActionIcon>
-            </div>
-            {groupTasks.map((task) => (
-              <CompactTaskRow
-                key={task.id}
-                task={task}
-                onOpen={onOpenTask}
-                onDragStart={(taskId) => setDraggedTaskId(taskId)}
-                onDropOnTask={(targetTaskId) => {
-                  const taskId = draggedTaskId;
-                  if (taskId && taskId !== targetTaskId) reorderIntoGroup(taskId, targetTaskId);
-                  setDraggedTaskId(null);
-                }}
-                onChanged={onChanged}
-                onError={onError}
-              />
-            ))}
-            <button className={classes.addTask} type="button" onClick={() => onAddTask(status.id)}><IconPlus size="1.125rem" />Add Task</button>
+            {!isCollapsed && (
+              <>
+                <div className={classes.tableHead}>
+                  {/*<Group gap="xs">*/}
+                  <Text>Name</Text>
+                  {/*<IconChevronDown size="1rem" className={classes.mutedIcon} />*/}
+                  {/*</Group>*/}
+                  <Text>Assignee</Text>
+                  <Text>Due date</Text>
+                  <Text>Priority</Text>
+                  <Text>Updated</Text>
+                </div>
+                {groupTasks.map((task) => (
+                  <CompactTaskRow
+                    key={task.id}
+                    task={task}
+                    onOpen={onOpenTask}
+                    onMove={(taskId) => void onMoveTask(taskId, status.id)}
+                    onChanged={onChanged}
+                    onError={onError}
+                    canWriteTasks={canWriteTasks}
+                    selected={selectedTaskIds?.has(task.id)}
+                    onSelectedChange={onSelectedTaskChange}
+                  />
+                ))}
+                {canWriteTasks && (
+                  <button
+                    className={classes.addTask}
+                    type="button"
+                    onClick={() => onAddTask(status.id)}
+                  >
+                    <IconPlus size="1.125rem" />
+                    Add Task
+                  </button>
+                )}
+              </>
+            )}
           </section>
         );
       })}
-      <button className={classes.newStatus} type="button"><IconPlus size="1.125rem" />New status</button>
     </Box>
   );
 }

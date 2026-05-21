@@ -1,52 +1,92 @@
+import {
+  ActionIcon,
+  Group,
+  Loader,
+  Modal,
+  ScrollArea,
+  Stack,
+  Text,
+  TextInput,
+  ThemeIcon,
+  Tooltip,
+  UnstyledButton,
+} from '@mantine/core';
+import {
+  IconCheck,
+  IconFileText,
+  IconFolder,
+  IconFolderOpen,
+  IconList,
+  IconPlus,
+  IconX,
+} from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
-import { ActionIcon, Button, Group, Loader, Modal, ScrollArea, Stack, Text, TextInput, ThemeIcon } from '@mantine/core';
-import { IconCheck, IconFileText, IconFolder, IconFolderOpen, IconList, IconPlus } from '@tabler/icons-react';
-import { createFolder, createSpace, createTask, searchAll } from '../../../lib/api';
-import type { Folder, SearchResult, Space, TaskList, TaskStatus, Workspace } from '../../../lib/types';
-import { docPath, folderPath, getErrorMessage } from '../../../lib/taskUi';
+import {
+  getErrorMessage,
+  searchAll,
+  type Folder,
+  type SearchResult,
+  type Space,
+  type TaskList,
+  type Workspace,
+} from '@/lib';
 import classes from './GlobalSearchModal.module.css';
 
-export function GlobalSearchModal({
-  opened,
-  workspace,
-  activeSpace,
-  activeFolder,
-  activeTaskList,
-  statuses,
-  onClose,
-  onNavigate,
-  onReload,
-  onError
-}: {
+export interface GlobalSearchModalProps {
   opened: boolean;
   workspace: Workspace;
   activeSpace?: Space;
   activeFolder?: Folder;
   activeTaskList?: TaskList;
-  statuses: TaskStatus[];
   onClose: () => void;
   onNavigate: (url: string) => void;
-  onReload: () => void;
+  onCreateTask: () => void;
+  onCreateSpace: () => void;
   onError: (message: string) => void;
-}) {
+  canManageSpaces: boolean;
+  canWriteTasks: boolean;
+}
+
+export function GlobalSearchModal({
+  opened,
+  workspace,
+  activeSpace: _activeSpace,
+  activeFolder: _activeFolder,
+  activeTaskList,
+  onClose,
+  onNavigate,
+  onCreateTask,
+  onCreateSpace,
+  onError,
+  canManageSpaces,
+  canWriteTasks,
+}: GlobalSearchModalProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!opened) return;
+    if (!opened) {
+      return;
+    }
     let cancelled = false;
     setLoading(true);
     const handle = window.setTimeout(() => {
       searchAll(query, workspace.id)
         .then((items) => {
-          if (!cancelled) setResults(items);
+          if (!cancelled) {
+            setResults(items);
+          }
         })
         .catch((error) => {
-          if (!cancelled) onError(getErrorMessage(error));
+          if (!cancelled) {
+            onError(getErrorMessage(error));
+          }
         })
         .finally(() => {
-          if (!cancelled) setLoading(false);
+          if (!cancelled) {
+            setLoading(false);
+          }
         });
     }, 120);
     return () => {
@@ -56,7 +96,9 @@ export function GlobalSearchModal({
   }, [opened, query, workspace.id, onError]);
 
   useEffect(() => {
-    if (opened) setQuery('');
+    if (opened) {
+      setQuery('');
+    }
   }, [opened]);
 
   const runSearchAction = async (result: SearchResult) => {
@@ -68,29 +110,16 @@ export function GlobalSearchModal({
 
     try {
       if (result.action === 'create-task') {
-        const title = window.prompt('Task name');
-        if (!title || !activeTaskList) return;
-        await createTask({ taskListId: activeTaskList.id, title, statusId: statuses[0]?.id, priority: 'NORMAL' });
-        onReload();
+        if (!activeTaskList || !canWriteTasks) {
+          return;
+        }
+        onCreateTask();
       }
       if (result.action === 'create-space') {
-        const name = window.prompt('Space name');
-        if (!name) return;
-        await createSpace({ workspaceId: workspace.id, name, color: '#4c6ef5', initials: name.slice(0, 1).toUpperCase(), locked: true });
-        onReload();
-      }
-      if (result.action === 'create-folder' && activeSpace) {
-        const name = window.prompt('Folder name');
-        if (!name) return;
-        await createFolder(activeSpace.id, { name, kind: 'TEAM', locked: true });
-        onReload();
-      }
-      if (result.action === 'open-board' && activeSpace && activeFolder) {
-        onNavigate(folderPath(activeSpace.id, activeFolder.id));
-      }
-      if (result.action === 'open-docs' && activeSpace) {
-        const doc = activeSpace.documents[0];
-        if (doc) onNavigate(docPath(activeSpace.id, doc.id));
+        if (!canManageSpaces) {
+          return;
+        }
+        onCreateSpace();
       }
       onClose();
     } catch (error) {
@@ -99,16 +128,37 @@ export function GlobalSearchModal({
   };
 
   const iconFor = (type: SearchResult['type']) => {
-    if (type === 'task') return <IconCheck size="1.125rem" />;
-    if (type === 'doc') return <IconFileText size="1.125rem" />;
-    if (type === 'space') return <IconFolderOpen size="1.125rem" />;
-    if (type === 'folder') return <IconFolder size="1.125rem" />;
-    if (type === 'list') return <IconList size="1.125rem" />;
+    if (type === 'task') {
+      return <IconCheck size="1.125rem" />;
+    }
+    if (type === 'doc') {
+      return <IconFileText size="1.125rem" />;
+    }
+    if (type === 'space') {
+      return <IconFolderOpen size="1.125rem" />;
+    }
+    if (type === 'folder') {
+      return <IconFolder size="1.125rem" />;
+    }
+    if (type === 'list') {
+      return <IconList size="1.125rem" />;
+    }
     return <IconPlus size="1.125rem" />;
   };
 
+  const actionDisabled = (result: SearchResult) =>
+    (result.action === 'create-task' && !canWriteTasks) ||
+    (result.action === 'create-space' && !canManageSpaces);
+
   return (
-    <Modal opened={opened} onClose={onClose} size="80rem" yOffset="6vh" withCloseButton={false} classNames={{ content: classes.modalContent, body: classes.modalBody }}>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      size="80rem"
+      yOffset="6vh"
+      withCloseButton={false}
+      classNames={{ content: classes.modalContent, body: classes.modalBody }}
+    >
       <Stack gap={0}>
         <Group className={classes.modalHeader} wrap="nowrap">
           <TextInput
@@ -119,27 +169,48 @@ export function GlobalSearchModal({
             autoFocus
             className={classes.searchInput}
           />
-          <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">×</ActionIcon>
+          <Tooltip label="Close search">
+            <ActionIcon variant="subtle" onClick={onClose} aria-label="Close search">
+              <IconX size="1rem" />
+            </ActionIcon>
+          </Tooltip>
         </Group>
         <Group className={classes.tabs} gap="xs">
-          {['All', 'Tasks', 'Docs', 'Spaces'].map((item) => <Button key={item} variant="subtle" size="compact-md">{item}</Button>)}
+          <Text size="sm" c="dimmed">
+            OpenProject task search
+          </Text>
           {loading && <Loader size="xs" />}
         </Group>
         <ScrollArea h="32.5rem">
           <Stack gap={4} p="md">
-            <Text size="sm" c="dimmed" fw={700}>Results</Text>
+            <Text size="sm" c="dimmed" fw={700}>
+              Results
+            </Text>
             {results.map((result) => (
-              <button key={`${result.type}:${result.id}`} type="button" className={classes.resultRow} onClick={() => runSearchAction(result)}>
-                <ThemeIcon variant="subtle" color={result.type === 'action' ? 'teal' : 'gray'}>{iconFor(result.type)}</ThemeIcon>
+              <UnstyledButton
+                key={`${result.type}:${result.id}`}
+                className={classes.resultRow}
+                disabled={actionDisabled(result)}
+                onClick={() => runSearchAction(result)}
+              >
+                <Tooltip label={`Result type: ${result.type}`}>
+                  <ThemeIcon variant="subtle" color={result.type === 'action' ? 'teal' : 'gray'}>
+                    {iconFor(result.type)}
+                  </ThemeIcon>
+                </Tooltip>
                 <span className={classes.resultTitle}>{result.title}</span>
-                {result.subtitle && <span className={classes.resultSubtitle}>{result.subtitle}</span>}
-              </button>
+                {result.subtitle && (
+                  <span className={classes.resultSubtitle}>{result.subtitle}</span>
+                )}
+              </UnstyledButton>
             ))}
             {!results.length && !loading && <Text c="dimmed">Nothing found</Text>}
           </Stack>
         </ScrollArea>
         <Group className={classes.modalFooter}>
-          <Text size="sm" c="dimmed">Press / to open search, Enter to open a result</Text>
+          <Text size="sm" c="dimmed">
+            Press / to open search, Enter to open a result
+          </Text>
         </Group>
       </Stack>
     </Modal>

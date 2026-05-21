@@ -1,0 +1,135 @@
+export type HalLink = {
+  href: string | null;
+  title?: string | null;
+  method?: string;
+};
+
+export type HalCollection<T> = {
+  total?: number;
+  count?: number;
+  pageSize?: number;
+  offset?: number;
+  _embedded?: {
+    elements?: T[];
+  };
+  _links?: Record<string, HalLink>;
+};
+
+export type OpenProjectText = {
+  format?: string;
+  raw?: string;
+  html?: string;
+};
+
+export type OpenProjectProject = {
+  id: number;
+  identifier: string;
+  name: string;
+  public?: boolean;
+  _links: Record<string, HalLink | HalLink[]>;
+};
+
+export type OpenProjectStatus = {
+  id: number;
+  name: string;
+  isClosed?: boolean;
+  position?: number;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectType = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectPriority = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectUser = {
+  id: number;
+  login?: string;
+  firstName?: string;
+  lastName?: string;
+  name: string;
+  email?: string;
+  avatar?: string;
+  status?: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectRole = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectMembership = {
+  id: number;
+  _links: Record<string, HalLink | HalLink[]>;
+};
+
+export type OpenProjectWorkPackage = {
+  id: number;
+  lockVersion: number;
+  subject: string;
+  description?: OpenProjectText;
+  startDate?: string | null;
+  dueDate?: string | null;
+  createdAt?: string;
+  updatedAt?: string;
+  _links: Record<string, HalLink>;
+  _embedded?: {
+    attachments?: {
+      _embedded?: {
+        elements?: OpenProjectAttachment[];
+      };
+    };
+  };
+  [key: `customField${number}`]: unknown;
+};
+
+export type OpenProjectActivity = {
+  id: number;
+  comment?: OpenProjectText;
+  details?: OpenProjectText[];
+  createdAt: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectRelation = {
+  id: number;
+  type: string;
+  reverseType?: string;
+  description?: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectTimeEntry = {
+  id: number;
+  hours: string | number;
+  spentOn?: string;
+  comment?: OpenProjectText;
+  createdAt?: string;
+  updatedAt?: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectTimeEntryActivity = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink>;
+};
+
+export type OpenProjectAttachment = {
+  id: number;
+  fileName?: string;
+  fileSize?: number;
+  contentType?: string;
+  description?: OpenProjectText;
+  createdAt?: string;
+  _links: Record<string, HalLink>;
+};

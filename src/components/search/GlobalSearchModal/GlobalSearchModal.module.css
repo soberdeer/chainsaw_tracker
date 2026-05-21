@@ -52,6 +52,15 @@
   background: var(--app-hover);
 }
 
+.resultRow:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.resultRow:disabled:hover {
+  background: transparent;
+}
+
 .resultTitle {
   font-size: var(--mantine-font-size-lg);
   font-weight: 700;

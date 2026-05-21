@@ -1,7 +1,7 @@
+import { verifyGitHubSignature } from '../server/services/github.js';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import test from 'node:test';
-import { verifyGitHubSignature } from '../server/services/github.js';
 
 test('verifyGitHubSignature accepts a valid sha256 signature', () => {
   const secret = 'test-secret';

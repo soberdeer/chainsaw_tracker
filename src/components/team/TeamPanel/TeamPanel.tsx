@@ -1,28 +1,60 @@
-import { useState } from 'react';
-import { Avatar, Button, Checkbox, Group, Modal, Paper, Select, SimpleGrid, Stack, Table, Text, TextInput, Title } from '@mantine/core';
+import {
+  Avatar,
+  Button,
+  Checkbox,
+  Group,
+  Modal,
+  Paper,
+  Select,
+  SimpleGrid,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
+import { useForm } from '@mantine/form';
 import { IconMailPlus } from '@tabler/icons-react';
-import { inviteMember, updateMembership, updateWorkspacePermissions } from '../../../lib/api';
-import type { PermissionSet, Workspace, WorkspaceRole } from '../../../lib/types';
-import { getErrorMessage } from '../../../lib/taskUi';
+import { useState } from 'react';
+import {
+  inviteMember,
+  updateMembership,
+  updateWorkspacePermissions,
+  getErrorMessage,
+  type PermissionSet,
+  type Workspace,
+  type WorkspaceRole,
+} from '@/lib';
 import classes from './TeamPanel.module.css';
 
-const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'MEMBER', 'VIEWER'];
-const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = ['manageWorkspace', 'manageSpaces', 'manageDocs', 'manageTasks', 'inviteMembers'];
+const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'];
+const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = [
+  'manageWorkspace',
+  'manageSpaces',
+  'manageDocs',
+  'manageTasks',
+  'inviteMembers',
+];
 
-export function TeamPanel({
-  workspace,
-  onChanged,
-  onError
-}: {
+export interface TeamPanelProps {
   workspace: Workspace;
   onChanged: () => void;
   onError: (message: string) => void;
-}) {
+}
+
+export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
   const [inviteOpen, setInviteOpen] = useState(false);
-  const [email, setEmail] = useState('');
-  const [role, setRole] = useState<WorkspaceRole>('MEMBER');
   const [inviteUrl, setInviteUrl] = useState('');
   const [saving, setSaving] = useState(false);
+  const inviteForm = useForm({
+    initialValues: {
+      email: '',
+      role: 'MEMBER' as WorkspaceRole,
+    },
+    validate: {
+      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
+    },
+  });
 
   const run = async (action: () => Promise<unknown>) => {
     try {
@@ -36,42 +68,61 @@ export function TeamPanel({
     }
   };
 
-  const sendInvite = async () => {
-    if (!email.trim()) return;
+  const sendInvite = inviteForm.onSubmit(async (values) => {
     await run(async () => {
-      const invite = await inviteMember(workspace.id, { email, role });
+      const invite = await inviteMember(workspace.id, { email: values.email, role: values.role });
       setInviteUrl(invite.inviteUrl);
-      setEmail('');
+      inviteForm.reset();
     });
-  };
+  });
 
   return (
     <SimpleGrid cols={{ base: 1, lg: 2 }} spacing="lg">
-      <Modal opened={inviteOpen} onClose={() => setInviteOpen(false)} title="Invite by email" centered classNames={{ content: classes.modalContent }}>
-        <Stack>
-          <TextInput label="Email" value={email} onChange={(event) => setEmail(event.currentTarget.value)} autoFocus />
-          <Select label="Role" value={role} onChange={(value) => setRole((value || 'MEMBER') as WorkspaceRole)} data={roles} />
-          {inviteUrl && (
-            <Paper withBorder p="sm">
-              <Text size="sm" c="dimmed">Invite link</Text>
-              <Text size="sm">{inviteUrl}</Text>
-            </Paper>
-          )}
-          <Group justify="flex-end">
-            <Button variant="light" onClick={() => setInviteOpen(false)}>Close</Button>
-            <Button loading={saving} leftSection={<IconMailPlus size="1rem" />} onClick={sendInvite}>Invite</Button>
-          </Group>
-        </Stack>
+      <Modal
+        opened={inviteOpen}
+        onClose={() => setInviteOpen(false)}
+        title="Invite by email"
+        centered
+        classNames={{ content: classes.modalContent }}
+      >
+        <form onSubmit={sendInvite}>
+          <Stack>
+            <TextInput label="Email" autoFocus {...inviteForm.getInputProps('email')} />
+            <Select label="Role" data={roles} {...inviteForm.getInputProps('role')} />
+            {inviteUrl && (
+              <Paper withBorder p="sm">
+                <Text size="sm" c="dimmed">
+                  Invite link
+                </Text>
+                <Text size="sm">{inviteUrl}</Text>
+              </Paper>
+            )}
+            <Group justify="flex-end">
+              <Button type="button" variant="light" onClick={() => setInviteOpen(false)}>
+                Close
+              </Button>
+              <Button loading={saving} leftSection={<IconMailPlus size="1rem" />} type="submit">
+                Invite
+              </Button>
+            </Group>
+          </Stack>
+        </form>
       </Modal>
       <Stack>
         <Group justify="space-between">
           <Title order={3}>Team</Title>
-          <Button leftSection={<IconMailPlus size="1rem" />} onClick={() => setInviteOpen(true)}>Invite by email</Button>
+          <Button leftSection={<IconMailPlus size="1rem" />} onClick={() => setInviteOpen(true)}>
+            Invite by email
+          </Button>
         </Group>
         <Paper withBorder>
           <Table verticalSpacing="md">
             <Table.Thead>
-              <Table.Tr><Table.Th>Member</Table.Th><Table.Th>Role</Table.Th><Table.Th>Email</Table.Th></Table.Tr>
+              <Table.Tr>
+                <Table.Th>Member</Table.Th>
+                <Table.Th>Role</Table.Th>
+                <Table.Th>Email</Table.Th>
+              </Table.Tr>
             </Table.Thead>
             <Table.Tbody>
               {workspace.memberships.map((membership) => (
@@ -87,11 +138,20 @@ export function TeamPanel({
                       size="xs"
                       value={membership.role}
                       data={roles}
-                      onChange={(value) => value && void run(() => updateMembership(workspace.id, membership.id, value as WorkspaceRole))}
+                      onChange={(value) =>
+                        value &&
+                        void run(() =>
+                          updateMembership(workspace.id, membership.id, value as WorkspaceRole)
+                        )
+                      }
                       disabled={saving}
                     />
                   </Table.Td>
-                  <Table.Td><Text size="sm" c="dimmed">{membership.user.email}</Text></Table.Td>
+                  <Table.Td>
+                    <Text size="sm" c="dimmed">
+                      {membership.user.email}
+                    </Text>
+                  </Table.Td>
                 </Table.Tr>
               ))}
             </Table.Tbody>
@@ -115,21 +175,25 @@ export function TeamPanel({
             <Table.Tbody>
               {workspace.permissionSets.map((set) => (
                 <Table.Tr key={set.role}>
-                  <Table.Td><Text fw={700}>{set.role}</Text></Table.Td>
+                  <Table.Td>
+                    <Text fw={700}>{set.role}</Text>
+                  </Table.Td>
                   {permissionKeys.map((key) => (
                     <Table.Td key={key}>
                       <Checkbox
                         checked={set[key]}
                         disabled={set.role === 'OWNER' || saving}
                         onChange={(event) => {
-                          void run(() => updateWorkspacePermissions(workspace.id, set.role, {
-                            manageWorkspace: set.manageWorkspace,
-                            manageSpaces: set.manageSpaces,
-                            manageDocs: set.manageDocs,
-                            manageTasks: set.manageTasks,
-                            inviteMembers: set.inviteMembers,
-                            [key]: event.currentTarget.checked
-                          }));
+                          void run(() =>
+                            updateWorkspacePermissions(workspace.id, set.role, {
+                              manageWorkspace: set.manageWorkspace,
+                              manageSpaces: set.manageSpaces,
+                              manageDocs: set.manageDocs,
+                              manageTasks: set.manageTasks,
+                              inviteMembers: set.inviteMembers,
+                              [key]: event.currentTarget.checked,
+                            })
+                          );
                         }}
                       />
                     </Table.Td>

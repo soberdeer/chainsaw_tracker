@@ -13,16 +13,25 @@ export async function logTaskActivity(input: {
 }) {
   const workspaceId =
     input.workspaceId ||
-    (await prisma.task.findUnique({
-      where: { id: input.taskId },
-      select: { workspaceId: true, folder: { select: { space: { select: { workspaceId: true } } } } }
-    }))?.workspaceId ||
-    (await prisma.task.findUnique({
-      where: { id: input.taskId },
-      select: { folder: { select: { space: { select: { workspaceId: true } } } } }
-    }))?.folder.space.workspaceId;
+    (
+      await prisma.task.findUnique({
+        where: { id: input.taskId },
+        select: {
+          workspaceId: true,
+          folder: { select: { space: { select: { workspaceId: true } } } },
+        },
+      })
+    )?.workspaceId ||
+    (
+      await prisma.task.findUnique({
+        where: { id: input.taskId },
+        select: { folder: { select: { space: { select: { workspaceId: true } } } } },
+      })
+    )?.folder.space.workspaceId;
 
-  if (!workspaceId) return null;
+  if (!workspaceId) {
+    return null;
+  }
 
   return prisma.activityLog.create({
     data: {
@@ -33,7 +42,7 @@ export async function logTaskActivity(input: {
       message: input.message,
       previousValue: input.previousValue,
       nextValue: input.nextValue,
-      metadata: input.metadata
-    }
+      metadata: input.metadata,
+    },
   });
 }
