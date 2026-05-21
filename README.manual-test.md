@@ -61,6 +61,7 @@ If `OPENPROJECT_API_TOKEN` is missing or invalid, OpenProject-backed endpoints s
 9. Log out and confirm the old password no longer works.
 10. Log in again with the new password.
 11. Log out and confirm protected tracker UI is no longer available.
+12. Confirm the workspace overview shows connection status, latest import status, import coverage, and quick actions.
 
 Important: if a user display name is empty, the tracker should keep it empty instead of replacing it with email or fallback copy in the profile/account editor.
 
@@ -132,6 +133,9 @@ curl http://localhost:4000/api/openproject/workspaces
 7. Search is subject/title contains search, not a global full-text search across every field.
 8. Use Load more if `nextCursor` exists.
 9. Confirm loading, empty, and error states render honestly.
+10. Confirm filters persist in the URL after refresh.
+11. Save a view with `Private` or `Workspace` visibility and confirm it remains selectable after refresh.
+12. Rename or delete a saved view from the saved view actions menu.
 
 ## Board View
 
@@ -141,6 +145,7 @@ curl http://localhost:4000/api/openproject/workspaces
 4. Confirm the app sends `PATCH /api/openproject/tasks/:taskId`.
 5. Refresh and confirm the new status remains in OpenProject.
 6. Do not expect manual ordering inside a column to persist. The board only persists status changes.
+7. If OpenProject rejects a status move by workflow, confirm the card returns to the previous column and the UI shows a clear error.
 
 ## Task Detail
 
@@ -160,6 +165,9 @@ curl http://localhost:4000/api/openproject/workspaces
 7. Open `Custom fields` if present.
 8. Confirm scalar fields such as text, multiline text, integer, float, date, and boolean can be edited.
 9. Confirm unsupported custom field shapes remain read-only.
+10. Confirm task detail opens in a right-side drawer and the list or board stays visible behind it.
+11. Press `Esc` and confirm the drawer closes.
+12. Confirm breadcrumbs match the selected workspace / space / folder / list / task path.
 
 ## Create / Update / Delete
 
@@ -207,8 +215,9 @@ Activity and comments are OpenProject-backed.
 Docs are currently Local Docs backed by this app, not OpenProject Wiki.
 
 1. The UI must label docs as Local Docs.
-2. Creating or editing docs should persist in the local app storage.
-3. Do not treat docs as OpenProject-backed until wiki support is implemented.
+2. Open the `Local Docs` tab for a space that has docs.
+3. Creating or editing docs should persist in the local app storage.
+4. Do not treat docs as OpenProject-backed until wiki support is implemented.
 
 ## GitHub Optional Behavior
 
@@ -273,8 +282,9 @@ You can also verify the same link from the profile modal:
 7. Assign a task to a user whose email exists as a local tracker user.
 8. Confirm the bell shows a real notification.
 9. As an owner/admin, open the Import Reports menu and open the latest report detail modal.
-10. Confirm the modal shows summary, warnings, and errors.
-11. Download the JSON report from the modal and confirm the payload matches the visible summary.
+10. Confirm the modal shows tasks imported, users imported, assignees mapped, and warnings/errors counts.
+11. Use `Copy JSON` or `Download JSON` and confirm the payload matches the visible summary.
+12. Open `Workspace settings -> Imports` and confirm reports can also be opened from there.
 
 ## Optional ClickUp Migration
 
@@ -322,9 +332,9 @@ Use an OpenProject admin/API token with permission to manage users and membershi
 7. Open an imported task that had ClickUp assignees and confirm:
    - primary assignee is set on the OpenProject work package;
    - second assignee is set as responsible or stored in fallback metadata;
-   - additional assignees are not silently lost.
-   - The second ClickUp assignee becomes the OpenProject responsible user when available.
-   - Additional assignees are preserved in the task description metadata block until watcher mapping is implemented.
+   - additional assignees are not silently lost;
+   - when OpenProject rejects assignee or responsible, the imported task description still keeps a
+     `Additional assignees` block with each fallback user name, email, and `ClickUp ID`.
 6. Check inheritance:
    - Space-level grants are applied to folder/list subprojects.
    - Explicit list access does not grant access to unrelated top-level spaces.
@@ -334,9 +344,11 @@ Use an OpenProject admin/API token with permission to manage users and membershi
    - existing stronger roles are not downgraded
    - weaker roles are upgraded when ClickUp access requires it
 8. Pick a ClickUp task with multiple assignees and open the mapped OpenProject work package:
-   - confirm the primary assignee is set
-   - confirm the second assignee is set as responsible when supported
-   - confirm any remaining assignees are preserved in task metadata instead of being dropped
+   - confirm the primary assignee is set;
+   - confirm the second assignee is set as responsible when supported;
+   - confirm any remaining assignees are preserved in task metadata instead of being dropped;
+   - if you intentionally reproduce an OpenProject assignee validation failure, confirm the task is
+     still imported and all assignees remain visible in the fallback metadata block.
 
 Current ClickUp permission source limitations:
 

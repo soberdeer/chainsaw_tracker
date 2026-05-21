@@ -51,6 +51,7 @@ export function ProfileModal({
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [myWorkError, setMyWorkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -65,6 +66,7 @@ export function ProfileModal({
     setNewPassword('');
     setConfirmPassword('');
     setPasswordMessage(null);
+    setSuccess(null);
     setError(null);
     setMyWorkError(null);
     setLoading(true);
@@ -86,6 +88,7 @@ export function ProfileModal({
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
       const updated = await updateUserProfile({ name, avatarUrl: avatarUrl || null });
       onSaved(updated);
       setProfile((current) =>
@@ -97,6 +100,7 @@ export function ProfileModal({
             }
           : current
       );
+      setSuccess('Profile saved.');
     } catch (caughtError) {
       setError(getErrorMessage(caughtError));
     } finally {
@@ -109,6 +113,7 @@ export function ProfileModal({
       setChangingPassword(true);
       setPasswordMessage(null);
       setError(null);
+      setSuccess(null);
       await changePassword({ currentPassword, newPassword, confirmPassword });
       setPasswordMessage('Password changed successfully.');
       setCurrentPassword('');
@@ -127,6 +132,11 @@ export function ProfileModal({
         {error && (
           <Alert color="red" title="Something needs attention">
             {error}
+          </Alert>
+        )}
+        {success && (
+          <Alert color="green" title="Saved">
+            {success}
           </Alert>
         )}
         {loading ? (
@@ -174,6 +184,11 @@ export function ProfileModal({
                     {profile?.openProjectUserId
                       ? `${profile.openProjectLogin || profile.openProjectUserId} (${profile.openProjectUserId})`
                       : 'Not linked yet'}
+                  </Text>
+                  <Text size="sm" c="dimmed">
+                    {profile?.openProjectUserId
+                      ? 'This local tracker account is linked to a real OpenProject user.'
+                      : 'Ask an owner or admin to link this local tracker account to an OpenProject user if you need assignee-based task filters.'}
                   </Text>
                   <Text size="sm" c="dimmed" className={classes.note}>
                     This edits the local tracker profile only. OpenProject account details and
@@ -251,7 +266,7 @@ export function ProfileModal({
                         ))
                       ) : (
                         <Text size="sm" c="dimmed">
-                          No assigned work found.
+                          No assigned work found yet.
                         </Text>
                       )}
                     </Stack>
@@ -270,6 +285,13 @@ export function ProfileModal({
                   Local tracker role controls the custom UI. OpenProject memberships control access
                   to OpenProject projects and work packages.
                 </Alert>
+                {!profile?.openProjectUserId && (
+                  <Alert title="OpenProject link missing" color="yellow">
+                    This local tracker account is not linked to an OpenProject user yet. You can
+                    still use local settings, but OpenProject assignee-based views will not resolve
+                    your work until the link exists.
+                  </Alert>
+                )}
 
                 <Stack gap="xs">
                   <Text fw={600}>Local workspace access</Text>

@@ -57,6 +57,12 @@ export function ProjectAccessModal({
           This table shows real OpenProject project memberships. Role changes for project access are
           still managed in OpenProject settings in this MVP.
         </Alert>
+        {!loading && !members.length && (
+          <Alert color="yellow" title="No visible project memberships">
+            OpenProject did not return any memberships for this project and token. Check the project
+            access in OpenProject if this looks unexpected.
+          </Alert>
+        )}
         {loading ? (
           <Group justify="center" py="xl">
             <Loader />
@@ -86,7 +92,13 @@ export function ProjectAccessModal({
                       </Stack>
                     </Table.Td>
                     <Table.Td>{member.roles.join(', ')}</Table.Td>
-                    <Table.Td>{member.linkedLocalUser?.email || 'Not linked'}</Table.Td>
+                    <Table.Td>
+                      {member.linkedLocalUser?.email || (
+                        <Text size="sm" c="dimmed">
+                          Not linked to a local tracker user
+                        </Text>
+                      )}
+                    </Table.Td>
                     <Table.Td>{member.source || 'manual OpenProject membership'}</Table.Td>
                   </Table.Tr>
                 ))}

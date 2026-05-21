@@ -123,6 +123,38 @@ test('buildTaskBody stores assignee and responsible links in the OpenProject pay
   });
   assert.match(
     (body.description as { raw: string }).raw,
-    /Additional assignees:\n- Extra Person <extra@example\.com>/
+    /Additional assignees:\n- Extra Person <extra@example\.com> \[ClickUp ID: 303\]/
   );
+});
+
+test('buildTaskBody can preserve the full assignee list in metadata fallback', () => {
+  const body = buildTaskBody({
+    task: {
+      id: 'cu-2',
+      name: 'Fallback Task',
+      description: '',
+    } as never,
+    context: {
+      space: { id: 's1', name: 'Space' },
+      folder: null,
+      list: { id: 'l1', name: 'List' },
+    } as never,
+    type: {
+      id: 1,
+      name: 'Task',
+      _links: { self: { href: '/api/v3/types/1' } },
+    },
+    openProjectStatuses: [],
+    priorities: [],
+    additionalAssignees: [
+      { id: 101, username: 'Primary Person', email: 'primary@example.com' },
+      { id: 202, username: 'Responsible Person', email: 'responsible@example.com' },
+      { id: 303, username: 'Extra Person', email: 'extra@example.com' },
+    ],
+  });
+
+  const raw = (body.description as { raw: string }).raw;
+  assert.match(raw, /Primary Person <primary@example\.com> \[ClickUp ID: 101\]/);
+  assert.match(raw, /Responsible Person <responsible@example\.com> \[ClickUp ID: 202\]/);
+  assert.match(raw, /Extra Person <extra@example\.com> \[ClickUp ID: 303\]/);
 });

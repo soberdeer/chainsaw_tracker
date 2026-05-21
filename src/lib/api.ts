@@ -23,7 +23,7 @@ import type {
   WorkspaceSettings,
   Workspace,
   WorkspaceRole,
-} from './types';
+} from './types.js';
 
 async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   const headers = new Headers(options.headers);
@@ -33,7 +33,10 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   const response = await fetch(url, { ...options, headers, credentials: 'include' });
   if (!response.ok) {
-    const payload = await response.json().catch(() => ({ error: response.statusText }));
+    const payload = (await response.json().catch(() => ({ error: response.statusText }))) as {
+      error?: string;
+      detail?: string;
+    };
     const detail = payload.detail ? `: ${payload.detail}` : '';
     throw new Error(`${payload.error || response.statusText}${detail}`);
   }
@@ -45,7 +48,7 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
     const text = await response.text();
     return text ? (text as T) : (undefined as T);
   }
-  return response.json();
+  return (await response.json()) as T;
 }
 
 export type CurrentUser = {
@@ -316,6 +319,21 @@ export function createSavedView(input: {
 }) {
   return request<SavedView>('/api/saved-views', {
     method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateSavedView(
+  id: string,
+  input: {
+    name?: string;
+    filters?: Record<string, unknown>;
+    sort?: Record<string, unknown>;
+    visibility?: 'PRIVATE' | 'WORKSPACE';
+  }
+) {
+  return request<SavedView>(`/api/saved-views/${id}`, {
+    method: 'PATCH',
     body: JSON.stringify(input),
   });
 }

@@ -66,6 +66,7 @@ import {
   type TaskStatus,
   type Workspace,
 } from '@/lib';
+import { AvatarStack } from '../../common/AvatarStack';
 import { SubtaskModal } from './SubtaskModal/SubtaskModal';
 import classes from './TaskDetailPage.module.css';
 
@@ -442,7 +443,7 @@ export function TaskDetailPage({
             </Button>
           )}
           <Button variant="light" onClick={onBack}>
-            Back
+            Close
           </Button>
         </Group>
       </Group>
@@ -542,6 +543,7 @@ export function TaskDetailPage({
           <Text fw={700}>Location</Text>
           <Text size="sm" c="dimmed">
             {task.folder?.space?.name || workspace.name} / {task.folder?.name || task.folderId}
+            {task.taskList?.name ? ` / ${task.taskList.name}` : ''}
           </Text>
         </Stack>
         <Stack gap="xs">
@@ -595,7 +597,10 @@ export function TaskDetailPage({
         </Tabs.List>
         <Tabs.Panel value="details" pt="md">
           <Stack>
-            <Text c="dimmed">Task fields are saved through the OpenProject API.</Text>
+            <Text c="dimmed">
+              Task fields are saved through the OpenProject API. Local tracker UI keeps the context,
+              but OpenProject remains the source of truth for work package data.
+            </Text>
             <Text size="sm" c="dimmed">
               Relations, activity, files, and time entries are saved through OpenProject. Custom
               fields are shown read-only unless the OpenProject schema exposes editable metadata.
@@ -828,12 +833,8 @@ export function TaskDetailPage({
                 </Group>
                 <span>
                   {subtask.assignees?.length ? (
-                    // <Avatar.Group>
-                    // {subtask.assignees.map((a, i) => (<Avatar key={i}))}
-                    //   </Avatar.Group>
-                    <div />
+                    <AvatarStack users={subtask.assignees} size="1.625rem" max={3} />
                   ) : (
-                    // <AvatarStack users={subtask.assignees} size="1.75rem" />
                     <Text c="dimmed">-</Text>
                   )}
                 </span>
@@ -901,7 +902,12 @@ export function TaskDetailPage({
                 )}
               </Paper>
             ))}
-            {!activity.length && <Text c="dimmed">No activity yet.</Text>}
+            {!activity.length && (
+              <Text c="dimmed">
+                No OpenProject activity yet. Comments and field changes will appear here after the
+                first update.
+              </Text>
+            )}
           </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="relations" pt="md">
@@ -967,7 +973,12 @@ export function TaskDetailPage({
                 </Group>
               </Paper>
             ))}
-            {!relations.length && <Text c="dimmed">No OpenProject relations.</Text>}
+            {!relations.length && (
+              <Text c="dimmed">
+                No OpenProject relations yet. Use this tab to link blockers, dependencies, and
+                related work packages.
+              </Text>
+            )}
           </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="time" pt="md">
@@ -1018,7 +1029,12 @@ export function TaskDetailPage({
                 {entry.comment && <Text size="sm">{entry.comment}</Text>}
               </Paper>
             ))}
-            {!timeEntries.length && <Text c="dimmed">No OpenProject time entries.</Text>}
+            {!timeEntries.length && (
+              <Text c="dimmed">
+                No OpenProject time entries yet. Logged time will appear here after the first entry
+                is saved.
+              </Text>
+            )}
           </Stack>
         </Tabs.Panel>
         <Tabs.Panel value="files" pt="md">
@@ -1066,7 +1082,12 @@ export function TaskDetailPage({
                 </Group>
               </Paper>
             ))}
-            {!attachments.length && <Text c="dimmed">No OpenProject attachments.</Text>}
+            {!attachments.length && (
+              <Text c="dimmed">
+                No OpenProject attachments yet. Uploaded files stay on the work package after
+                refresh.
+              </Text>
+            )}
           </Stack>
         </Tabs.Panel>
         {customFields.length > 0 && (

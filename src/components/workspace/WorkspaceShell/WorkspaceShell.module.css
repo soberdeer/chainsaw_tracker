@@ -144,11 +144,17 @@
   color: var(--app-text);
 }
 
+.overviewPanel {
+  border-bottom: 1px solid var(--app-border);
+  background: color-mix(in srgb, var(--app-panel) 72%, transparent);
+}
+
 .topBar {
   min-height: 3.625rem;
   padding: 0 var(--mantine-spacing-md);
   border-bottom: 1px solid var(--app-border);
   background: var(--app-bg);
+  overflow-x: auto;
 }
 
 .breadcrumbChip {
@@ -169,6 +175,7 @@
   padding: 0 var(--mantine-spacing-md);
   min-height: 3.5rem;
   border-bottom: 1px solid var(--app-border);
+  overflow-x: auto;
 }
 
 .viewTabs [role='tab'] {

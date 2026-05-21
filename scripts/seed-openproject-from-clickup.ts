@@ -361,6 +361,8 @@ async function clickUpAssigneeLinks(
   ]);
 
   return {
+    assignee: mapped.assignee,
+    responsible: mapped.responsible,
     assigneeHref: openProjectUserHref(assigneeUser),
     responsibleHref:
       responsibleUser && responsibleUser.id !== assigneeUser?.id
@@ -368,6 +370,18 @@ async function clickUpAssigneeLinks(
         : undefined,
     additionalAssignees: mapped.additional,
   };
+}
+
+function assigneeFallbackUsers(input: {
+  assignee?: ClickUpAssigneeLike;
+  responsible?: ClickUpAssigneeLike;
+  additionalAssignees: ClickUpAssigneeLike[];
+}) {
+  return [
+    ...(input.assignee ? [input.assignee] : []),
+    ...(input.responsible ? [input.responsible] : []),
+    ...input.additionalAssignees,
+  ];
 }
 
 function originalClickUpPath(context: ClickUpTaskContext) {
@@ -1517,6 +1531,11 @@ async function createOpenProjectWorkPackage(params: {
   const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
   let includeStatus = true;
   let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
+  const rejectedAssignmentFallback = assigneeFallbackUsers({
+    assignee: assigneeMapping.assignee,
+    responsible: assigneeMapping.responsible,
+    additionalAssignees: assigneeMapping.additionalAssignees,
+  });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -1533,7 +1552,9 @@ async function createOpenProjectWorkPackage(params: {
             includeStatus,
             assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
             responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
-            additionalAssignees: assigneeMapping.additionalAssignees,
+            additionalAssignees: includeAssignments
+              ? assigneeMapping.additionalAssignees
+              : rejectedAssignmentFallback,
           }),
         }
       );
@@ -1568,8 +1589,9 @@ async function createOpenProjectWorkPackage(params: {
             error
           )}`
         );
+        params.summary.assigneeFallbackStored += rejectedAssignmentFallback.length;
         params.summary.warnings.push(
-          `task ${params.task.name} (${params.task.id}): created without assignee/responsible because OpenProject rejected the imported assignee mapping`
+          `task ${params.task.name} (${params.task.id}): created without assignee/responsible because OpenProject rejected the imported assignee mapping; assignees were preserved in metadata fallback`
         );
         continue;
       }
@@ -1596,6 +1618,11 @@ async function updateOpenProjectWorkPackage(params: {
   }
   const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
   let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
+  const rejectedAssignmentFallback = assigneeFallbackUsers({
+    assignee: assigneeMapping.assignee,
+    responsible: assigneeMapping.responsible,
+    additionalAssignees: assigneeMapping.additionalAssignees,
+  });
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
@@ -1614,7 +1641,9 @@ async function updateOpenProjectWorkPackage(params: {
               includeStatus: false,
               assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
               responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
-              additionalAssignees: assigneeMapping.additionalAssignees,
+              additionalAssignees: includeAssignments
+                ? assigneeMapping.additionalAssignees
+                : rejectedAssignmentFallback,
             }),
           },
         }
@@ -1641,8 +1670,9 @@ async function updateOpenProjectWorkPackage(params: {
             error
           )}`
         );
+        params.summary.assigneeFallbackStored += rejectedAssignmentFallback.length;
         params.summary.warnings.push(
-          `task ${params.task.name} (${params.task.id}): assignee/responsible update was skipped because OpenProject rejected the mapping`
+          `task ${params.task.name} (${params.task.id}): assignee/responsible update was skipped because OpenProject rejected the mapping; assignees were preserved in metadata fallback`
         );
         continue;
       }

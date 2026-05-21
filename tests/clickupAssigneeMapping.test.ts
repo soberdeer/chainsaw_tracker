@@ -42,5 +42,6 @@ test('appendAdditionalAssigneesMeta stores additional assignees idempotently', (
   ]);
 
   assert.match(once, /Additional assignees:/);
+  assert.match(once, /Carol <carol@example\.test> \[ClickUp ID: 3\]/);
   assert.equal(once, twice);
 });

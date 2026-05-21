@@ -25,6 +25,7 @@ import {
   getWorkspaceSettings,
   inviteWorkspaceMember,
   removeWorkspaceMember,
+  summarizeImportRun,
   updateWorkspaceMemberRole,
   updateWorkspaceSettings,
   type MigrationRun,
@@ -42,8 +43,10 @@ export interface WorkspaceSettingsModalProps {
   workspaceId: string;
   currentRole?: WorkspaceRole;
   canManageWorkspace: boolean;
+  initialTab?: string;
   onClose: () => void;
   onUpdated: (settings: WorkspaceSettings) => void;
+  onOpenImportReport?: (report: MigrationRun) => void;
 }
 
 export function WorkspaceSettingsModal({
@@ -51,8 +54,10 @@ export function WorkspaceSettingsModal({
   workspaceId,
   currentRole,
   canManageWorkspace,
+  initialTab,
   onClose,
   onUpdated,
+  onOpenImportReport,
 }: WorkspaceSettingsModalProps) {
   const [settings, setSettings] = useState<WorkspaceSettings | null>(null);
   const [members, setMembers] = useState<WorkspaceMemberItem[]>([]);
@@ -61,8 +66,10 @@ export function WorkspaceSettingsModal({
     null
   );
   const [imports, setImports] = useState<MigrationRun[]>([]);
+  const [activeTab, setActiveTab] = useState(initialTab || 'general');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteName, setInviteName] = useState('');
@@ -74,7 +81,9 @@ export function WorkspaceSettingsModal({
     if (!opened) return;
     setLoading(true);
     setError(null);
+    setSuccess(null);
     setInviteResult(null);
+    setActiveTab(initialTab || 'general');
     Promise.all([
       getWorkspaceSettings(workspaceId).then(setSettings),
       getWorkspaceMembers(workspaceId).then((payload) => setMembers(payload.items)),
@@ -84,13 +93,14 @@ export function WorkspaceSettingsModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, workspaceId]);
+  }, [opened, workspaceId, initialTab]);
 
   const saveGeneral = async () => {
     if (!settings) return;
     try {
       setSaving(true);
       setError(null);
+      setSuccess(null);
       const updated = await updateWorkspaceSettings(workspaceId, {
         name: settings.name,
         slug: settings.slug,
@@ -100,6 +110,7 @@ export function WorkspaceSettingsModal({
       });
       setSettings(updated);
       onUpdated(updated);
+      setSuccess('Workspace settings saved.');
     } catch (caughtError) {
       setError(getErrorMessage(caughtError));
     } finally {
@@ -110,6 +121,7 @@ export function WorkspaceSettingsModal({
   const submitInvite = async () => {
     try {
       setError(null);
+      setSuccess(null);
       setInviteResult(null);
       const result = await inviteWorkspaceMember(workspaceId, {
         email: inviteEmail,
@@ -139,6 +151,7 @@ export function WorkspaceSettingsModal({
           .filter(Boolean)
           .join(' ')
       );
+      setSuccess('Workspace member access updated.');
     } catch (caughtError) {
       setError(getErrorMessage(caughtError));
     }
@@ -152,6 +165,11 @@ export function WorkspaceSettingsModal({
             {error}
           </Alert>
         )}
+        {success && (
+          <Alert color="green" title="Saved">
+            {success}
+          </Alert>
+        )}
         {inviteResult && (
           <Alert color="green" title="Member updated">
             {inviteResult}
@@ -162,7 +180,7 @@ export function WorkspaceSettingsModal({
             <Loader />
           </Group>
         ) : (
-          <Tabs defaultValue="general">
+          <Tabs value={activeTab} onChange={(value) => setActiveTab(value || 'general')}>
             <Tabs.List>
               <Tabs.Tab value="general">General</Tabs.Tab>
               <Tabs.Tab value="members">Members</Tabs.Tab>
@@ -236,6 +254,11 @@ export function WorkspaceSettingsModal({
                   Local role controls access to the custom tracker UI. OpenProject access is linked
                   separately through the OpenProject user connection.
                 </Alert>
+                {!members.length && (
+                  <Text size="sm" c="dimmed">
+                    Only the owner is in this workspace so far.
+                  </Text>
+                )}
                 {canManageWorkspace && (
                   <Group align="flex-end" grow>
                     <TextInput
@@ -285,14 +308,19 @@ export function WorkspaceSettingsModal({
                               value={member.role}
                               onChange={async (value) => {
                                 if (!value) return;
-                                const updated = await updateWorkspaceMemberRole(
-                                  workspaceId,
-                                  member.user.id,
-                                  value as WorkspaceRole
-                                );
-                                setMembers((current) =>
-                                  current.map((item) => (item.id === updated.id ? updated : item))
-                                );
+                                try {
+                                  const updated = await updateWorkspaceMemberRole(
+                                    workspaceId,
+                                    member.user.id,
+                                    value as WorkspaceRole
+                                  );
+                                  setMembers((current) =>
+                                    current.map((item) => (item.id === updated.id ? updated : item))
+                                  );
+                                  setSuccess('Workspace role updated.');
+                                } catch (caughtError) {
+                                  setError(getErrorMessage(caughtError));
+                                }
                               }}
                               data={roleOptions}
                             />
@@ -301,9 +329,20 @@ export function WorkspaceSettingsModal({
                           )}
                         </Table.Td>
                         <Table.Td>
-                          {member.user.openProjectUserId
-                            ? `${member.user.openProjectLogin || member.user.openProjectUserId}`
-                            : 'Not linked'}
+                          {member.user.openProjectUserId ? (
+                            <Stack gap={2}>
+                              <Text size="sm">
+                                {member.user.openProjectLogin || member.user.openProjectUserId}
+                              </Text>
+                              <Badge size="xs" variant="light" color="green">
+                                Linked
+                              </Badge>
+                            </Stack>
+                          ) : (
+                            <Badge size="xs" variant="light" color="yellow">
+                              Not linked
+                            </Badge>
+                          )}
                         </Table.Td>
                         <Table.Td>{member.user.source || 'LOCAL'}</Table.Td>
                         <Table.Td>{member.user.lastLoginAt || 'Never'}</Table.Td>
@@ -313,10 +352,22 @@ export function WorkspaceSettingsModal({
                               color="red"
                               variant="light"
                               onClick={async () => {
-                                await removeWorkspaceMember(workspaceId, member.user.id);
-                                setMembers((current) =>
-                                  current.filter((item) => item.user.id !== member.user.id)
-                                );
+                                if (
+                                  !window.confirm(
+                                    `Remove ${member.user.email} from this workspace?`
+                                  )
+                                ) {
+                                  return;
+                                }
+                                try {
+                                  await removeWorkspaceMember(workspaceId, member.user.id);
+                                  setMembers((current) =>
+                                    current.filter((item) => item.user.id !== member.user.id)
+                                  );
+                                  setSuccess('Workspace member removed.');
+                                } catch (caughtError) {
+                                  setError(getErrorMessage(caughtError));
+                                }
                               }}
                             >
                               Remove
@@ -367,6 +418,22 @@ export function WorkspaceSettingsModal({
 
             <Tabs.Panel value="openproject" pt="md">
               <Stack>
+                <Group justify="space-between">
+                  <Text fw={700}>Runtime connection</Text>
+                  <Button
+                    variant="light"
+                    onClick={async () => {
+                      try {
+                        setError(null);
+                        setConnectionStatus(await getWorkspaceOpenProjectStatus(workspaceId));
+                      } catch (caughtError) {
+                        setError(getErrorMessage(caughtError));
+                      }
+                    }}
+                  >
+                    Test connection
+                  </Button>
+                </Group>
                 <Text>Base URL: {connectionStatus?.baseUrl}</Text>
                 <Text>Auth mode: {connectionStatus?.authMode}</Text>
                 <Group gap="xs">
@@ -391,21 +458,42 @@ export function WorkspaceSettingsModal({
                         <Table.Th>Started</Table.Th>
                         <Table.Th>Status</Table.Th>
                         <Table.Th>Source</Table.Th>
+                        <Table.Th>Imported</Table.Th>
+                        <Table.Th>Warnings</Table.Th>
+                        <Table.Th>Errors</Table.Th>
+                        {onOpenImportReport && <Table.Th>Details</Table.Th>}
                       </Table.Tr>
                     </Table.Thead>
                     <Table.Tbody>
-                      {imports.map((item) => (
-                        <Table.Tr key={item.id}>
-                          <Table.Td>{new Date(item.startedAt).toLocaleString()}</Table.Td>
-                          <Table.Td>{item.status}</Table.Td>
-                          <Table.Td>{item.source}</Table.Td>
-                        </Table.Tr>
-                      ))}
+                      {imports.map((item) => {
+                        const summary = summarizeImportRun(item);
+                        return (
+                          <Table.Tr key={item.id}>
+                            <Table.Td>{new Date(item.startedAt).toLocaleString()}</Table.Td>
+                            <Table.Td>{item.status}</Table.Td>
+                            <Table.Td>{item.source}</Table.Td>
+                            <Table.Td>{summary.tasksImported} tasks</Table.Td>
+                            <Table.Td>{summary.warningsCount}</Table.Td>
+                            <Table.Td>{summary.errorsCount}</Table.Td>
+                            {onOpenImportReport && (
+                              <Table.Td>
+                                <Button
+                                  variant="light"
+                                  size="xs"
+                                  onClick={() => onOpenImportReport(item)}
+                                >
+                                  Open
+                                </Button>
+                              </Table.Td>
+                            )}
+                          </Table.Tr>
+                        );
+                      })}
                     </Table.Tbody>
                   </Table>
                 ) : (
                   <Text size="sm" c="dimmed">
-                    No import reports yet.
+                    Import has not been run yet for this workspace.
                   </Text>
                 )}
               </Stack>

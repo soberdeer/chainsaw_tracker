@@ -61,7 +61,8 @@ export function appendAdditionalAssigneesMeta(
   const lines = additionalAssignees.map((user) => {
     const email = normalizeEmail(user.email);
     const name = clickUpAssigneeDisplayName(user);
-    return email ? `- ${name} <${email}>` : `- ${name}`;
+    const idSuffix = ` [ClickUp ID: ${user.id}]`;
+    return email ? `- ${name} <${email}>${idSuffix}` : `- ${name}${idSuffix}`;
   });
 
   const block = [

@@ -1,4 +1,4 @@
-import type { Folder, Space, TaskList, TaskPriority, TaskStatus, Workspace } from './types';
+import type { Folder, Space, TaskList, TaskPriority, TaskStatus, Workspace } from './types.js';
 
 export const statusMeta: Record<string, { label: string; color: string; tone: string }> = {
   complete: { label: 'Complete', color: '#5cc4a7', tone: 'mint' },
@@ -63,7 +63,75 @@ export function displayStatus(status?: TaskStatus, fallback?: string) {
 }
 
 export function getErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : 'Something went wrong';
+  const message = error instanceof Error ? error.message : 'Something went wrong';
+  const normalized = message.toLowerCase();
+
+  if (
+    normalized.includes('workflow') ||
+    normalized.includes('transition not allowed') ||
+    normalized.includes('status is not available')
+  ) {
+    return 'OpenProject does not allow moving this task to that status in the current workflow.';
+  }
+
+  if (
+    normalized.includes('lockversion') ||
+    normalized.includes('stale object') ||
+    normalized.includes('modified by another user')
+  ) {
+    return 'This task was changed by someone else in OpenProject. Refresh the task and try again.';
+  }
+
+  if (
+    normalized.includes('permission') ||
+    normalized.includes('forbidden') ||
+    normalized.includes('not authorized')
+  ) {
+    return 'You do not have permission to perform this action in OpenProject.';
+  }
+
+  if (
+    normalized.includes('assignee') &&
+    (normalized.includes('access') ||
+      normalized.includes('membership') ||
+      normalized.includes('project'))
+  ) {
+    return 'OpenProject rejected the assignee because that user does not have access to this project.';
+  }
+
+  if (
+    normalized.includes('timeout') ||
+    normalized.includes('timed out') ||
+    normalized.includes('networkerror')
+  ) {
+    return 'OpenProject took too long to respond. Try again in a moment.';
+  }
+
+  if (
+    normalized.includes('validation') ||
+    normalized.includes('required') ||
+    normalized.includes('must be filled')
+  ) {
+    return 'OpenProject rejected the data. Check required fields and try again.';
+  }
+
+  if (
+    normalized.includes('custom field') ||
+    normalized.includes('schema') ||
+    normalized.includes('unsupported field')
+  ) {
+    return 'This field is not editable through the current OpenProject schema.';
+  }
+
+  if (normalized.includes('upload') || normalized.includes('attachment')) {
+    return 'The file could not be uploaded to OpenProject. Check project permissions and file limits.';
+  }
+
+  if (normalized.includes('unavailable') || normalized.includes('failed to fetch')) {
+    return 'OpenProject is currently unavailable. Try again after the connection recovers.';
+  }
+
+  return message;
 }
 
 export function folderPath(spaceId: string, folderId: string) {

@@ -1,4 +1,5 @@
 import {
+  Alert,
   Button,
   Group,
   Modal,
@@ -10,14 +11,7 @@ import {
   TextInput,
   Tooltip,
 } from '@mantine/core';
-import {
-  IconCalendarDue,
-  IconFlag,
-  IconListCheck,
-  IconTag,
-  IconUsers,
-  IconX,
-} from '@tabler/icons-react';
+import { IconCalendarDue, IconFlag, IconListCheck, IconUsers, IconX } from '@tabler/icons-react';
 import { useEffect, useState } from 'react';
 import {
   createTask,
@@ -211,35 +205,18 @@ export function TaskCreateModal({
               leftSection={<IconFlag size="1rem" />}
               className={classes.compactField}
             />
-            <Tooltip label="Tags are not mapped from OpenProject in this adapter yet">
-              <Button variant="default" leftSection={<IconTag size="1rem" />} disabled>
-                Tags
-              </Button>
-            </Tooltip>
           </Group>
 
-          <Stack gap="sm">
-            <Text c="dimmed" fw={700}>
-              Fields
-            </Text>
-            <Tooltip label="Custom fields are managed in OpenProject">
-              <span>
-                <Button variant="light" disabled>
-                  + Create new field
-                </Button>
-              </span>
-            </Tooltip>
-          </Stack>
+          <Alert color="blue" variant="light" title="OpenProject-backed fields">
+            Tags and custom field definitions are managed in OpenProject. This form only shows
+            fields that can be created reliably through the current runtime adapter.
+          </Alert>
         </Stack>
 
         <Group className={classes.footer} justify="space-between">
-          <Tooltip label="Templates are managed in OpenProject">
-            <span>
-              <Button variant="default" disabled>
-                Templates
-              </Button>
-            </span>
-          </Tooltip>
+          <Text size="sm" c="dimmed">
+            OpenProject stores one assignee and one responsible user per task.
+          </Text>
           <Button
             color="teal"
             size="lg"
