@@ -21,12 +21,13 @@
     "prisma:migrate": "prisma migrate dev",
     "seed:openproject:clickup": "tsx scripts/seed-openproject-from-clickup.ts",
     "reset:openproject": "tsx scripts/reset-openproject.ts",
-    "oxlint": "oxlint . --fix",
+    "oxlint": "oxlint .",
     "lint": "npm run oxlint",
+    "lint:fix": "oxlint . --fix",
     "test:code": "tsx --test tests/*.test.ts",
-    "test": "npm run format && npm run lint && npm run typecheck && npm run test:code",
+    "test": "npm run format:check && npm run lint && npm run typecheck && npm run test:code",
     "format": "oxfmt --write \"**/*.{ts,tsx,js,jsx,json,css}\" && prisma format",
-    "format:check": "oxfmt --check \"**/*.{ts,tsx,js,jsx,json,css}\""
+    "format:check": "oxfmt --check \"**/*.{ts,tsx,js,jsx,json,css}\" && tsx scripts/check-prisma-format.ts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

@@ -10,13 +10,16 @@ import type {
   NotificationItem,
   OpenProjectAttachmentItem,
   OpenProjectConnectionStatus,
-  OpenProjectProjectMember,
   OpenProjectCustomFieldItem,
+  OpenProjectProjectMember,
   OpenProjectRelationItem,
+  OpenProjectTaskTypeOption,
+  OpenProjectTimeEntryActivityOption,
   OpenProjectTimeEntryItem,
   PermissionSet,
   SearchResult,
   SavedView,
+  Tag,
   Task,
   TaskList,
   UserProfile,
@@ -183,6 +186,13 @@ export function getTasks(params: {
   statusId?: string;
   assigneeId?: string;
   assigneeIds?: string[];
+  responsibleIds?: string[];
+  typeIds?: string[];
+  dueBefore?: string;
+  overdue?: boolean;
+  updatedSince?: string;
+  tagIds?: string[];
+  hasGitHubPr?: boolean;
   milestoneId?: string;
   search?: string;
   source?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
@@ -199,6 +209,55 @@ export function getTasks(params: {
   return request<{ items: Task[]; nextCursor?: string | null }>(
     `/api/openproject/tasks?${search.toString()}`
   );
+}
+
+export function getOpenProjectTaskTypes(listId?: string) {
+  const search = new URLSearchParams();
+  if (listId) {
+    search.set('listId', listId);
+  }
+  return request<OpenProjectTaskTypeOption[]>(
+    `/api/openproject/task-types${search.size ? `?${search.toString()}` : ''}`
+  );
+}
+
+export function getOpenProjectTags(workspaceId: string) {
+  return request<Tag[]>(`/api/openproject/tags?workspaceId=${encodeURIComponent(workspaceId)}`);
+}
+
+export function createOpenProjectTag(input: { workspaceId: string; name: string; color?: string }) {
+  return request<Tag>('/api/openproject/tags', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+}
+
+export function updateOpenProjectTag(
+  tagId: string,
+  input: {
+    name?: string;
+    color?: string;
+  }
+) {
+  return request<Tag>(`/api/openproject/tags/${tagId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteOpenProjectTag(tagId: string) {
+  return request<void>(`/api/openproject/tags/${tagId}`, { method: 'DELETE' });
+}
+
+export function getTaskTags(taskId: string) {
+  return request<{ items: Tag[] }>(`/api/openproject/tasks/${taskId}/tags`);
+}
+
+export function setTaskTags(taskId: string, tagIds: string[]) {
+  return request<{ items: Tag[] }>(`/api/openproject/tasks/${taskId}/tags`, {
+    method: 'PUT',
+    body: JSON.stringify({ tagIds }),
+  });
 }
 
 export function getTaskActivity(taskId: string) {
@@ -242,9 +301,15 @@ export function getTaskTimeEntries(taskId: string) {
   );
 }
 
+export function getTaskTimeEntryActivities() {
+  return request<{ items: OpenProjectTimeEntryActivityOption[] }>(
+    '/api/openproject/time-entry-activities'
+  );
+}
+
 export function addTaskTimeEntry(
   taskId: string,
-  input: { hours: number; spentOn: string; comment?: string }
+  input: { hours: number; spentOn: string; comment?: string; activityId?: string }
 ) {
   return request<OpenProjectTimeEntryItem>(`/api/openproject/tasks/${taskId}/time-entries`, {
     method: 'POST',

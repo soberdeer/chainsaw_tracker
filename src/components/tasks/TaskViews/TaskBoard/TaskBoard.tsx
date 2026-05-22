@@ -9,7 +9,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconGripVertical, IconPlus } from '@tabler/icons-react';
+import { IconGitPullRequest, IconGripVertical, IconPlus } from '@tabler/icons-react';
 import { useState } from 'react';
 import type { Task, TaskStatus } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
@@ -38,6 +38,38 @@ export function TaskBoard({
 }: TaskBoardProps) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const grouped = new Map(statuses.map((status) => [status.id, [] as Task[]]));
+
+  const pullRequestBadge = (task: Task) => {
+    const pullRequest = task.githubPullRequests?.[0];
+    if (!pullRequest) {
+      return null;
+    }
+
+    const label = pullRequest.isMerged
+      ? 'Merged PR'
+      : pullRequest.reviewStatus === 'APPROVED'
+        ? 'Approved PR'
+        : pullRequest.reviewStatus === 'CHANGES_REQUESTED'
+          ? 'Changes requested'
+          : pullRequest.draft
+            ? 'Draft PR'
+            : 'Open PR';
+    const color = pullRequest.isMerged
+      ? 'teal'
+      : pullRequest.reviewStatus === 'APPROVED'
+        ? 'green'
+        : pullRequest.reviewStatus === 'CHANGES_REQUESTED'
+          ? 'red'
+          : 'blue';
+
+    return (
+      <Tooltip label={`${label}: #${pullRequest.number}`}>
+        <Badge color={color} variant="light" leftSection={<IconGitPullRequest size="0.75rem" />}>
+          PR
+        </Badge>
+      </Tooltip>
+    );
+  };
 
   tasks.forEach((task) => {
     const key = task.statusId || statuses[0]?.id;
@@ -123,10 +155,16 @@ export function TaskBoard({
                         <Text size="sm" fw={700} lineClamp={3}>
                           {task.title}
                         </Text>
-                        <Group gap="xs" mt="xs" wrap="nowrap">
+                        <Group gap="xs" mt="xs">
                           <Tooltip label={`Priority: ${task.priority}`}>
                             <Badge variant="light">{task.priority}</Badge>
                           </Tooltip>
+                          {task.tags.slice(0, 2).map(({ tag }) => (
+                            <Tooltip key={tag.id} label={tag.name}>
+                              <Badge variant="outline">{tag.name}</Badge>
+                            </Tooltip>
+                          ))}
+                          {pullRequestBadge(task)}
                           {task.assignees?.length ? (
                             <AvatarStack users={task.assignees} size="1.5rem" max={3} />
                           ) : null}

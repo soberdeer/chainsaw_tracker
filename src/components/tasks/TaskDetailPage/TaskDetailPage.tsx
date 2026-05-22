@@ -1,5 +1,6 @@
 import {
   ActionIcon,
+  Alert,
   Badge,
   Button,
   Checkbox,
@@ -38,16 +39,21 @@ import {
   addTaskComment,
   addTaskRelation,
   addTaskTimeEntry,
+  createOpenProjectTag,
   deleteTaskRelation,
+  getOpenProjectTags,
   getGitHubRepositories,
   getTask,
   getTaskActivity,
   getTaskAttachments,
   getTaskCustomFields,
   getTaskRelations,
+  getTaskTags,
+  getTaskTimeEntryActivities,
   getTaskTimeEntries,
   linkTaskPullRequest,
   refreshTaskGitHub,
+  setTaskTags,
   showToast,
   uploadTaskAttachment,
   unlinkTaskPullRequest,
@@ -63,7 +69,9 @@ import {
   type OpenProjectAttachmentItem,
   type OpenProjectCustomFieldItem,
   type OpenProjectRelationItem,
+  type OpenProjectTimeEntryActivityOption,
   type OpenProjectTimeEntryItem,
+  type Tag,
   type Task,
   type TaskPriority,
   type TaskStatus,
@@ -106,9 +114,16 @@ export function TaskDetailPage({
   const [timeEntries, setTimeEntries] = useState<OpenProjectTimeEntryItem[]>([]);
   const [totalHours, setTotalHours] = useState(0);
   const [timeSaving, setTimeSaving] = useState(false);
+  const [timeEntryActivities, setTimeEntryActivities] = useState<
+    OpenProjectTimeEntryActivityOption[]
+  >([]);
+  const [timeActivitiesError, setTimeActivitiesError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<OpenProjectAttachmentItem[]>([]);
   const [attachmentSaving, setAttachmentSaving] = useState(false);
   const [customFields, setCustomFields] = useState<OpenProjectCustomFieldItem[]>([]);
+  const [workspaceTags, setWorkspaceTags] = useState<Tag[]>([]);
+  const [taskTagIds, setTaskTagIds] = useState<string[]>([]);
+  const [tagSaving, setTagSaving] = useState(false);
   const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
   const [githubBusy, setGithubBusy] = useState(false);
   const detailsForm = useForm({
@@ -145,10 +160,12 @@ export function TaskDetailPage({
       timeHours: 1 as number | string,
       timeSpentOn: toDateInput(new Date().toISOString()),
       timeComment: '',
+      timeActivityId: '',
     },
     validate: {
       timeHours: (value) => (Number(value) > 0 ? null : 'Hours must be greater than zero'),
       timeSpentOn: (value) => (value ? null : 'Spent on date is required'),
+      timeActivityId: (value) => (value ? null : 'Activity is required'),
     },
   });
   const attachmentForm = useForm({
@@ -160,6 +177,14 @@ export function TaskDetailPage({
     initialValues: {
       selectedRepositoryId: '',
       manualPr: '',
+    },
+  });
+  const tagForm = useForm({
+    initialValues: {
+      newTagName: '',
+    },
+    validate: {
+      newTagName: (value) => (value.trim().length ? null : 'Tag name is required'),
     },
   });
   const githubSupportedForTask = true;
@@ -182,6 +207,7 @@ export function TaskDetailPage({
       timeHours: 1,
       timeSpentOn: toDateInput(new Date().toISOString()),
       timeComment: '',
+      timeActivityId: '',
     });
     attachmentForm.reset();
     getTaskActivity(task.id)
@@ -205,6 +231,32 @@ export function TaskDetailPage({
     getTaskCustomFields(task.id)
       .then((page) => setCustomFields(page.items))
       .catch(() => setCustomFields([]));
+    getTaskTimeEntryActivities()
+      .then(({ items }) => {
+        setTimeEntryActivities(items);
+        setTimeActivitiesError(
+          items.length ? null : 'OpenProject did not return any time entry activities.'
+        );
+        const nextActivityId =
+          items.find((activity) => activity.id === timeForm.values.timeActivityId)?.id ||
+          (items.length === 1 ? items[0]?.id || '' : '');
+        timeForm.setFieldValue('timeActivityId', nextActivityId);
+      })
+      .catch((error) => {
+        setTimeEntryActivities([]);
+        setTimeActivitiesError(getErrorMessage(error));
+        timeForm.setFieldValue('timeActivityId', '');
+      });
+    Promise.all([getOpenProjectTags(workspace.id), getTaskTags(task.id)])
+      .then(([tags, page]) => {
+        setWorkspaceTags(tags);
+        setTaskTagIds(page.items.map((item) => item.id));
+      })
+      .catch((error) => {
+        setWorkspaceTags([]);
+        setTaskTagIds([]);
+        onError(getErrorMessage(error));
+      });
     if (githubSupportedForTask) {
       getGitHubRepositories(workspace.id)
         .then((items) => {
@@ -231,6 +283,76 @@ export function TaskDetailPage({
     attachmentForm,
     githubForm,
   ]);
+
+  const tagOptions = workspaceTags.map((item) => ({
+    value: item.id,
+    label: item.name,
+  }));
+
+  const syncTaskTags = async (nextTagIds: string[]) => {
+    const previousTagIds = taskTagIds;
+    setTaskTagIds(nextTagIds);
+    try {
+      setTagSaving(true);
+      const page = await setTaskTags(task.id, nextTagIds);
+      setTaskTagIds(page.items.map((item) => item.id));
+      onSaved(await getTask(task.id));
+      showToast({
+        tone: 'success',
+        title: 'Tags updated',
+        message: 'Task tags were saved for this OpenProject work package.',
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      setTaskTagIds(previousTagIds);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not save tags',
+        message,
+      });
+    } finally {
+      setTagSaving(false);
+    }
+  };
+
+  const createAndAssignTag = tagForm.onSubmit(async (values) => {
+    if (!canWriteTasks) {
+      return;
+    }
+    try {
+      setTagSaving(true);
+      const created = await createOpenProjectTag({
+        workspaceId: workspace.id,
+        name: values.newTagName.trim(),
+      });
+      setWorkspaceTags((current) =>
+        [...current.filter((item) => item.id !== created.id), created].sort((left, right) =>
+          left.name.localeCompare(right.name)
+        )
+      );
+      tagForm.reset();
+      const nextTagIds = [...new Set([...taskTagIds, created.id])];
+      const page = await setTaskTags(task.id, nextTagIds);
+      setTaskTagIds(page.items.map((item) => item.id));
+      onSaved(await getTask(task.id));
+      showToast({
+        tone: 'success',
+        title: 'Tag created',
+        message: `Added ${created.name} to this work package.`,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({
+        tone: 'error',
+        title: 'Could not create tag',
+        message,
+      });
+    } finally {
+      setTagSaving(false);
+    }
+  });
 
   const showGitHubTab = Boolean(
     githubSupportedForTask &&
@@ -365,11 +487,16 @@ export function TaskDetailPage({
         hours: Number(values.timeHours),
         spentOn: values.timeSpentOn,
         comment: values.timeComment,
+        activityId: values.timeActivityId,
       });
       timeForm.setValues({
         timeHours: 1,
         timeSpentOn: toDateInput(new Date().toISOString()),
         timeComment: '',
+        timeActivityId:
+          timeEntryActivities.length === 1
+            ? timeEntryActivities[0]?.id || ''
+            : values.timeActivityId,
       });
       const page = await getTaskTimeEntries(task.id);
       setTimeEntries(page.items);
@@ -646,7 +773,32 @@ export function TaskDetailPage({
           data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
           disabled={!canWriteTasks}
         />
-        <TextInput label="Tags" value={task.tags.map(({ tag }) => tag.name).join(', ')} readOnly />
+        <Stack gap="xs">
+          <MultiSelect
+            label="Tags"
+            data={tagOptions}
+            value={taskTagIds}
+            onChange={(value) => void syncTaskTags(value)}
+            searchable
+            clearable
+            disabled={!canWriteTasks || tagSaving}
+            description="Stored locally for this OpenProject work package. Tags do not create a duplicate local task."
+          />
+          {canWriteTasks && (
+            <form onSubmit={createAndAssignTag}>
+              <Group align="flex-end">
+                <TextInput
+                  label="Create tag"
+                  placeholder="polish"
+                  {...tagForm.getInputProps('newTagName')}
+                />
+                <Button type="submit" variant="light" loading={tagSaving}>
+                  Create and add
+                </Button>
+              </Group>
+            </form>
+          )}
+        </Stack>
         <Stack gap="xs">
           <Text fw={700}>Source</Text>
           <Group gap="xs">
@@ -735,6 +887,7 @@ export function TaskDetailPage({
             <Text size="sm" c="dimmed">
               Relations, activity, files, and time entries are saved through OpenProject. Custom
               fields are shown read-only unless the OpenProject schema exposes editable metadata.
+              Tags are stored as local metadata keyed by OpenProject work package id.
             </Text>
           </Stack>
         </Tabs.Panel>
@@ -1134,7 +1287,7 @@ export function TaskDetailPage({
             </Group>
             {canWriteTasks && (
               <Paper component="form" withBorder p="sm" onSubmit={submitTimeEntry}>
-                <SimpleGrid cols={{ base: 1, sm: 4 }}>
+                <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
                   <NumberInput
                     label="Hours"
                     min={0.01}
@@ -1150,6 +1303,24 @@ export function TaskDetailPage({
                       timeForm.setFieldValue('timeSpentOn', event.currentTarget.value)
                     }
                   />
+                  <Select
+                    label="Activity"
+                    value={timeForm.values.timeActivityId}
+                    onChange={(value) => timeForm.setFieldValue('timeActivityId', value || '')}
+                    data={timeEntryActivities.map((activity) => ({
+                      value: activity.id,
+                      label: activity.name,
+                    }))}
+                    disabled={!timeEntryActivities.length || Boolean(timeActivitiesError)}
+                    error={timeForm.errors.timeActivityId}
+                    placeholder={
+                      timeActivitiesError
+                        ? 'Could not load activities'
+                        : timeEntryActivities.length === 1
+                          ? timeEntryActivities[0]?.name || 'Activity'
+                          : 'Select activity'
+                    }
+                  />
                   <TextInput label="Comment" {...timeForm.getInputProps('timeComment')} />
                   <Stack justify="flex-end">
                     <Button loading={timeSaving} type="submit">
@@ -1157,6 +1328,11 @@ export function TaskDetailPage({
                     </Button>
                   </Stack>
                 </SimpleGrid>
+                {timeActivitiesError && (
+                  <Alert color="red" variant="light" mt="sm">
+                    {timeActivitiesError}
+                  </Alert>
+                )}
               </Paper>
             )}
             {timeEntries.map((entry) => (

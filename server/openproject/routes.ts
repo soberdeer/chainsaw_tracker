@@ -110,6 +110,44 @@ openProjectRouter.get('/task-statuses', async (req, res) => {
   res.json(await service.getTaskStatuses(query.listId));
 });
 
+openProjectRouter.get('/task-types', async (req, res) => {
+  const query = z.object({ listId: z.string().optional() }).parse(req.query);
+  res.json(await service.getTaskTypes(query.listId));
+});
+
+openProjectRouter.get('/tags', async (_req, res) => {
+  res.json(await service.getOpenProjectTags());
+});
+
+openProjectRouter.post('/tags', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      workspaceId: z.string().optional(),
+      name: z.string().min(1),
+      color: z.string().optional(),
+    })
+    .parse(req.body);
+  res.status(201).json(await service.createOpenProjectTag(body));
+});
+
+openProjectRouter.patch('/tags/:tagId', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      name: z.string().min(1).optional(),
+      color: z.string().optional(),
+    })
+    .parse(req.body);
+  res.json(await service.updateOpenProjectTag(req.params.tagId, body));
+});
+
+openProjectRouter.delete('/tags/:tagId', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  await service.deleteOpenProjectTag(req.params.tagId);
+  res.status(204).send();
+});
+
 openProjectRouter.get('/tasks', async (req, res) => {
   const query = z
     .object({
@@ -118,6 +156,25 @@ openProjectRouter.get('/tasks', async (req, res) => {
       taskListId: z.string().optional(),
       statusId: z.string().optional(),
       assigneeIds: z.string().optional(),
+      responsibleIds: z.string().optional(),
+      typeIds: z.string().optional(),
+      dueBefore: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      overdue: z
+        .union([z.literal('true'), z.literal('false')])
+        .optional()
+        .transform((value) => value === 'true'),
+      updatedSince: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/)
+        .optional(),
+      tagIds: z.string().optional(),
+      hasGitHubPr: z
+        .union([z.literal('true'), z.literal('false')])
+        .optional()
+        .transform((value) => value === 'true'),
       search: z.string().optional(),
       priority: z.string().optional(),
       limit: z.coerce.number().int().min(1).max(100).default(50),
@@ -139,6 +196,22 @@ openProjectRouter.get('/tasks', async (req, res) => {
         ?.split(',')
         .map((item) => item.trim())
         .filter(Boolean),
+      responsibles: query.responsibleIds
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      typeIds: query.typeIds
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      dueBefore: query.dueBefore,
+      overdue: query.overdue,
+      updatedSince: query.updatedSince,
+      tagIds: query.tagIds
+        ?.split(',')
+        .map((item) => item.trim())
+        .filter(Boolean),
+      hasGitHubPr: query.hasGitHubPr,
       search: query.search,
       priority: query.priority,
       limit: query.limit,
@@ -286,9 +359,24 @@ openProjectRouter.post('/tasks/:taskId/time-entries', async (req, res) => {
       hours: z.coerce.number().positive(),
       spentOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
       comment: z.string().optional(),
+      activityId: z.string().optional(),
     })
     .parse(req.body);
   res.status(201).json(await service.addTaskTimeEntry(req.params.taskId, body));
+});
+
+openProjectRouter.get('/time-entry-activities', async (_req, res) => {
+  res.json({ items: await service.getTimeEntryActivities() });
+});
+
+openProjectRouter.get('/tasks/:taskId/tags', async (req, res) => {
+  res.json({ items: await service.getTaskTags(req.params.taskId) });
+});
+
+openProjectRouter.put('/tasks/:taskId/tags', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z.object({ tagIds: z.array(z.string()).default([]) }).parse(req.body);
+  res.json({ items: await service.setTaskTags(req.params.taskId, body.tagIds) });
 });
 
 openProjectRouter.get('/tasks/:taskId/attachments', async (req, res) => {

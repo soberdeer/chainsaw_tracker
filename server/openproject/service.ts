@@ -43,8 +43,15 @@ type PageQuery = {
   limit?: number;
   status?: string;
   assignees?: string[];
+  responsibles?: string[];
   search?: string;
   priority?: string;
+  typeIds?: string[];
+  dueBefore?: string;
+  overdue?: boolean;
+  updatedSince?: string;
+  tagIds?: string[];
+  hasGitHubPr?: boolean;
 };
 
 function mapLocalUser(user: {
@@ -122,6 +129,43 @@ function projectRuntimeKey(value?: string | null) {
   return (value || '').toLowerCase().replace(/[^a-z0-9]+/g, '');
 }
 
+const defaultOpenProjectTagPalette = [
+  { name: 'bug', color: '#e03131' },
+  { name: 'feature', color: '#1971c2' },
+  { name: 'art', color: '#9c36b5' },
+  { name: 'audio', color: '#f08c00' },
+  { name: 'level', color: '#2b8a3e' },
+  { name: 'ui', color: '#5f3dc4' },
+  { name: 'build', color: '#495057' },
+  { name: 'playtest', color: '#0c8599' },
+  { name: 'blocker', color: '#c2255c' },
+  { name: 'polish', color: '#fab005' },
+];
+
+function normalizeOpenProjectTagName(name: string) {
+  return name.trim().replace(/\s+/g, ' ').toLowerCase();
+}
+
+function serializeOpenProjectTag(tag: { id: string; name: string; color: string }) {
+  return {
+    id: tag.id,
+    name: tag.name,
+    color: tag.color,
+  };
+}
+
+async function ensureDefaultOpenProjectTags(workspaceId: string) {
+  await prisma.openProjectTag.createMany({
+    data: defaultOpenProjectTagPalette.map((tag) => ({
+      workspaceId,
+      name: tag.name,
+      normalizedName: normalizeOpenProjectTagName(tag.name),
+      color: tag.color,
+    })),
+    skipDuplicates: true,
+  });
+}
+
 function serializeGitHubRepository(repository: {
   id: string;
   workspaceId: string;
@@ -193,13 +237,72 @@ function serializeGitHubBranch(
   };
 }
 
-async function attachGitHubBindings(items: Awaited<ReturnType<typeof mapWorkPackage>>[]) {
+export function matchesLocalTaskFilters(
+  task: Awaited<ReturnType<typeof mapWorkPackage>>,
+  query: PageQuery
+) {
+  if (query.overdue) {
+    if (!task.dueDate) {
+      return false;
+    }
+    const dueDate = new Date(task.dueDate);
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    if (!(dueDate < today)) {
+      return false;
+    }
+  }
+
+  if (query.dueBefore) {
+    if (!task.dueDate) {
+      return false;
+    }
+    if (new Date(task.dueDate) > new Date(query.dueBefore)) {
+      return false;
+    }
+  }
+
+  if (query.updatedSince) {
+    if (!task.updatedAt) {
+      return false;
+    }
+    if (new Date(task.updatedAt) < new Date(query.updatedSince)) {
+      return false;
+    }
+  }
+
+  if (query.tagIds?.length) {
+    const tagIds = new Set(task.tags.map(({ tag }) => tag.id));
+    if (!query.tagIds.every((tagId) => tagIds.has(tagId))) {
+      return false;
+    }
+  }
+
+  if (query.hasGitHubPr && !(task.githubPullRequests || []).length) {
+    return false;
+  }
+
+  return true;
+}
+
+function usesLocalTaskFiltering(query: PageQuery) {
+  return Boolean(
+    query.overdue ||
+    query.dueBefore ||
+    query.updatedSince ||
+    query.tagIds?.length ||
+    query.hasGitHubPr
+  );
+}
+
+async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPackage>>[]) {
   if (!items.length) {
     return items;
   }
 
   const workPackageIds = items.map((item) => item.id);
-  const [pullRequests, branches] = await Promise.all([
+  const runtimeWorkspace = await getOpenProjectRuntimeWorkspace().catch(() => null);
+  const [pullRequests, branches, workPackageTags] = await Promise.all([
     prisma.gitHubPullRequest.findMany({
       where: { workPackageId: { in: workPackageIds } },
       include: { repository: true },
@@ -210,10 +313,21 @@ async function attachGitHubBindings(items: Awaited<ReturnType<typeof mapWorkPack
       include: { repository: true },
       orderBy: { updatedAt: 'desc' },
     }),
+    runtimeWorkspace
+      ? prisma.openProjectWorkPackageTag.findMany({
+          where: {
+            workspaceId: runtimeWorkspace.id,
+            workPackageId: { in: workPackageIds },
+          },
+          include: { tag: true },
+          orderBy: { tag: { name: 'asc' } },
+        })
+      : Promise.resolve([]),
   ]);
 
   const prsByWorkPackageId = new Map<string, typeof pullRequests>();
   const branchesByWorkPackageId = new Map<string, typeof branches>();
+  const tagsByWorkPackageId = new Map<string, typeof workPackageTags>();
   for (const pullRequest of pullRequests) {
     if (!pullRequest.workPackageId) {
       continue;
@@ -230,14 +344,23 @@ async function attachGitHubBindings(items: Awaited<ReturnType<typeof mapWorkPack
     bucket.push(branch);
     branchesByWorkPackageId.set(branch.workPackageId, bucket);
   }
+  for (const workPackageTag of workPackageTags) {
+    const bucket = tagsByWorkPackageId.get(workPackageTag.workPackageId) || [];
+    bucket.push(workPackageTag);
+    tagsByWorkPackageId.set(workPackageTag.workPackageId, bucket);
+  }
 
   return items.map((item) => {
     const githubPullRequests = (prsByWorkPackageId.get(item.id) || []).map(
       serializeGitHubPullRequest
     );
     const githubBranches = (branchesByWorkPackageId.get(item.id) || []).map(serializeGitHubBranch);
+    const tags = (tagsByWorkPackageId.get(item.id) || []).map((workPackageTag) => ({
+      tag: serializeOpenProjectTag(workPackageTag.tag),
+    }));
     return {
       ...item,
+      tags,
       githubPullRequests,
       githubBranches,
       developmentStatus: computeTaskDevelopmentStatus({
@@ -444,6 +567,139 @@ export async function getTaskStatuses(listId?: string) {
   return getStatuses();
 }
 
+export async function getTaskTypes(listId?: string) {
+  if (listId) {
+    const openProjectProjectId = listOpenProjectProjectId(listId);
+    const page = await openProjectRequest<HalCollection<OpenProjectType>>(
+      `/api/v3/projects/${openProjectProjectId}/types`,
+      { query: { pageSize: 100 } }
+    );
+    return (page._embedded?.elements || []).map((type) => ({
+      id: String(type.id),
+      name: type.name,
+    }));
+  }
+
+  const page = await openProjectRequest<HalCollection<OpenProjectType>>('/api/v3/types', {
+    query: { pageSize: 100 },
+  });
+  return (page._embedded?.elements || []).map((type) => ({
+    id: String(type.id),
+    name: type.name,
+  }));
+}
+
+export async function getOpenProjectTags() {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  await ensureDefaultOpenProjectTags(runtimeWorkspace.id);
+  const tags = await prisma.openProjectTag.findMany({
+    where: { workspaceId: runtimeWorkspace.id },
+    orderBy: { name: 'asc' },
+  });
+  return tags.map(serializeOpenProjectTag);
+}
+
+export async function createOpenProjectTag(input: { name: string; color?: string }) {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  const normalizedName = normalizeOpenProjectTagName(input.name);
+  const name = input.name.trim().replace(/\s+/g, ' ');
+  const tag = await prisma.openProjectTag.upsert({
+    where: {
+      workspaceId_normalizedName: {
+        workspaceId: runtimeWorkspace.id,
+        normalizedName,
+      },
+    },
+    update: {
+      name,
+      color: input.color || undefined,
+    },
+    create: {
+      workspaceId: runtimeWorkspace.id,
+      name,
+      normalizedName,
+      color: input.color || '#868e96',
+    },
+  });
+  return serializeOpenProjectTag(tag);
+}
+
+export async function updateOpenProjectTag(
+  tagId: string,
+  input: { name?: string; color?: string }
+) {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  const existing = await prisma.openProjectTag.findFirstOrThrow({
+    where: { id: tagId, workspaceId: runtimeWorkspace.id },
+  });
+  const nextName = input.name ? input.name.trim().replace(/\s+/g, ' ') : existing.name;
+  const tag = await prisma.openProjectTag.update({
+    where: { id: existing.id },
+    data: {
+      name: nextName,
+      normalizedName: normalizeOpenProjectTagName(nextName),
+      color: input.color || existing.color,
+    },
+  });
+  return serializeOpenProjectTag(tag);
+}
+
+export async function deleteOpenProjectTag(tagId: string) {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  await prisma.openProjectTag.deleteMany({
+    where: { id: tagId, workspaceId: runtimeWorkspace.id },
+  });
+}
+
+export async function getTaskTags(taskId: string) {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  const tags = await prisma.openProjectWorkPackageTag.findMany({
+    where: { workspaceId: runtimeWorkspace.id, workPackageId: taskId },
+    include: { tag: true },
+    orderBy: { tag: { name: 'asc' } },
+  });
+  return tags.map((item) => serializeOpenProjectTag(item.tag));
+}
+
+export async function setTaskTags(taskId: string, tagIds: string[]) {
+  const runtimeWorkspace = await getRuntimeWorkspaceSettings();
+  const uniqueTagIds = [...new Set(tagIds.filter(Boolean))];
+  const workPackage = await openProjectRequest<OpenProjectWorkPackage>(
+    `/api/v3/work_packages/${taskId}`
+  );
+  const projectId = linkTail(workPackage._links.project?.href) || undefined;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.openProjectWorkPackageTag.deleteMany({
+      where: { workspaceId: runtimeWorkspace.id, workPackageId: taskId },
+    });
+    if (!uniqueTagIds.length) {
+      return;
+    }
+    const validTags = await tx.openProjectTag.findMany({
+      where: {
+        workspaceId: runtimeWorkspace.id,
+        id: { in: uniqueTagIds },
+      },
+      select: { id: true },
+    });
+    if (!validTags.length) {
+      return;
+    }
+    await tx.openProjectWorkPackageTag.createMany({
+      data: validTags.map((tag) => ({
+        workspaceId: runtimeWorkspace.id,
+        projectId,
+        workPackageId: taskId,
+        tagId: tag.id,
+      })),
+      skipDuplicates: true,
+    });
+  });
+
+  return getTaskTags(taskId);
+}
+
 async function applyBoardOrder(taskListId: string, items: ReturnType<typeof mapWorkPackage>[]) {
   if (!items.length) {
     return items;
@@ -531,12 +787,14 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
   const openProjectProjectId = projectId ? listOpenProjectProjectId(projectId) : undefined;
   const offset = Math.max(1, Number(query.offset || 1));
   const pageSize = Math.max(1, Math.min(100, Number(query.limit || 50)));
+  const applyLocalFilters = usesLocalTaskFiltering(query);
+  const fetchPageSize = applyLocalFilters ? Math.max(pageSize, 250) : pageSize;
   const users = await usersByHref();
   const page = await openProjectRequest<HalCollection<OpenProjectWorkPackage>>(
     projectId ? `/api/v3/projects/${openProjectProjectId}/work_packages` : `/api/v3/work_packages`,
     {
       query: {
-        pageSize,
+        pageSize: fetchPageSize,
         offset,
         filters: JSON.stringify(await buildWorkPackageFilters(query)),
       },
@@ -562,11 +820,13 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
       );
     });
   const total = Number(page.total || 0);
-  const nextOffset = offset + pageSize;
+  const nextOffset = offset + fetchPageSize;
   const orderedItems = projectId ? await applyBoardOrder(projectId, items) : items;
+  const enrichedItems = await attachRuntimeMetadata(orderedItems);
+  const filteredItems = enrichedItems.filter((item) => matchesLocalTaskFilters(item, query));
   return {
-    items: await attachGitHubBindings(orderedItems),
-    nextCursor: nextOffset <= total ? String(nextOffset) : null,
+    items: applyLocalFilters ? filteredItems.slice(0, pageSize) : filteredItems,
+    nextCursor: !applyLocalFilters && nextOffset <= total ? String(nextOffset) : null,
   };
 }
 
@@ -602,7 +862,7 @@ export async function getTask(taskId: string) {
       users
     )
   );
-  const [enrichedTask, ...enrichedSubtasks] = await attachGitHubBindings([
+  const [enrichedTask, ...enrichedSubtasks] = await attachRuntimeMetadata([
     mapped,
     ...(mapped.subtasks || []),
   ]);
@@ -639,6 +899,14 @@ export async function buildWorkPackageFilters(query: PageQuery) {
 
   if (query.assignees?.length) {
     filters.push({ assignee: { operator: '=', values: query.assignees } });
+  }
+
+  if (query.responsibles?.length) {
+    filters.push({ responsible: { operator: '=', values: query.responsibles } });
+  }
+
+  if (query.typeIds?.length) {
+    filters.push({ type: { operator: '=', values: query.typeIds } });
   }
 
   if (query.priority) {
@@ -780,6 +1048,13 @@ function mapTimeEntry(
   };
 }
 
+function mapTimeEntryActivity(activity: OpenProjectTimeEntryActivity) {
+  return {
+    id: String(activity.id),
+    name: activity.name,
+  };
+}
+
 export async function getTaskTimeEntries(taskId: string) {
   const [page, users] = await Promise.all([
     openProjectRequest<HalCollection<OpenProjectTimeEntry>>('/api/v3/time_entries', {
@@ -806,11 +1081,21 @@ async function firstTimeEntryActivity() {
   return page._embedded?.elements?.[0];
 }
 
+export async function getTimeEntryActivities() {
+  const page = await openProjectRequest<HalCollection<OpenProjectTimeEntryActivity>>(
+    '/api/v3/time_entries/activities',
+    { query: { pageSize: 100 } }
+  );
+  return (page._embedded?.elements || []).map(mapTimeEntryActivity);
+}
+
 export async function addTaskTimeEntry(
   taskId: string,
-  input: { hours: number; spentOn: string; comment?: string }
+  input: { hours: number; spentOn: string; comment?: string; activityId?: string }
 ) {
-  const activity = await firstTimeEntryActivity();
+  const activity = input.activityId
+    ? { _links: { self: { href: `/api/v3/time_entries/activities/${input.activityId}` } } }
+    : await firstTimeEntryActivity();
   const entry = await openProjectRequest<OpenProjectTimeEntry>('/api/v3/time_entries', {
     method: 'POST',
     body: {

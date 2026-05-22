@@ -235,6 +235,7 @@ export function mapWorkPackage(
     fallback?.folderId || fallback?.taskList?.folderId || `${projectId}:work-packages`;
   const rawStatusId = linkId(workPackage._links.status?.href) || '';
   const statusId = statusIdForOpenProjectStatus(fallback?.taskList, rawStatusId);
+  const typeId = linkId(workPackage._links.type?.href) || undefined;
   const assigneeHref = workPackage._links.assignee?.href || undefined;
   const responsibleHref = workPackage._links.responsible?.href || undefined;
   const assignees = [assigneeHref, responsibleHref]
@@ -256,6 +257,8 @@ export function mapWorkPackage(
     description,
     status: workPackage._links.status?.title || 'New',
     priority: priorityFromOpenProject(workPackage._links.priority?.title),
+    typeId,
+    type: workPackage._links.type?.title || undefined,
     startDate: workPackage.startDate || undefined,
     dueDate: workPackage.dueDate || undefined,
     externalSource: 'OPENPROJECT',
@@ -290,6 +293,7 @@ export function mapWorkPackage(
         }
       : undefined,
     assignee: assignees[0],
+    responsible: assignees[1],
     assignees,
     tags: [],
     subtasks: [],

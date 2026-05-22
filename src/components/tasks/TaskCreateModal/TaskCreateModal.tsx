@@ -224,8 +224,8 @@ export function TaskCreateModal({
             </Group>
 
             <Alert color="blue" variant="light" title="OpenProject-backed fields">
-              Tags and custom field definitions are managed in OpenProject. This form only shows
-              fields that can be created reliably through the current runtime adapter.
+              Custom field definitions are managed in OpenProject. Tags can be added right after
+              creation from task detail without creating a duplicate local task.
             </Alert>
           </Stack>
 

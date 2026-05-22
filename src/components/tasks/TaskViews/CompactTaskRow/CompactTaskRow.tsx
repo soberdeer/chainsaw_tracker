@@ -1,5 +1,11 @@
 import { ActionIcon, Badge, Checkbox, Text, Tooltip } from '@mantine/core';
-import { IconCalendarDue, IconChevronRight, IconFlag, IconList } from '@tabler/icons-react';
+import {
+  IconCalendarDue,
+  IconChevronRight,
+  IconFlag,
+  IconGitPullRequest,
+  IconList,
+} from '@tabler/icons-react';
 import { useState } from 'react';
 import { displayStatus, formatDueDate, type Task } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
@@ -92,6 +98,26 @@ export function CompactTaskRow({
             <Badge>{tag.name}</Badge>
           </Tooltip>
         ))}
+        {task.githubPullRequests?.[0] && (
+          <Tooltip
+            label={`GitHub PR #${task.githubPullRequests[0].number}: ${task.githubPullRequests[0].reviewStatus}`}
+          >
+            <Badge
+              color={
+                task.githubPullRequests[0].isMerged
+                  ? 'teal'
+                  : task.githubPullRequests[0].reviewStatus === 'APPROVED'
+                    ? 'green'
+                    : task.githubPullRequests[0].reviewStatus === 'CHANGES_REQUESTED'
+                      ? 'red'
+                      : 'blue'
+              }
+              leftSection={<IconGitPullRequest size="0.75rem" />}
+            >
+              PR
+            </Badge>
+          </Tooltip>
+        )}
       </div>
       <div className={classes.assigneeCell}>
         {task.assignees?.length ? (

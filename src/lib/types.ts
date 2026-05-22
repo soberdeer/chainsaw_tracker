@@ -64,6 +64,8 @@ export type Task = {
   priority: TaskPriority;
   startDate?: string;
   dueDate?: string;
+  typeId?: string;
+  type?: string;
   githubUrl?: string;
   externalSource?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
   externalId?: string;
@@ -82,6 +84,7 @@ export type Task = {
   taskList?: TaskList;
   statusRef?: TaskStatus;
   assignee?: User;
+  responsible?: User;
   assignees: User[];
   tags: { tag: Tag }[];
   subtasks?: Task[];
@@ -179,6 +182,11 @@ export type OpenProjectTimeEntryItem = {
   createdAt?: string;
 };
 
+export type OpenProjectTimeEntryActivityOption = {
+  id: string;
+  name: string;
+};
+
 export type OpenProjectAttachmentItem = {
   id: string;
   fileName: string;
@@ -202,6 +210,11 @@ export type Tag = {
   id: string;
   name: string;
   color: string;
+};
+
+export type OpenProjectTaskTypeOption = {
+  id: string;
+  name: string;
 };
 
 export type Folder = {

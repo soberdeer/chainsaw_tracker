@@ -2,7 +2,7 @@
 
 This tracker uses OpenProject API as the runtime source of truth for projects, work packages, statuses, priorities, assignees, dates, subtasks, and activity.
 
-PostgreSQL is still used for local scaffolding such as demo membership, Local Docs, and optional existing GitHub storage. ClickUp is not a runtime backend.
+PostgreSQL is still used only for local extensions such as auth/session state, Local Docs, saved views, notifications, board order, tag metadata, and optional GitHub storage. ClickUp is not a runtime backend.
 
 ## Required Environment
 
@@ -131,19 +131,22 @@ curl http://localhost:4000/api/openproject/workspaces
 1. Open either `All Tasks`, `My Tasks`, or a concrete project/subproject `Work packages` view.
 2. Confirm tasks load through `GET /api/openproject/tasks`.
 3. Confirm the request includes either `listId` for project-scoped queries or `workspaceId` for cross-project queries, plus a finite `limit`.
-4. Test status, assignee, priority, and search filters.
+4. Test status, assignee, responsible, type, priority, due-by, updated-since, overdue, tag, GitHub PR, and search filters.
 5. Confirm filters are sent to the backend and OpenProject filter builder, not applied only to mock data.
 6. OpenProject-backed filters use API v3 work package filters:
    - status: `{ "status": { "operator": "=", "values": ["<id>"] } }`
    - assignee: `{ "assignee": { "operator": "=", "values": ["<id>"] } }`
+   - responsible: `{ "responsible": { "operator": "=", "values": ["<id>"] } }`
+   - type: `{ "type": { "operator": "=", "values": ["<id>"] } }`
    - priority: `{ "priority": { "operator": "=", "values": ["<id>"] } }`
    - search: `{ "subject": { "operator": "~", "values": ["text"] } }`
-7. Search is subject/title contains search, not a global full-text search across every field.
-8. Use Load more if `nextCursor` exists.
-9. Confirm loading, empty, and error states render honestly.
-10. Confirm filters persist in the URL after refresh.
-11. Save a view with `Private` or `Workspace` visibility and confirm it remains selectable after refresh.
-12. Rename or delete a saved view from the saved view actions menu.
+7. Due-by, overdue, updated-since, tags, and Has GitHub PR are applied by the tracker after the OpenProject page is loaded.
+8. Search is subject/title contains search, not a global full-text search across every field.
+9. Use Load more if `nextCursor` exists.
+10. Confirm loading, empty, and error states render honestly.
+11. Confirm filters persist in the URL after refresh.
+12. Save a view with `Private` or `Workspace` visibility and confirm it remains selectable after refresh.
+13. Rename or delete a saved view from the saved view actions menu.
 
 ## Board View
 
@@ -156,6 +159,7 @@ curl http://localhost:4000/api/openproject/workspaces
 7. Confirm the app sends `PATCH /api/openproject/tasks/:taskId`.
 8. Refresh and confirm the new status remains in OpenProject.
 9. If OpenProject rejects a status move by workflow, confirm the card returns to the previous column and the UI shows a clear error.
+10. Open `All Tasks` or `My Tasks` board mode and confirm the UI keeps status-based drag disabled or read-only for manual ordering outside a concrete project/subproject list.
 
 ## Task Detail
 
@@ -170,6 +174,7 @@ curl http://localhost:4000/api/openproject/workspaces
    - priority
    - start date
    - due date
+   - tags
 5. Refresh the page and confirm changes persisted in OpenProject.
 6. Open `Relations`, `Time`, and `Files` tabs and confirm they load real OpenProject-backed data.
 7. Open `Custom fields` if present.
@@ -178,7 +183,8 @@ curl http://localhost:4000/api/openproject/workspaces
 10. Confirm task detail opens in a right-side drawer and the list or board stays visible behind it.
 11. Press `Esc` and confirm the drawer closes.
 12. Confirm breadcrumbs match the selected workspace / space / folder / list / task path.
-13. Change a field, post a comment, add a relation, log time, or upload a file and confirm a toast appears for success or failure.
+13. Create a new tag from the task detail tag picker, assign it, remove it again, and confirm the badge updates after refresh.
+14. Change a field, post a comment, add a relation, log time, or upload a file and confirm a toast appears for success or failure.
 
 ## Create / Update / Delete
 
@@ -237,16 +243,17 @@ Existing GitHub code is optional and isolated.
 1. Start the tracker with no GitHub env values.
 2. Confirm workspaces, task list, task detail, CRUD, subtasks, and activity still work.
 3. Confirm no fake GitHub tab or repository selector appears until a repository is configured or a synced PR is linked.
-4. Configure a repository in workspace settings, sync pull requests, and open an OpenProject-backed task whose subject/branch contains a supported tracker task key.
-5. Confirm the GitHub tab appears for that work package and shows the linked PR.
+4. Configure a repository in workspace settings, sync pull requests, and open an OpenProject-backed task whose subject or branch contains a supported tracker task key.
+5. Confirm the GitHub tab appears for that work package and shows the linked PR, linked branch, and review status.
 6. Manually link a synced PR by URL or number from task detail and confirm the PR stays attached after refresh.
+7. Unlink the PR and confirm it disappears from the task after refresh.
+8. Re-link the PR, trigger a PR webhook event such as opened or approved, and confirm the OpenProject-backed task receives a notification.
 
 ## Unsupported Features
 
 Currently unsupported or disabled:
 
 - OpenProject Wiki-backed docs.
-- Tags editing.
 - Folder/List creation inside the ClickUp-like hierarchy.
 
 Unsupported features should be hidden or disabled with clear copy. They should not appear as active buttons.
@@ -258,14 +265,15 @@ Unsupported features should be hidden or disabled with clear copy. They should n
 3. Add a relation to another OpenProject work package id.
 4. Refresh and confirm the relation remains visible.
 5. Open the `Time` tab.
-6. Log a time entry with hours, date, and comment.
-7. Refresh and confirm the time entry remains visible.
-8. Open the `Files` tab.
-9. Upload a small attachment.
-10. Refresh and confirm the attachment remains visible and can be opened.
-11. If upload fails, verify the error comes from OpenProject permissions/API and not from fake UI.
-12. If the task has OpenProject custom fields, edit a supported scalar field and blur the input.
-13. Confirm OpenProject accepts the PATCH or returns a validation error in the UI.
+6. Confirm the activity selector loads OpenProject time entry activities.
+7. Pick an activity, then log a time entry with hours, date, and comment.
+8. Refresh and confirm the time entry remains visible with the chosen activity.
+9. Open the `Files` tab.
+10. Upload a small attachment.
+11. Refresh and confirm the attachment remains visible and can be opened.
+12. If upload fails, verify the error comes from OpenProject permissions/API and not from fake UI.
+13. If the task has OpenProject custom fields, edit a supported scalar field and blur the input.
+14. Confirm OpenProject accepts the PATCH or returns a validation error in the UI.
 
 ## Verify Assigned To Me
 

@@ -136,26 +136,28 @@ model User {
 }
 
 model Workspace {
-  id                 String                      @id @default(cuid())
-  name               String
-  slug               String                      @unique
-  description        String?
-  avatarUrl          String?
-  color              String?
-  createdAt          DateTime                    @default(now())
-  updatedAt          DateTime                    @default(now()) @updatedAt
-  spaces             Space[]
-  memberships        Membership[]
-  invites            Invite[]
-  permissionSets     PermissionSet[]
-  githubIntegration  GithubIntegration?
-  githubRepositories GitHubRepository[]
-  tags               Tag[]
-  milestones         Milestone[]
-  activityLogs       ActivityLog[]
-  savedViews         SavedView[]
-  migrationRuns      MigrationRun[]
-  boardOrders        OpenProjectBoardCardOrder[]
+  id                         String                      @id @default(cuid())
+  name                       String
+  slug                       String                      @unique
+  description                String?
+  avatarUrl                  String?
+  color                      String?
+  createdAt                  DateTime                    @default(now())
+  updatedAt                  DateTime                    @default(now()) @updatedAt
+  spaces                     Space[]
+  memberships                Membership[]
+  invites                    Invite[]
+  permissionSets             PermissionSet[]
+  githubIntegration          GithubIntegration?
+  githubRepositories         GitHubRepository[]
+  tags                       Tag[]
+  openProjectTags            OpenProjectTag[]
+  milestones                 Milestone[]
+  activityLogs               ActivityLog[]
+  savedViews                 SavedView[]
+  migrationRuns              MigrationRun[]
+  boardOrders                OpenProjectBoardCardOrder[]
+  openProjectWorkPackageTags OpenProjectWorkPackageTag[]
 }
 
 model Membership {
@@ -219,6 +221,38 @@ model OpenProjectBoardCardOrder {
   @@unique([workspaceId, taskListId, statusId, workPackageId])
   @@index([workspaceId, taskListId, statusId, position])
   @@index([workspaceId, taskListId, workPackageId])
+}
+
+model OpenProjectTag {
+  id             String                      @id @default(cuid())
+  workspaceId    String
+  name           String
+  normalizedName String
+  color          String
+  createdAt      DateTime                    @default(now())
+  updatedAt      DateTime                    @updatedAt
+  workspace      Workspace                   @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  workPackages   OpenProjectWorkPackageTag[]
+
+  @@unique([workspaceId, normalizedName])
+  @@index([workspaceId, name])
+}
+
+model OpenProjectWorkPackageTag {
+  id            String         @id @default(cuid())
+  workspaceId   String
+  projectId     String?
+  workPackageId String
+  tagId         String
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+  workspace     Workspace      @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  tag           OpenProjectTag @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@unique([workspaceId, workPackageId, tagId])
+  @@index([workspaceId, projectId])
+  @@index([workspaceId, workPackageId])
+  @@index([tagId])
 }
 
 model MigrationRun {

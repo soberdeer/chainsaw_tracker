@@ -1,8 +1,10 @@
 import {
+  addTaskTimeEntry,
   buildWorkPackageFilters,
   getProjects,
   getTasks,
   inferCustomFieldKind,
+  matchesLocalTaskFilters,
 } from '../server/openproject/service.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -45,6 +47,19 @@ test('buildWorkPackageFilters maps OpenProject filters', async () => {
     { assignee: { operator: '=', values: ['4'] } },
     { priority: { operator: '=', values: ['9'] } },
     { subject: { operator: '~', values: ['prototype'] } },
+  ]);
+});
+
+test('buildWorkPackageFilters includes responsible and type filters', async () => {
+  const filters = await buildWorkPackageFilters({
+    responsibles: ['12'],
+    typeIds: ['7'],
+  });
+
+  assert.deepEqual(filters, [
+    { status: { operator: '*', values: [] } },
+    { responsible: { operator: '=', values: ['12'] } },
+    { type: { operator: '=', values: ['7'] } },
   ]);
 });
 
@@ -140,4 +155,85 @@ test('inferCustomFieldKind recognises editable scalar field types', () => {
   assert.equal(inferCustomFieldKind(7.5), 'float');
   assert.equal(inferCustomFieldKind(true), 'boolean');
   assert.equal(inferCustomFieldKind({ title: 'Option' }), 'readonly');
+});
+
+test('matchesLocalTaskFilters handles overdue, updated, tags, GitHub PR, and due-by filters', () => {
+  const task = {
+    id: '42',
+    title: 'Prototype combat pass',
+    status: 'In progress',
+    priority: 'HIGH',
+    tags: [{ tag: { id: 'tag-a', name: 'bug', color: '#e03131' } }],
+    githubPullRequests: [
+      {
+        id: 'pr-1',
+        number: 12,
+        title: 'PR',
+        url: 'https://github.com/demo/game/pull/12',
+        state: 'OPEN',
+        reviewStatus: 'IN_REVIEW',
+      },
+    ],
+    dueDate: '2026-05-10',
+    updatedAt: '2026-05-21T12:00:00.000Z',
+  } as any;
+
+  assert.equal(matchesLocalTaskFilters(task, { overdue: true }), true);
+  assert.equal(matchesLocalTaskFilters(task, { dueBefore: '2026-05-11' }), true);
+  assert.equal(matchesLocalTaskFilters(task, { updatedSince: '2026-05-20' }), true);
+  assert.equal(matchesLocalTaskFilters(task, { tagIds: ['tag-a'] }), true);
+  assert.equal(matchesLocalTaskFilters(task, { hasGitHubPr: true }), true);
+  assert.equal(matchesLocalTaskFilters(task, { tagIds: ['tag-missing'] }), false);
+  assert.equal(matchesLocalTaskFilters(task, { dueBefore: '2026-05-09' }), false);
+  assert.equal(matchesLocalTaskFilters(task, { updatedSince: '2026-05-22' }), false);
+});
+
+test('addTaskTimeEntry sends the selected OpenProject activity id', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+  const requests: Array<{ url: URL; body?: any }> = [];
+
+  globalThis.fetch = (async (input: FetchInput, init?: RequestInit) => {
+    const url = new URL(String(input));
+    const body =
+      typeof init?.body === 'string'
+        ? JSON.parse(init.body)
+        : init?.body
+          ? String(init.body)
+          : null;
+    requests.push({ url, body });
+
+    if (url.pathname === '/api/v3/time_entries' && init?.method === 'POST') {
+      return new Response(
+        JSON.stringify({
+          id: 17,
+          hours: 'PT1H',
+          spentOn: '2026-05-22',
+          comment: { raw: 'Prototype pass' },
+          createdAt: '2026-05-22T10:00:00.000Z',
+          _links: {
+            user: { href: '/api/v3/users/1' },
+            activity: { href: '/api/v3/time_entries/activities/7', title: 'Development' },
+          },
+        }),
+        { status: 201 }
+      );
+    }
+
+    if (url.pathname === '/api/v3/users') {
+      return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
+    }
+
+    return new Response(JSON.stringify({ message: `Unexpected ${url.pathname}` }), { status: 404 });
+  }) as typeof fetch;
+
+  await addTaskTimeEntry('42', {
+    hours: 1,
+    spentOn: '2026-05-22',
+    comment: 'Prototype pass',
+    activityId: '7',
+  });
+
+  const request = requests.find(({ url }) => url.pathname === '/api/v3/time_entries');
+  assert.ok(request);
+  assert.equal(request?.body?._links?.activity?.href, '/api/v3/time_entries/activities/7');
 });

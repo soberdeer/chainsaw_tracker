@@ -287,14 +287,88 @@ export async function upsertPullRequest(
   };
 }
 
-export async function logPrActivity(pr: GitHubPullRequest, type: ActivityEventType) {
-  if (!pr.taskId) {
+function notificationTitleForPrEvent(pr: GitHubPullRequest, type: ActivityEventType) {
+  switch (type) {
+    case 'GITHUB_PR_OPENED':
+      return `PR opened: #${pr.number}`;
+    case 'GITHUB_PR_READY_FOR_REVIEW':
+      return `PR ready for review: #${pr.number}`;
+    case 'GITHUB_PR_REVIEW_REQUESTED':
+      return `Review requested: #${pr.number}`;
+    case 'GITHUB_PR_APPROVED':
+      return `PR approved: #${pr.number}`;
+    case 'GITHUB_PR_CHANGES_REQUESTED':
+      return `Changes requested: #${pr.number}`;
+    case 'GITHUB_PR_REVIEW_COMMENTED':
+      return `PR reviewed: #${pr.number}`;
+    case 'GITHUB_PR_MERGED':
+      return `PR merged: #${pr.number}`;
+    case 'GITHUB_PR_CLOSED':
+      return `PR closed: #${pr.number}`;
+    default:
+      return `GitHub PR #${pr.number}`;
+  }
+}
+
+async function notifyOpenProjectWorkPackageGitHubEvent(
+  pr: Pick<GitHubPullRequest, 'id' | 'number' | 'url' | 'workPackageId'>,
+  type: ActivityEventType
+) {
+  if (!pr.workPackageId) {
     return null;
   }
-  return logTaskActivity({
-    taskId: pr.taskId,
-    type,
-    message: `GitHub PR #${pr.number}: ${type}`,
-    metadata: { pullRequestId: pr.id, number: pr.number, url: pr.url },
+
+  const workPackage = await openProjectRequest<OpenProjectWorkPackage>(
+    `/api/v3/work_packages/${pr.workPackageId}`
+  ).catch(() => null);
+  if (!workPackage) {
+    return null;
+  }
+
+  const linkedOpenProjectUserIds = [
+    workPackage._links.assignee?.href,
+    workPackage._links.responsible?.href,
+  ]
+    .map((href) => href?.split('/').filter(Boolean).at(-1))
+    .filter((value): value is string => Boolean(value));
+  if (!linkedOpenProjectUserIds.length) {
+    return null;
+  }
+
+  const recipients = await prisma.user.findMany({
+    where: {
+      openProjectUserId: { in: linkedOpenProjectUserIds },
+    },
+    select: { id: true },
   });
+  if (!recipients.length) {
+    return null;
+  }
+
+  return prisma.notification.createMany({
+    data: recipients.map((user) => ({
+      userId: user.id,
+      type,
+      title: notificationTitleForPrEvent(pr as GitHubPullRequest, type),
+      message: pr.url,
+      workPackageId: pr.workPackageId,
+    })),
+  });
+}
+
+export async function logPrActivity(pr: GitHubPullRequest, type: ActivityEventType) {
+  if (pr.taskId) {
+    return logTaskActivity({
+      taskId: pr.taskId,
+      type,
+      message: `GitHub PR #${pr.number}: ${type}`,
+      metadata: { pullRequestId: pr.id, number: pr.number, url: pr.url },
+    });
+  }
+
+  if (pr.workPackageId) {
+    await notifyOpenProjectWorkPackageGitHubEvent(pr, type);
+  }
+
+  return null;
 }

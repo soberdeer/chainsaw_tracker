@@ -6,6 +6,7 @@ import {
   Breadcrumbs,
   Box,
   Button,
+  Checkbox,
   Drawer,
   Group,
   Loader,
@@ -51,6 +52,8 @@ import {
   getImportReport,
   getImportReports,
   getNotifications,
+  getOpenProjectTags,
+  getOpenProjectTaskTypes,
   getWorkspaceOpenProjectStatus,
   getSavedViews,
   getTasks,
@@ -84,7 +87,9 @@ import {
   type MigrationRun,
   type NotificationItem,
   type OpenProjectConnectionStatus,
+  type OpenProjectTaskTypeOption,
   type SavedView,
+  type Tag,
   type User,
   type Workspace,
 } from '@/lib';
@@ -125,6 +130,13 @@ function readInitialQuery() {
     statusFilter: params.get('status') || null,
     priorityFilter: params.get('priority') || null,
     assigneeFilter: params.get('assignees')?.split(',').filter(Boolean) || [],
+    responsibleFilter: params.get('responsibles')?.split(',').filter(Boolean) || [],
+    typeFilter: params.get('types')?.split(',').filter(Boolean) || [],
+    tagFilter: params.get('tags')?.split(',').filter(Boolean) || [],
+    dueBeforeFilter: params.get('dueBefore') || '',
+    updatedSinceFilter: params.get('updatedSince') || '',
+    overdueFilter: params.get('overdue') === 'true',
+    hasGitHubPrFilter: params.get('hasGitHubPr') === 'true',
     savedViewId: params.get('savedView') || null,
   };
 }
@@ -155,6 +167,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [taskSearch, setTaskSearch] = useState(initialQuery.taskSearch);
   const [statusFilter, setStatusFilter] = useState<string | null>(initialQuery.statusFilter);
   const [assigneeFilter, setAssigneeFilter] = useState<string[]>(initialQuery.assigneeFilter);
+  const [responsibleFilter, setResponsibleFilter] = useState<string[]>(
+    initialQuery.responsibleFilter
+  );
+  const [typeFilter, setTypeFilter] = useState<string[]>(initialQuery.typeFilter);
+  const [tagFilter, setTagFilter] = useState<string[]>(initialQuery.tagFilter);
+  const [dueBeforeFilter, setDueBeforeFilter] = useState(initialQuery.dueBeforeFilter);
+  const [updatedSinceFilter, setUpdatedSinceFilter] = useState(initialQuery.updatedSinceFilter);
+  const [overdueFilter, setOverdueFilter] = useState(initialQuery.overdueFilter);
+  const [hasGitHubPrFilter, setHasGitHubPrFilter] = useState(initialQuery.hasGitHubPrFilter);
   const [priorityFilter, setPriorityFilter] = useState<string | null>(initialQuery.priorityFilter);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
@@ -201,6 +222,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationUnread, setNotificationUnread] = useState(0);
   const [importReports, setImportReports] = useState<MigrationRun[]>([]);
+  const [taskTypes, setTaskTypes] = useState<OpenProjectTaskTypeOption[]>([]);
+  const [openProjectTags, setOpenProjectTags] = useState<Tag[]>([]);
   const [activeImportReport, setActiveImportReport] = useState<MigrationRun | null>(null);
   const [connectionStatus, setConnectionStatus] = useState<OpenProjectConnectionStatus | null>(
     null
@@ -287,6 +310,17 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     assigneeFilter.length
       ? params.set('assignees', assigneeFilter.join(','))
       : params.delete('assignees');
+    responsibleFilter.length
+      ? params.set('responsibles', responsibleFilter.join(','))
+      : params.delete('responsibles');
+    typeFilter.length ? params.set('types', typeFilter.join(',')) : params.delete('types');
+    tagFilter.length ? params.set('tags', tagFilter.join(',')) : params.delete('tags');
+    dueBeforeFilter ? params.set('dueBefore', dueBeforeFilter) : params.delete('dueBefore');
+    updatedSinceFilter
+      ? params.set('updatedSince', updatedSinceFilter)
+      : params.delete('updatedSince');
+    overdueFilter ? params.set('overdue', 'true') : params.delete('overdue');
+    hasGitHubPrFilter ? params.set('hasGitHubPr', 'true') : params.delete('hasGitHubPr');
     activeSavedViewId ? params.set('savedView', activeSavedViewId) : params.delete('savedView');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
     if (nextSearch !== location.search) {
@@ -301,6 +335,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   }, [
     activeSavedViewId,
     assigneeFilter,
+    responsibleFilter,
+    typeFilter,
+    tagFilter,
+    dueBeforeFilter,
+    updatedSinceFilter,
+    overdueFilter,
+    hasGitHubPrFilter,
     location.pathname,
     location.search,
     navigate,
@@ -446,6 +487,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const workspaceWideLabel =
     workspaceWideScope === 'mine' ? 'My Tasks' : workspaceWideScope === 'all' ? 'All Tasks' : null;
   const isWorkspaceWide = Boolean(workspaceWideScope);
+  const canManageBoardOrder = canWriteTasks && !isWorkspaceWide && Boolean(activeTaskList);
   const checklist = buildWorkspaceChecklist({
     connectionStatus,
     latestImport: latestImportReport,
@@ -454,7 +496,17 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   });
   const docsAvailable = Boolean(activeSpace?.documents.length);
   const filtersActive = Boolean(
-    taskSearch.trim() || statusFilter || priorityFilter || assigneeFilter.length
+    taskSearch.trim() ||
+    statusFilter ||
+    priorityFilter ||
+    assigneeFilter.length ||
+    responsibleFilter.length ||
+    typeFilter.length ||
+    tagFilter.length ||
+    dueBeforeFilter ||
+    updatedSinceFilter ||
+    overdueFilter ||
+    hasGitHubPrFilter
   );
   const emptyState = describeTaskCollectionState({
     hasLinkedOpenProjectUser: Boolean(currentOpenProjectUser),
@@ -508,6 +560,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           listId: isWorkspaceWide ? undefined : activeTaskList?.id,
           statusId: statusFilter || undefined,
           assigneeIds: effectiveAssigneeIds,
+          responsibleIds: responsibleFilter.length ? responsibleFilter : undefined,
+          typeIds: typeFilter.length ? typeFilter : undefined,
+          dueBefore: dueBeforeFilter || undefined,
+          overdue: overdueFilter || undefined,
+          updatedSince: updatedSinceFilter || undefined,
+          tagIds: tagFilter.length ? tagFilter : undefined,
+          hasGitHubPr: hasGitHubPrFilter || undefined,
           priority: priorityFilter || undefined,
           search: taskSearch,
           limit: 50,
@@ -527,6 +586,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       activeTaskList?.id,
       statusFilter,
       assigneeFilter,
+      responsibleFilter,
+      typeFilter,
+      dueBeforeFilter,
+      updatedSinceFilter,
+      tagFilter,
+      overdueFilter,
+      hasGitHubPrFilter,
       priorityFilter,
       taskSearch,
       isWorkspaceWide,
@@ -544,6 +610,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     getSavedViews(workspace.id)
       .then(setSavedViews)
       .catch(() => setSavedViews([]));
+    getOpenProjectTags(workspace.id)
+      .then(setOpenProjectTags)
+      .catch(() => setOpenProjectTags([]));
     getNotifications()
       .then((page) => {
         setNotifications(page.items);
@@ -564,6 +633,12 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       setConnectionStatus(null);
     }
   }, [workspace?.id, refreshKey, canManageWorkspace]);
+
+  useEffect(() => {
+    getOpenProjectTaskTypes(activeTaskList?.id)
+      .then(setTaskTypes)
+      .catch(() => setTaskTypes([]));
+  }, [activeTaskList?.id, refreshKey]);
 
   const addTask = async (statusId: string) => {
     if (!activeTaskList || !canWriteTasks) return;
@@ -658,6 +733,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     search: taskSearch,
     statusId: statusFilter,
     assigneeIds: assigneeFilter,
+    responsibleIds: responsibleFilter,
+    typeIds: typeFilter,
+    tagIds: tagFilter,
+    dueBefore: dueBeforeFilter || null,
+    updatedSince: updatedSinceFilter || null,
+    overdue: overdueFilter,
+    hasGitHubPr: hasGitHubPrFilter,
     priority: priorityFilter,
     scope: workspaceWideScope || 'list',
     viewType: taskView,
@@ -691,6 +773,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       search?: string;
       statusId?: string | null;
       assigneeIds?: string[];
+      responsibleIds?: string[];
+      typeIds?: string[];
+      tagIds?: string[];
+      dueBefore?: string | null;
+      updatedSince?: string | null;
+      overdue?: boolean;
+      hasGitHubPr?: boolean;
       priority?: string | null;
       scope?: string;
       viewType?: string | null;
@@ -698,6 +787,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     setTaskSearch(filters.search || '');
     setStatusFilter(filters.statusId || null);
     setAssigneeFilter(filters.assigneeIds || []);
+    setResponsibleFilter(filters.responsibleIds || []);
+    setTypeFilter(filters.typeIds || []);
+    setTagFilter(filters.tagIds || []);
+    setDueBeforeFilter(filters.dueBefore || '');
+    setUpdatedSinceFilter(filters.updatedSince || '');
+    setOverdueFilter(Boolean(filters.overdue));
+    setHasGitHubPrFilter(Boolean(filters.hasGitHubPr));
     setPriorityFilter(filters.priority || null);
     if (
       filters.viewType === 'board' ||
@@ -802,8 +898,53 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     setStatusFilter(null);
     setPriorityFilter(null);
     setAssigneeFilter([]);
+    setResponsibleFilter([]);
+    setTypeFilter([]);
+    setTagFilter([]);
+    setDueBeforeFilter('');
+    setUpdatedSinceFilter('');
+    setOverdueFilter(false);
+    setHasGitHubPrFilter(false);
     setActiveSavedViewId(null);
   };
+
+  const activeFilterChips = [
+    statusFilter
+      ? {
+          key: 'status',
+          label: `Status: ${statuses.find((item) => item.id === statusFilter)?.name || statusFilter}`,
+        }
+      : null,
+    priorityFilter ? { key: 'priority', label: `Priority: ${priorityFilter}` } : null,
+    assigneeFilter.length
+      ? { key: 'assignees', label: `Assignees: ${assigneeFilter.length}` }
+      : null,
+    responsibleFilter.length
+      ? { key: 'responsibles', label: `Responsible: ${responsibleFilter.length}` }
+      : null,
+    typeFilter.length
+      ? {
+          key: 'types',
+          label: `Type: ${typeFilter
+            .map((typeId) => taskTypes.find((item) => item.id === typeId)?.name || typeId)
+            .join(', ')}`,
+        }
+      : null,
+    tagFilter.length
+      ? {
+          key: 'tags',
+          label: `Tags: ${tagFilter
+            .map((tagId) => openProjectTags.find((item) => item.id === tagId)?.name || tagId)
+            .join(', ')}`,
+        }
+      : null,
+    dueBeforeFilter ? { key: 'dueBefore', label: `Due by: ${dueBeforeFilter}` } : null,
+    updatedSinceFilter
+      ? { key: 'updatedSince', label: `Updated since: ${updatedSinceFilter}` }
+      : null,
+    overdueFilter ? { key: 'overdue', label: 'Overdue' } : null,
+    hasGitHubPrFilter ? { key: 'github', label: 'Has GitHub PR' } : null,
+  ].filter(Boolean) as Array<{ key: string; label: string }>;
 
   const toggleSpace = (id: string) => {
     setExpandedSpaceIds((current) => {
@@ -1785,6 +1926,71 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
                         w="9rem"
                       />
+                      <MultiSelect
+                        value={responsibleFilter}
+                        onChange={setResponsibleFilter}
+                        clearable
+                        placeholder="Responsible"
+                        data={availableAssignees.map((user) => ({
+                          value: user.id,
+                          label: user.name,
+                        }))}
+                        w="14rem"
+                        searchable
+                        maxValues={1}
+                      />
+                      <MultiSelect
+                        value={typeFilter}
+                        onChange={setTypeFilter}
+                        clearable
+                        placeholder="Type"
+                        data={taskTypes.map((type) => ({
+                          value: type.id,
+                          label: type.name,
+                        }))}
+                        w="12rem"
+                        searchable
+                      />
+                      <MultiSelect
+                        value={tagFilter}
+                        onChange={setTagFilter}
+                        clearable
+                        placeholder="Tags"
+                        data={openProjectTags.map((tag) => ({
+                          value: tag.id,
+                          label: tag.name,
+                        }))}
+                        w="13rem"
+                        searchable
+                      />
+                      <TextInput
+                        type="date"
+                        value={dueBeforeFilter}
+                        onChange={(event) => setDueBeforeFilter(event.currentTarget.value)}
+                        placeholder="Due by"
+                        w="10rem"
+                      />
+                      <TextInput
+                        type="date"
+                        value={updatedSinceFilter}
+                        onChange={(event) => setUpdatedSinceFilter(event.currentTarget.value)}
+                        placeholder="Updated since"
+                        w="11rem"
+                      />
+                      <Tooltip label="Show overdue tasks only">
+                        <Checkbox
+                          label="Overdue"
+                          checked={overdueFilter}
+                          onChange={(event) => setOverdueFilter(event.currentTarget.checked)}
+                        />
+                      </Tooltip>
+                      <Tooltip label="Show tasks linked to a GitHub pull request">
+                        <Checkbox
+                          label="Has PR"
+                          checked={hasGitHubPrFilter}
+                          onChange={(event) => setHasGitHubPrFilter(event.currentTarget.checked)}
+                        />
+                      </Tooltip>
                       <Tooltip label="Open search">
                         <ActionIcon
                           className={classes.pillIcon}
@@ -1795,7 +2001,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                           <IconSearch size="1.25rem" />
                         </ActionIcon>
                       </Tooltip>
-                      {canWriteTasks && (
+                      {canWriteTasks && !isWorkspaceWide && activeTaskList && (
                         <Button
                           color="teal"
                           rightSection={<IconChevronDown size="1rem" />}
@@ -1806,6 +2012,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       )}
                     </Group>
                   </Group>
+                  {activeFilterChips.length > 0 && (
+                    <Group gap="xs">
+                      {activeFilterChips.map((chip) => (
+                        <Badge key={chip.key} variant="light">
+                          {chip.label}
+                        </Badge>
+                      ))}
+                    </Group>
+                  )}
                   {tasksError && (
                     <Alert color="red" title="Could not load tasks">
                       {tasksError}
@@ -1888,11 +2103,23 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                 <Stack gap={0}>
                   <Group className={classes.taskToolbar} justify="space-between">
                     <Group gap="xs">
-                      <Tooltip label="Board columns are OpenProject statuses. Dragging changes status only; card order is not persisted.">
+                      <Tooltip
+                        label={
+                          isWorkspaceWide
+                            ? 'Aggregate board views reuse OpenProject statuses, but manual card order is only stored inside a concrete project work package list.'
+                            : 'Board columns are OpenProject statuses. Dragging changes status and local card order is persisted for this project list.'
+                        }
+                      >
                         <Badge variant="light">OpenProject status board</Badge>
                       </Tooltip>
-                      {!canWriteTasks && (
-                        <Tooltip label="Only workspace owners and admins can move tasks in service-token mode.">
+                      {!canManageBoardOrder && (
+                        <Tooltip
+                          label={
+                            canWriteTasks
+                              ? 'Reordering is only available inside a concrete OpenProject list view, not in aggregate boards.'
+                              : 'Your current workspace role is read-only for OpenProject-backed task changes.'
+                          }
+                        >
                           <Badge color="yellow" variant="light">
                             Read-only
                           </Badge>
@@ -1900,7 +2127,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       )}
                     </Group>
                     <Group gap="xs">
-                      {canWriteTasks && (
+                      {canWriteTasks && !isWorkspaceWide && activeTaskList && (
                         <Button
                           color="teal"
                           rightSection={<IconChevronDown size="1rem" />}
@@ -1927,7 +2154,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       onAddTask={addTask}
                       onOpenTask={openTask}
                       onMoveTask={moveTask}
-                      canWriteTasks={canWriteTasks}
+                      canWriteTasks={canManageBoardOrder}
                     />
                   )}
                 </Stack>
