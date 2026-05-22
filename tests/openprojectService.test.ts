@@ -1,3 +1,4 @@
+import { prisma } from '../server/db.js';
 import {
   addTaskTimeEntry,
   buildWorkPackageFilters,
@@ -13,12 +14,43 @@ type FetchInput = Parameters<typeof fetch>[0];
 
 const originalFetch = globalThis.fetch;
 const originalToken = process.env.OPENPROJECT_API_TOKEN;
+const originalWorkspaceFindUnique = prisma.workspace.findUnique;
+const originalOpenProjectWorkPackageTagFindMany = prisma.openProjectWorkPackageTag.findMany;
+const originalOpenProjectBoardCardOrderFindMany = prisma.openProjectBoardCardOrder.findMany;
+const originalGitHubPullRequestFindMany = prisma.gitHubPullRequest.findMany;
+const originalGitHubBranchFindMany = prisma.gitHubBranch.findMany;
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
   if (originalToken === undefined) delete process.env.OPENPROJECT_API_TOKEN;
   else process.env.OPENPROJECT_API_TOKEN = originalToken;
+  (prisma.workspace as any).findUnique = originalWorkspaceFindUnique;
+  (prisma.openProjectWorkPackageTag as any).findMany = originalOpenProjectWorkPackageTagFindMany;
+  (prisma.openProjectBoardCardOrder as any).findMany = originalOpenProjectBoardCardOrderFindMany;
+  (prisma.gitHubPullRequest as any).findMany = originalGitHubPullRequestFindMany;
+  (prisma.gitHubBranch as any).findMany = originalGitHubBranchFindMany;
 });
+
+function makeWorkPackage(id: number, overrides: Record<string, unknown> = {}) {
+  return {
+    id,
+    subject: `CL-PROTO-${id} Task ${id}`,
+    description: { raw: '' },
+    startDate: null,
+    dueDate: null,
+    createdAt: '2026-05-20T10:00:00.000Z',
+    updatedAt: '2026-05-20T10:00:00.000Z',
+    _links: {
+      self: { href: `/api/v3/work_packages/${id}` },
+      project: { href: '/api/v3/projects/42', title: 'Prototype' },
+      status: { href: '/api/v3/statuses/1', title: 'New' },
+      priority: { href: '/api/v3/priorities/7', title: 'Normal' },
+      type: { href: '/api/v3/types/1', title: 'Task' },
+      ...((overrides._links as Record<string, unknown> | undefined) || {}),
+    },
+    ...overrides,
+  };
+}
 
 test('buildWorkPackageFilters maps OpenProject filters', async () => {
   process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
@@ -236,4 +268,177 @@ test('addTaskTimeEntry sends the selected OpenProject activity id', async () => 
   const request = requests.find(({ url }) => url.pathname === '/api/v3/time_entries');
   assert.ok(request);
   assert.equal(request?.body?._links?.activity?.href, '/api/v3/time_entries/activities/7');
+});
+
+test('getTasks scans additional OpenProject pages for local tag filters', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+  const workPackageRequests: string[] = [];
+
+  (prisma.workspace as any).findUnique = async () => ({ id: 'ws-1' });
+  (prisma.openProjectWorkPackageTag as any).findMany = async ({ where }: any) =>
+    (where.workPackageId.in as string[]).includes('260')
+      ? [
+          {
+            workPackageId: '260',
+            tag: { id: 'tag-bug', name: 'bug', color: '#e03131' },
+          },
+        ]
+      : [];
+  (prisma.gitHubPullRequest as any).findMany = async () => [];
+  (prisma.gitHubBranch as any).findMany = async () => [];
+
+  globalThis.fetch = (async (input: FetchInput) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/v3/users') {
+      return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
+    }
+
+    if (url.pathname === '/api/v3/work_packages') {
+      workPackageRequests.push(url.searchParams.get('offset') || '1');
+      const offset = Number(url.searchParams.get('offset') || '1');
+      const pageSize = Number(url.searchParams.get('pageSize') || '100');
+      const start = offset;
+      const end = Math.min(offset + pageSize - 1, 300);
+      const elements = Array.from({ length: end - start + 1 }, (_, index) =>
+        makeWorkPackage(start + index)
+      );
+      return new Response(
+        JSON.stringify({
+          total: 300,
+          _embedded: { elements },
+        }),
+        { status: 200 }
+      );
+    }
+
+    return new Response(JSON.stringify({ message: `Unexpected ${url.pathname}` }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+
+  const page = await getTasks(undefined, {
+    offset: 1,
+    limit: 1,
+    tagIds: ['tag-bug'],
+  });
+
+  assert.deepEqual(workPackageRequests, ['1', '101', '201']);
+  assert.equal(page.items[0]?.id, '260');
+  assert.equal(page.nextCursor, '261');
+});
+
+test('getTasks scans additional OpenProject pages for local GitHub PR filters', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+
+  (prisma.workspace as any).findUnique = async () => ({ id: 'ws-1' });
+  (prisma.openProjectWorkPackageTag as any).findMany = async () => [];
+  (prisma.gitHubPullRequest as any).findMany = async ({ where }: any) =>
+    (where.workPackageId.in as string[]).includes('255')
+      ? [
+          {
+            id: 'pr-255',
+            repositoryId: 'repo-1',
+            taskId: null,
+            workPackageId: '255',
+            number: 255,
+            title: 'PR 255',
+            url: 'https://github.com/demo/game/pull/255',
+            state: 'OPEN',
+            draft: false,
+            isMerged: false,
+            baseBranch: 'main',
+            headBranch: 'feature/CL-PROTO-255',
+            headSha: 'abc',
+            authorLogin: 'demo',
+            reviewStatus: 'IN_REVIEW',
+            syncedAt: new Date(),
+            repository: {
+              id: 'repo-1',
+              workspaceId: 'ws-1',
+              owner: 'demo',
+              repo: 'game',
+              defaultBranch: 'main',
+            },
+          },
+        ]
+      : [];
+  (prisma.gitHubBranch as any).findMany = async () => [];
+
+  globalThis.fetch = (async (input: FetchInput) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/v3/users') {
+      return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
+    }
+
+    if (url.pathname === '/api/v3/work_packages') {
+      const offset = Number(url.searchParams.get('offset') || '1');
+      const pageSize = Number(url.searchParams.get('pageSize') || '100');
+      const start = offset;
+      const end = Math.min(offset + pageSize - 1, 260);
+      const elements = Array.from({ length: end - start + 1 }, (_, index) =>
+        makeWorkPackage(start + index)
+      );
+      return new Response(
+        JSON.stringify({
+          total: 260,
+          _embedded: { elements },
+        }),
+        { status: 200 }
+      );
+    }
+
+    return new Response(JSON.stringify({ message: `Unexpected ${url.pathname}` }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+
+  const page = await getTasks(undefined, {
+    offset: 1,
+    limit: 1,
+    hasGitHubPr: true,
+  });
+
+  assert.equal(page.items[0]?.id, '255');
+  assert.equal(page.nextCursor, '256');
+});
+
+test('getTasks keeps the fast single-page path when no local filters are active', async () => {
+  process.env.OPENPROJECT_API_TOKEN = 'op_test_token';
+  let workPackageCalls = 0;
+
+  (prisma.workspace as any).findUnique = async () => ({ id: 'ws-1' });
+  (prisma.openProjectBoardCardOrder as any).findMany = async () => [];
+  (prisma.openProjectWorkPackageTag as any).findMany = async () => [];
+  (prisma.gitHubPullRequest as any).findMany = async () => [];
+  (prisma.gitHubBranch as any).findMany = async () => [];
+
+  globalThis.fetch = (async (input: FetchInput) => {
+    const url = new URL(String(input));
+    if (url.pathname === '/api/v3/users') {
+      return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
+    }
+    if (url.pathname === '/api/v3/projects/42/work_packages') {
+      workPackageCalls += 1;
+      return new Response(
+        JSON.stringify({
+          total: 2,
+          _embedded: { elements: [makeWorkPackage(1), makeWorkPackage(2)] },
+        }),
+        { status: 200 }
+      );
+    }
+    return new Response(JSON.stringify({ message: `Unexpected ${url.pathname}` }), {
+      status: 404,
+    });
+  }) as typeof fetch;
+
+  const page = await getTasks('42', {
+    offset: 1,
+    limit: 2,
+    status: 'op-status:12:status',
+  });
+
+  assert.equal(workPackageCalls, 1);
+  assert.equal(page.items.length, 2);
+  assert.equal(page.nextCursor, null);
 });

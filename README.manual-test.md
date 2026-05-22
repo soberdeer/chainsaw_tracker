@@ -147,6 +147,9 @@ curl http://localhost:4000/api/openproject/workspaces
 11. Confirm filters persist in the URL after refresh.
 12. Save a view with `Private` or `Workspace` visibility and confirm it remains selectable after refresh.
 13. Rename or delete a saved view from the saved view actions menu.
+14. Pick a tag that is assigned only to a task beyond the first OpenProject page of results and confirm the filter still finds it.
+15. Pick `Has GitHub PR` for a task that is not on the first OpenProject page and confirm the filter still finds it.
+16. Repeat the same tag and `Has GitHub PR` checks in both `All Tasks` and `My Tasks`.
 
 ## Board View
 
@@ -160,6 +163,7 @@ curl http://localhost:4000/api/openproject/workspaces
 8. Refresh and confirm the new status remains in OpenProject.
 9. If OpenProject rejects a status move by workflow, confirm the card returns to the previous column and the UI shows a clear error.
 10. Open `All Tasks` or `My Tasks` board mode and confirm the UI keeps status-based drag disabled or read-only for manual ordering outside a concrete project/subproject list.
+11. Confirm README and the UI copy both describe manual board order as a concrete project/list feature rather than an aggregate workspace board feature.
 
 ## Task Detail
 
@@ -248,6 +252,7 @@ Existing GitHub code is optional and isolated.
 6. Manually link a synced PR by URL or number from task detail and confirm the PR stays attached after refresh.
 7. Unlink the PR and confirm it disappears from the task after refresh.
 8. Re-link the PR, trigger a PR webhook event such as opened or approved, and confirm the OpenProject-backed task receives a notification.
+9. Confirm the PR event does not pretend to appear inside the OpenProject activity timeline yet. The MVP behavior is notification-only for `workPackageId` GitHub events.
 
 ## Unsupported Features
 

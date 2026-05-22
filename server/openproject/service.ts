@@ -142,6 +142,12 @@ const defaultOpenProjectTagPalette = [
   { name: 'polish', color: '#fab005' },
 ];
 
+const localFilterPageScanSize = 100;
+const localFilterMaxScan = Math.max(
+  localFilterPageScanSize,
+  Number(process.env.OPENPROJECT_LOCAL_FILTER_MAX_SCAN || 1000)
+);
+
 function normalizeOpenProjectTagName(name: string) {
   return name.trim().replace(/\s+/g, ' ').toLowerCase();
 }
@@ -788,45 +794,129 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
   const offset = Math.max(1, Number(query.offset || 1));
   const pageSize = Math.max(1, Math.min(100, Number(query.limit || 50)));
   const applyLocalFilters = usesLocalTaskFiltering(query);
-  const fetchPageSize = applyLocalFilters ? Math.max(pageSize, 250) : pageSize;
   const users = await usersByHref();
-  const page = await openProjectRequest<HalCollection<OpenProjectWorkPackage>>(
-    projectId ? `/api/v3/projects/${openProjectProjectId}/work_packages` : `/api/v3/work_packages`,
-    {
+  const path = projectId
+    ? `/api/v3/projects/${openProjectProjectId}/work_packages`
+    : `/api/v3/work_packages`;
+  const filters = JSON.stringify(await buildWorkPackageFilters(query));
+
+  if (!applyLocalFilters) {
+    const page = await openProjectRequest<HalCollection<OpenProjectWorkPackage>>(path, {
       query: {
-        pageSize: fetchPageSize,
+        pageSize,
         offset,
-        filters: JSON.stringify(await buildWorkPackageFilters(query)),
+        filters,
       },
-    }
-  );
-  const items = (page._embedded?.elements || [])
-    .filter((item) => matchesImportFilter(item, seededList))
-    .map((item) => {
-      const itemProjectId = item._links.project?.href?.split('/').filter(Boolean).at(-1);
-      const taskList =
-        seededList ||
-        (itemProjectId ? findSeededListByProjectId(seeded, itemProjectId) : undefined);
-      return mapWorkPackage(
-        item,
-        {
-          projectId: itemProjectId || openProjectProjectId,
-          projectName: taskList?.name || item._links.project?.title || undefined,
-          taskList,
-          folderId: taskList?.folderId,
-          spaceId: seededListSpaceId(seeded, taskList),
-        },
-        users
-      );
     });
-  const total = Number(page.total || 0);
-  const nextOffset = offset + fetchPageSize;
-  const orderedItems = projectId ? await applyBoardOrder(projectId, items) : items;
-  const enrichedItems = await attachRuntimeMetadata(orderedItems);
-  const filteredItems = enrichedItems.filter((item) => matchesLocalTaskFilters(item, query));
+    const items = (page._embedded?.elements || [])
+      .filter((item) => matchesImportFilter(item, seededList))
+      .map((item) => {
+        const itemProjectId = item._links.project?.href?.split('/').filter(Boolean).at(-1);
+        const taskList =
+          seededList ||
+          (itemProjectId ? findSeededListByProjectId(seeded, itemProjectId) : undefined);
+        return mapWorkPackage(
+          item,
+          {
+            projectId: itemProjectId || openProjectProjectId,
+            projectName: taskList?.name || item._links.project?.title || undefined,
+            taskList,
+            folderId: taskList?.folderId,
+            spaceId: seededListSpaceId(seeded, taskList),
+          },
+          users
+        );
+      });
+    const total = Number(page.total || 0);
+    const nextOffset = offset + (page._embedded?.elements?.length || 0);
+    const orderedItems = projectId ? await applyBoardOrder(projectId, items) : items;
+    const enrichedItems = await attachRuntimeMetadata(orderedItems);
+    return {
+      items: enrichedItems,
+      nextCursor: nextOffset <= total ? String(nextOffset) : null,
+    };
+  }
+
+  let scanOffset = offset;
+  let scannedCount = 0;
+  let total = Number.POSITIVE_INFINITY;
+  const matchedItems: Awaited<ReturnType<typeof mapWorkPackage>>[] = [];
+
+  while (
+    matchedItems.length < pageSize &&
+    scannedCount < localFilterMaxScan &&
+    scanOffset <= total
+  ) {
+    const currentPageSize = Math.min(localFilterPageScanSize, localFilterMaxScan - scannedCount);
+    if (currentPageSize <= 0) {
+      break;
+    }
+
+    const page = await openProjectRequest<HalCollection<OpenProjectWorkPackage>>(path, {
+      query: {
+        pageSize: currentPageSize,
+        offset: scanOffset,
+        filters,
+      },
+    });
+
+    total = Number(page.total || 0);
+    const rawItems = page._embedded?.elements || [];
+    if (!rawItems.length) {
+      break;
+    }
+
+    const mappedItems = rawItems
+      .filter((item) => matchesImportFilter(item, seededList))
+      .map((item) => {
+        const itemProjectId = item._links.project?.href?.split('/').filter(Boolean).at(-1);
+        const taskList =
+          seededList ||
+          (itemProjectId ? findSeededListByProjectId(seeded, itemProjectId) : undefined);
+        return mapWorkPackage(
+          item,
+          {
+            projectId: itemProjectId || openProjectProjectId,
+            projectName: taskList?.name || item._links.project?.title || undefined,
+            taskList,
+            folderId: taskList?.folderId,
+            spaceId: seededListSpaceId(seeded, taskList),
+          },
+          users
+        );
+      });
+    const enrichedItems = await attachRuntimeMetadata(mappedItems);
+    const taskById = new Map(enrichedItems.map((item) => [item.id, item]));
+
+    for (const rawItem of rawItems) {
+      const item = taskById.get(String(rawItem.id));
+      scanOffset += 1;
+      scannedCount += 1;
+
+      if (!item) {
+        continue;
+      }
+
+      if (!matchesLocalTaskFilters(item, query)) {
+        continue;
+      }
+
+      matchedItems.push(item);
+      if (matchedItems.length >= pageSize) {
+        break;
+      }
+    }
+
+    if (rawItems.length < currentPageSize) {
+      break;
+    }
+  }
+
+  const orderedItems = projectId ? await applyBoardOrder(projectId, matchedItems) : matchedItems;
+
   return {
-    items: applyLocalFilters ? filteredItems.slice(0, pageSize) : filteredItems,
-    nextCursor: !applyLocalFilters && nextOffset <= total ? String(nextOffset) : null,
+    items: orderedItems.slice(0, pageSize),
+    nextCursor: scanOffset <= total ? String(scanOffset) : null,
   };
 }
 
