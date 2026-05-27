@@ -45,7 +45,7 @@ export function CompactTaskRow({
   };
 
   return (
-    <div className={classes.taskRow}>
+    <div className={classes.taskRow} data-testid="task-row" data-task-id={task.id}>
       <div className={classes.nameCell}>
         {onSelectedChange && (
           <Checkbox
@@ -66,6 +66,7 @@ export function CompactTaskRow({
           <StatusIcon statusId={task.status} color={status.color} />
         </Tooltip>
         <Text
+          data-testid="task-row-open"
           component="button"
           type="button"
           className={classes.taskTitle}

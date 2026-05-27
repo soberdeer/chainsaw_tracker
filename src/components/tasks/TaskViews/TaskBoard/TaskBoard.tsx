@@ -2,6 +2,7 @@ import {
   ActionIcon,
   Badge,
   Box,
+  Divider,
   Group,
   ScrollArea,
   Stack,
@@ -10,7 +11,7 @@ import {
   UnstyledButton,
 } from '@mantine/core';
 import { IconGitPullRequest, IconGripVertical, IconPlus } from '@tabler/icons-react';
-import { useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { Task, TaskStatus } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
 import classes from './TaskBoard.module.css';
@@ -78,13 +79,20 @@ export function TaskBoard({
   });
 
   return (
-    <ScrollArea type="auto" className={classes.boardScroll}>
+    <ScrollArea
+      type="auto"
+      className={classes.boardScroll}
+      data-testid="task-board"
+      data-dragging-task-id={draggingTaskId || ''}
+    >
       <Group align="stretch" gap="md" wrap="nowrap" className={classes.board}>
         {statuses.map((status) => {
           const columnTasks = grouped.get(status.id) || [];
           return (
             <section
               key={status.id}
+              data-testid="board-column"
+              data-status-id={status.id}
               className={classes.column}
               onDragOver={(event) => {
                 if (canWriteTasks) event.preventDefault();
@@ -109,6 +117,8 @@ export function TaskBoard({
                       <ActionIcon
                         variant="subtle"
                         className={classes.iconButton}
+                        data-testid="board-add-task"
+                        aria-label={`Add task to ${status.name}`}
                         onClick={() => onAddTask(status.id)}
                       >
                         <IconPlus size="1rem" />
@@ -120,59 +130,98 @@ export function TaskBoard({
 
               <Stack gap="sm" className={classes.cards}>
                 {columnTasks.map((task) => (
-                  <UnstyledButton
-                    key={task.id}
-                    className={classes.card}
-                    draggable={canWriteTasks}
-                    onDragStart={() => setDraggingTaskId(task.id)}
-                    onDragEnd={() => setDraggingTaskId(null)}
-                    onDragOver={(event) => {
-                      if (canWriteTasks) {
+                  <Fragment key={task.id}>
+                    {canWriteTasks && (
+                      <Divider
+                        data-testid="board-dropzone"
+                        data-status-id={status.id}
+                        data-target-task-id={task.id}
+                        className={classes.dropZone}
+                        onDragOver={(event) => {
+                          event.preventDefault();
+                        }}
+                        onDrop={async (event) => {
+                          event.preventDefault();
+                          event.stopPropagation();
+                          if (!draggingTaskId) return;
+                          await onMoveTask(draggingTaskId, status.id, task.id);
+                          setDraggingTaskId(null);
+                        }}
+                      />
+                    )}
+                    <UnstyledButton
+                      data-testid="task-card"
+                      data-task-id={task.id}
+                      className={classes.card}
+                      draggable={canWriteTasks}
+                      onDragStart={() => setDraggingTaskId(task.id)}
+                      onDragEnd={() => setDraggingTaskId(null)}
+                      onDragOver={(event) => {
+                        if (canWriteTasks) {
+                          event.preventDefault();
+                        }
+                      }}
+                      onDrop={async (event) => {
                         event.preventDefault();
-                      }
+                        event.stopPropagation();
+                        if (!canWriteTasks || !draggingTaskId) return;
+                        await onMoveTask(draggingTaskId, status.id, task.id);
+                        setDraggingTaskId(null);
+                      }}
+                      onClick={() => onOpenTask(task)}
+                    >
+                      <Group gap="xs" wrap="nowrap" align="flex-start">
+                        {canWriteTasks && (
+                          <Tooltip label="Drag to another status">
+                            <IconGripVertical size="1rem" className={classes.dragIcon} />
+                          </Tooltip>
+                        )}
+                        <Box className={classes.cardBody}>
+                          {task.taskKey && (
+                            <Text size="xs" c="dimmed" fw={700}>
+                              {task.taskKey}
+                            </Text>
+                          )}
+                          <Text size="sm" fw={700} lineClamp={3}>
+                            {task.title}
+                          </Text>
+                          <Group gap="xs" mt="xs">
+                            <Tooltip label={`Priority: ${task.priority}`}>
+                              <Badge variant="light">{task.priority}</Badge>
+                            </Tooltip>
+                            {task.tags.slice(0, 2).map(({ tag }) => (
+                              <Tooltip key={tag.id} label={tag.name}>
+                                <Badge variant="outline">{tag.name}</Badge>
+                              </Tooltip>
+                            ))}
+                            {pullRequestBadge(task)}
+                            {task.assignees?.length ? (
+                              <AvatarStack users={task.assignees} size="1.5rem" max={3} />
+                            ) : null}
+                          </Group>
+                        </Box>
+                      </Group>
+                    </UnstyledButton>
+                  </Fragment>
+                ))}
+                {canWriteTasks && columnTasks.length > 0 && (
+                  <Divider
+                    data-testid="board-dropzone"
+                    data-status-id={status.id}
+                    data-target-task-id=""
+                    className={classes.dropZone}
+                    onDragOver={(event) => {
+                      event.preventDefault();
                     }}
                     onDrop={async (event) => {
                       event.preventDefault();
                       event.stopPropagation();
-                      if (!canWriteTasks || !draggingTaskId) return;
-                      await onMoveTask(draggingTaskId, status.id, task.id);
+                      if (!draggingTaskId) return;
+                      await onMoveTask(draggingTaskId, status.id, null);
                       setDraggingTaskId(null);
                     }}
-                    onClick={() => onOpenTask(task)}
-                  >
-                    <Group gap="xs" wrap="nowrap" align="flex-start">
-                      {canWriteTasks && (
-                        <Tooltip label="Drag to another status">
-                          <IconGripVertical size="1rem" className={classes.dragIcon} />
-                        </Tooltip>
-                      )}
-                      <Box className={classes.cardBody}>
-                        {task.taskKey && (
-                          <Text size="xs" c="dimmed" fw={700}>
-                            {task.taskKey}
-                          </Text>
-                        )}
-                        <Text size="sm" fw={700} lineClamp={3}>
-                          {task.title}
-                        </Text>
-                        <Group gap="xs" mt="xs">
-                          <Tooltip label={`Priority: ${task.priority}`}>
-                            <Badge variant="light">{task.priority}</Badge>
-                          </Tooltip>
-                          {task.tags.slice(0, 2).map(({ tag }) => (
-                            <Tooltip key={tag.id} label={tag.name}>
-                              <Badge variant="outline">{tag.name}</Badge>
-                            </Tooltip>
-                          ))}
-                          {pullRequestBadge(task)}
-                          {task.assignees?.length ? (
-                            <AvatarStack users={task.assignees} size="1.5rem" max={3} />
-                          ) : null}
-                        </Group>
-                      </Box>
-                    </Group>
-                  </UnstyledButton>
-                ))}
+                  />
+                )}
                 {!columnTasks.length && (
                   <Text size="sm" c="dimmed" className={classes.emptyColumn}>
                     No tasks

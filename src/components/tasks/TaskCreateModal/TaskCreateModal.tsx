@@ -78,7 +78,7 @@ export function TaskCreateModal({
       dueDate: '',
     });
     form.resetDirty();
-  }, [opened, initialStatusId, statuses, form]);
+  }, [opened, initialStatusId, statuses]);
 
   const submit = form.onSubmit(async (values) => {
     if (!taskList?.id || !values.title.trim()) {
@@ -123,6 +123,7 @@ export function TaskCreateModal({
       size="80rem"
       centered
       withCloseButton={false}
+      data-testid="task-create-modal"
       classNames={{ content: classes.modalContent, body: classes.modalBody }}
     >
       <form onSubmit={submit}>
@@ -168,6 +169,7 @@ export function TaskCreateModal({
             </Group>
 
             <TextInput
+              data-testid="task-create-title-input"
               placeholder="Task Name or type '/' for commands"
               classNames={{ input: classes.titleInput }}
               autoFocus
@@ -175,6 +177,7 @@ export function TaskCreateModal({
             />
 
             <Textarea
+              data-testid="task-create-description-input"
               placeholder="Add description"
               minRows={4}
               autosize
@@ -184,6 +187,7 @@ export function TaskCreateModal({
 
             <Group gap="sm">
               <Select
+                data-testid="task-create-status-select"
                 {...form.getInputProps('statusId')}
                 data={statuses.map((status) => ({
                   value: status.id,
@@ -192,6 +196,7 @@ export function TaskCreateModal({
                 className={classes.compactField}
               />
               <MultiSelect
+                data-testid="task-create-assignee-select"
                 placeholder="Assignee / responsible"
                 leftSection={<IconUsers size="1rem" />}
                 data={users.map((user) => ({ value: user.id, label: user.name }))}
@@ -202,6 +207,7 @@ export function TaskCreateModal({
                 {...form.getInputProps('assigneeIds')}
               />
               <TextInput
+                data-testid="task-create-start-date-input"
                 type="date"
                 leftSection={<IconCalendarDue size="1rem" />}
                 className={classes.dateField}
@@ -209,6 +215,7 @@ export function TaskCreateModal({
                 {...form.getInputProps('startDate')}
               />
               <TextInput
+                data-testid="task-create-due-date-input"
                 type="date"
                 leftSection={<IconCalendarDue size="1rem" />}
                 className={classes.dateField}
@@ -216,6 +223,7 @@ export function TaskCreateModal({
                 {...form.getInputProps('dueDate')}
               />
               <Select
+                data-testid="task-create-priority-select"
                 data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
                 leftSection={<IconFlag size="1rem" />}
                 className={classes.compactField}
@@ -233,7 +241,14 @@ export function TaskCreateModal({
             <Text size="sm" c="dimmed">
               OpenProject stores one assignee and one responsible user per task.
             </Text>
-            <Button color="teal" size="lg" loading={saving} disabled={!taskList?.id} type="submit">
+            <Button
+              color="teal"
+              size="lg"
+              loading={saving}
+              disabled={!taskList?.id}
+              type="submit"
+              data-testid="task-create-submit"
+            >
               Create Task
             </Button>
           </Group>

@@ -50,7 +50,7 @@ export function GroupedTaskList({
   };
 
   return (
-    <Box className={classes.taskList}>
+    <Box className={classes.taskList} data-testid="task-list">
       {orderedStatuses.map((status) => {
         const meta = displayStatus(status);
         const groupTasks = tasks
@@ -88,6 +88,7 @@ export function GroupedTaskList({
               {canWriteTasks && (
                 <Tooltip label={`Create task in ${meta.label}`}>
                   <ActionIcon
+                    data-testid={`list-add-task-${status.id}`}
                     variant="subtle"
                     aria-label={`Create task in ${meta.label}`}
                     onClick={() => onAddTask(status.id)}
@@ -124,6 +125,7 @@ export function GroupedTaskList({
                 ))}
                 {canWriteTasks && (
                   <button
+                    data-testid={`list-add-task-inline-${status.id}`}
                     className={classes.addTask}
                     type="button"
                     onClick={() => onAddTask(status.id)}

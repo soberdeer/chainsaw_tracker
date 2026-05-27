@@ -125,7 +125,7 @@ export function WorkspaceSettingsModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, workspaceId, initialTab, generalForm]);
+  }, [opened, workspaceId, initialTab]);
 
   const saveGeneral = generalForm.onSubmit(async (values) => {
     if (!settings) return;
@@ -219,7 +219,14 @@ export function WorkspaceSettingsModal({
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="Workspace settings" size="72rem" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title="Workspace settings"
+      size="72rem"
+      centered
+      data-testid="workspace-settings"
+    >
       <Stack>
         {error && (
           <Alert color="red" title="Could not update workspace settings">
@@ -300,12 +307,21 @@ export function WorkspaceSettingsModal({
                   </Text>
                 )}
                 {canManageWorkspace && (
-                  <form onSubmit={submitInvite}>
+                  <form onSubmit={submitInvite} data-testid="workspace-invite-form">
                     <Group align="flex-end" grow>
-                      <TextInput label="Email" {...inviteForm.getInputProps('email')} />
-                      <TextInput label="Name" {...inviteForm.getInputProps('name')} />
+                      <TextInput
+                        label="Email"
+                        data-testid="workspace-invite-email"
+                        {...inviteForm.getInputProps('email')}
+                      />
+                      <TextInput
+                        label="Name"
+                        data-testid="workspace-invite-name"
+                        {...inviteForm.getInputProps('name')}
+                      />
                       <Select
                         label="Role"
+                        data-testid="workspace-invite-role"
                         data={roleOptions}
                         {...inviteForm.getInputProps('role')}
                       />
@@ -315,7 +331,9 @@ export function WorkspaceSettingsModal({
                           type: 'checkbox',
                         })}
                       />
-                      <Button type="submit">Invite user</Button>
+                      <Button type="submit" data-testid="workspace-invite-submit">
+                        Invite user
+                      </Button>
                     </Group>
                   </form>
                 )}
@@ -333,12 +351,17 @@ export function WorkspaceSettingsModal({
                   </Table.Thead>
                   <Table.Tbody>
                     {members.map((member) => (
-                      <Table.Tr key={member.id}>
+                      <Table.Tr
+                        key={member.id}
+                        data-testid="workspace-member-row"
+                        data-user-id={member.user.id}
+                      >
                         <Table.Td>{member.user.name}</Table.Td>
                         <Table.Td>{member.user.email}</Table.Td>
                         <Table.Td>
                           {canManageWorkspace ? (
                             <Select
+                              data-testid={`workspace-member-role-${member.user.id}`}
                               value={member.role}
                               onChange={async (value) => {
                                 if (!value) return;
@@ -394,6 +417,7 @@ export function WorkspaceSettingsModal({
                         {canManageWorkspace && (
                           <Table.Td>
                             <Button
+                              data-testid={`workspace-member-remove-${member.user.id}`}
                               color="red"
                               variant="light"
                               onClick={async () => {

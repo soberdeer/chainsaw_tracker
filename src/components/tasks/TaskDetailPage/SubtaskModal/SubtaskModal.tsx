@@ -78,7 +78,6 @@ export function SubtaskModal({
     parentTask.statusId,
     parentTask.assignees,
     statuses,
-    form,
   ]);
 
   const create = form.onSubmit(async (values) => {

@@ -7,9 +7,13 @@
     "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
     "dev:web": "vite --host 0.0.0.0",
     "dev:api": "tsx watch server/index.ts",
-    "db:up": "docker compose up -d postgres",
+    "docker:check": "tsx scripts/check-docker.ts",
+    "db:up": "npm run docker:check && docker compose up -d postgres",
     "db:down": "docker compose down",
+    "db:logs": "docker compose logs -f postgres",
+    "db:ps": "docker compose ps postgres",
     "db:create": "PGPASSWORD=postgres createdb -h localhost -U postgres compact_tracker || true",
+    "db:sync": "npm run prisma:migrate && npm run prisma:generate",
     "setup": "npm run db:up && npm run prisma:migrate && npm run prisma:generate",
     "setup:local": "npm run db:create && npm run prisma:migrate && npm run prisma:generate",
     "build": "tsc -b && vite build",
@@ -26,8 +30,12 @@
     "lint:fix": "oxlint . --fix",
     "test:code": "tsx --test tests/*.test.ts",
     "test": "npm run format:check && npm run lint && npm run typecheck && npm run test:code",
-    "format": "oxfmt --write \"**/*.{ts,tsx,js,jsx,json,css}\" && prisma format",
-    "format:check": "oxfmt --check \"**/*.{ts,tsx,js,jsx,json,css}\" && tsx scripts/check-prisma-format.ts"
+    "e2e": "playwright test",
+    "e2e:ui": "playwright test --ui",
+    "e2e:headed": "playwright test --headed",
+    "e2e:debug": "playwright test --debug",
+    "format": "oxfmt --write \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && prisma format",
+    "format:check": "oxfmt --check \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && tsx scripts/check-prisma-format.ts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
@@ -53,6 +61,7 @@
     "zod": "^4.1.12"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "@types/cors": "^2.8.19",
     "@types/express": "^5.0.5",
     "@types/multer": "^2.0.0",

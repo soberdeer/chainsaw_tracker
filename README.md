@@ -36,6 +36,262 @@ The app now keeps two related user layers:
 
 Imported ClickUp users are created or reused in both places when possible. The local Prisma user stores the link to the matching OpenProject user through `openProjectUserId` and `openProjectLogin`.
 
+## Getting Started
+
+If you just cloned the project and want to run the tracker locally, use this order:
+
+### 1. Install prerequisites
+
+Required:
+
+- Node.js 22+
+- npm 10+
+- Docker Desktop or a local PostgreSQL instance
+- an OpenProject instance with an API token for runtime use
+
+You only need a live OpenProject instance for the real app runtime. The Playwright e2e suite uses its own mock layer and does not require OpenProject.
+
+### 2. Install dependencies
+
+```bash
+npm install
+```
+
+### 3. Create your local env file
+
+Copy the example env and fill in the OpenProject values:
+
+```bash
+cp .env.example .env
+```
+
+Minimum required runtime values in `.env`:
+
+```bash
+DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
+PORT=4000
+CLIENT_URL="http://localhost:5173"
+
+OPENPROJECT_BASE_URL="http://localhost:8080"
+OPENPROJECT_API_TOKEN="opapi_..."
+OPENPROJECT_TIMEOUT_MS=15000
+OPENPROJECT_AUTH_MODE="basic"
+```
+
+If you do not have GitHub integration yet, leave these disabled or empty:
+
+```bash
+GITHUB_INTEGRATION_ENABLED="false"
+GITHUB_WEBHOOK_SECRET=""
+GITHUB_TOKEN=""
+```
+
+### 4. Start PostgreSQL
+
+The project ships with a Docker Compose Postgres service in [docker-compose.yml](/Users/telsehush/Documents/Codex/2026-05-11/tracker/docker-compose.yml). For most people, this is the easiest way to get the local database running.
+
+If you use Colima on macOS:
+
+```bash
+colima start
+```
+
+If you use Docker Desktop instead:
+
+- start Docker Desktop
+- wait until `docker ps` works
+
+Before starting Postgres, you can run the built-in Docker health check:
+
+```bash
+npm run docker:check
+```
+
+That command tries to reach the Docker daemon and prints a more helpful message if:
+
+- Docker is not installed
+- Docker Desktop is not running
+- your shell is pointed at a stopped Colima socket
+
+Then start Postgres:
+
+```bash
+npm run db:up
+```
+
+Useful Docker helpers:
+
+```bash
+npm run db:ps
+npm run db:logs
+npm run db:down
+```
+
+If you already run PostgreSQL locally and do not want Docker for the database, make sure the database from `DATABASE_URL` exists and skip `npm run db:up`.
+
+### 5. Create the local database and run Prisma setup
+
+For a local PostgreSQL server:
+
+```bash
+npm run setup:local
+```
+
+That runs:
+
+- database creation if needed
+- Prisma migrations
+- Prisma client generation
+
+If you already have Postgres running through Docker and just want to sync the schema/client, use:
+
+```bash
+npm run db:sync
+```
+
+If you use the bundled Docker Postgres and want the one-command setup path:
+
+```bash
+npm run setup
+```
+
+### 6. Start the app
+
+```bash
+npm run dev
+```
+
+This starts:
+
+- frontend on `http://localhost:5173`
+- backend on `http://localhost:4000`
+
+### 7. Complete first-run setup
+
+Open [http://localhost:5173](http://localhost:5173).
+
+On a fresh database the app shows the first-run setup screen instead of a default admin account. Create the first local owner there.
+
+Important:
+
+- production-style default credentials are **not** created automatically
+- the old development owner shortcut exists only if you explicitly set:
+
+```bash
+DEV_DEFAULT_OWNER_ENABLED=true
+```
+
+When that flag is enabled, the development login is:
+
+```text
+email: owner@local.app
+password: admin123
+```
+
+You can override the development password with `DEV_ADMIN_PASSWORD`.
+
+### 8. After pulling new changes
+
+If you pulled the latest branch or switched to another branch, always resync Prisma before starting the app again:
+
+```bash
+npm run db:sync
+```
+
+Why this matters:
+
+- this project adds Prisma migrations over time
+- backend code can start using new tables immediately
+- if your local database is behind, you can get runtime errors like:
+
+```text
+The table `public.OpenProjectBoardCardOrder` does not exist in the current database.
+```
+
+That error does **not** usually mean the code is broken. It usually means your local database has not applied the latest migration yet.
+
+### 9. Sanity-check the install
+
+Useful local checks:
+
+```bash
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+### 10. Run the Playwright suite
+
+The e2e suite runs against a deterministic mock API and does not require your real OpenProject instance:
+
+```bash
+npm run e2e
+```
+
+Useful variants:
+
+```bash
+npm run e2e:ui
+npm run e2e:headed
+npm run e2e:debug
+```
+
+### 11. Optional one-time ClickUp import
+
+If you want to seed OpenProject from ClickUp after the runtime is already working:
+
+```bash
+CLICKUP_TOKEN="..." npm run seed:openproject:clickup
+```
+
+This is migration-only tooling. It is not required to boot the tracker.
+
+## Troubleshooting
+
+### `OpenProjectBoardCardOrder does not exist`
+
+Your local database is behind the current Prisma schema.
+
+Run:
+
+```bash
+npm run db:sync
+```
+
+If that still fails because the database itself is missing, start Postgres first:
+
+```bash
+npm run db:up
+npm run db:sync
+```
+
+### Docker / Colima socket error
+
+If you see an error like:
+
+```text
+failed to connect to the docker API at unix:///Users/.../.colima/default/docker.sock
+```
+
+then your shell is pointed at Colima, but Colima is not running yet.
+
+Start it:
+
+```bash
+colima start
+npm run docker:check
+npm run db:up
+```
+
+If you use Docker Desktop instead of Colima:
+
+```bash
+docker context use default
+npm run docker:check
+```
+
 ## Env
 
 Required runtime env:
@@ -215,6 +471,46 @@ npm run dev
 
 Frontend: `http://localhost:5173`  
 API: `http://localhost:4000`
+
+## Testing
+
+Fast local checks:
+
+```bash
+npm run format:check
+npm run lint
+npm run typecheck
+npm run test
+npm run build
+```
+
+Playwright end-to-end coverage runs separately:
+
+```bash
+npm run e2e
+```
+
+Useful variants:
+
+```bash
+npm run e2e:ui
+npm run e2e:headed
+npm run e2e:debug
+```
+
+The Playwright suite runs the Vite app and API against a deterministic mock layer. It does not need
+a live OpenProject or GitHub instance. The mock API keeps real state transitions for:
+
+- first-run setup and login
+- OpenProject task list/detail/create/update flows
+- comments, relations, attachments, time entries, and activity
+- workspace-scoped OpenProject tag metadata
+- saved views, notifications, local docs, and import reports
+- board order persistence
+- GitHub PR link state and webhook-driven notification events
+
+When you update the mocked runtime behavior, keep `tests/e2e/support/mockApi.ts` in sync with the
+corresponding server/UI contract and extend the matching spec under `tests/e2e/`.
 
 ## Runtime Routes
 

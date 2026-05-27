@@ -437,3 +437,36 @@ npm run build
 ```
 
 Unit tests mock network calls and do not require a real OpenProject instance unless a test is explicitly marked as integration.
+
+## Playwright E2E
+
+The Playwright suite runs against a deterministic mock OpenProject/GitHub layer, not a live
+OpenProject server.
+
+Run:
+
+```bash
+npm run e2e
+```
+
+Useful variants:
+
+```bash
+npm run e2e:ui
+npm run e2e:headed
+npm run e2e:debug
+```
+
+The mock layer lives in `tests/e2e/support/mockApi.ts`. Update it when you change runtime API
+contracts or add new MVP behavior. The suite covers:
+
+1. First-run setup, login, logout, and invalid login.
+2. Role-aware UI and backend protection for `OWNER`, `LEAD`, `MEMBER`, and `VIEWER`.
+3. `All Tasks`, `My Tasks`, and project-scoped `Work packages`.
+4. Task create, task drawer editing, comments, attachments, subtasks, relations, and time entries.
+5. Editable tags for OpenProject-backed work packages.
+6. Local-filter pagination for tags and `Has GitHub PR`, including late-page matches.
+7. Saved views and grouped-list bulk actions.
+8. Board status changes, per-project order persistence, and rollback on save failures.
+9. GitHub PR link/unlink and notification-only webhook behavior for OpenProject-backed work packages.
+10. Notifications, local docs, workspace member management, import reports, and core error states.

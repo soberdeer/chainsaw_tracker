@@ -271,18 +271,7 @@ export function TaskDetailPage({
       setRepositories([]);
       githubForm.reset();
     }
-  }, [
-    task,
-    workspace,
-    onError,
-    githubSupportedForTask,
-    detailsForm,
-    commentForm,
-    relationForm,
-    timeForm,
-    attachmentForm,
-    githubForm,
-  ]);
+  }, [task, workspace, onError, githubSupportedForTask]);
 
   const tagOptions = workspaceTags.map((item) => ({
     value: item.id,
@@ -679,7 +668,7 @@ export function TaskDetailPage({
   };
 
   return (
-    <Paper className={classes.detailPage} withBorder>
+    <Paper className={classes.detailPage} withBorder data-testid="task-detail-page">
       <SubtaskModal
         opened={subtaskModalOpen}
         parentTask={task}
@@ -691,6 +680,7 @@ export function TaskDetailPage({
       />
       <Group justify="space-between" mb="lg">
         <TextInput
+          data-testid="task-title-input"
           className={classes.titleInput}
           readOnly={!canWriteTasks}
           {...detailsForm.getInputProps('title')}
@@ -709,6 +699,7 @@ export function TaskDetailPage({
 
       <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
         <Select
+          data-testid="task-status-select"
           label="Status"
           leftSection={<span className={classes.statusDot} style={{ background: status.color }} />}
           value={detailsForm.values.statusId}
@@ -724,6 +715,7 @@ export function TaskDetailPage({
         {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
         <TextInput label="List" value={task.taskList?.name || task.taskListId || ''} readOnly />
         <MultiSelect
+          data-testid="task-assignee-select"
           label="Assignee / responsible"
           leftSection={<IconUsers size="1rem" />}
           value={detailsForm.values.assigneeIds}
@@ -762,6 +754,7 @@ export function TaskDetailPage({
           readOnly={!canWriteTasks}
         />
         <Select
+          data-testid="task-priority-select"
           label="Priority"
           leftSection={<IconFlag size="1rem" />}
           value={detailsForm.values.priority}
@@ -775,6 +768,7 @@ export function TaskDetailPage({
         />
         <Stack gap="xs">
           <MultiSelect
+            data-testid="task-tag-picker"
             label="Tags"
             data={tagOptions}
             value={taskTagIds}
@@ -845,6 +839,7 @@ export function TaskDetailPage({
       </SimpleGrid>
 
       <Textarea
+        data-testid="task-description-input"
         label="Description"
         minRows={8}
         autosize
@@ -857,7 +852,7 @@ export function TaskDetailPage({
         <Tabs.List>
           <Tabs.Tab value="details">Details</Tabs.Tab>
           {showGitHubTab && (
-            <Tabs.Tab value="github">
+            <Tabs.Tab value="github" data-testid="github-tab">
               GitHub{' '}
               <Tooltip
                 label={`${task.githubPullRequests?.length || 0} linked GitHub pull requests`}
@@ -874,7 +869,9 @@ export function TaskDetailPage({
           </Tabs.Tab>
           <Tabs.Tab value="activity">Activity</Tabs.Tab>
           <Tabs.Tab value="relations">Relations</Tabs.Tab>
-          <Tabs.Tab value="time">Time</Tabs.Tab>
+          <Tabs.Tab value="time" data-testid="time-tab">
+            Time
+          </Tabs.Tab>
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {customFields.length > 0 && <Tabs.Tab value="custom-fields">Custom fields</Tabs.Tab>}
         </Tabs.List>
@@ -1008,6 +1005,7 @@ export function TaskDetailPage({
                 )}
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <Select
+                    data-testid="github-repository-select"
                     label="Repository"
                     value={githubForm.values.selectedRepositoryId}
                     onChange={(value) =>
@@ -1020,6 +1018,7 @@ export function TaskDetailPage({
                     placeholder="Add repository in API first"
                   />
                   <TextInput
+                    data-testid="github-manual-pr-input"
                     label="PR URL or number"
                     {...githubForm.getInputProps('manualPr')}
                     placeholder="https://github.com/.../pull/12"
@@ -1027,6 +1026,7 @@ export function TaskDetailPage({
                   <Stack justify="flex-end">
                     <Group gap="xs">
                       <Button
+                        data-testid="github-link-pr-submit"
                         leftSection={<IconGitPullRequest size="1rem" />}
                         disabled={
                           !githubForm.values.selectedRepositoryId ||
@@ -1056,6 +1056,7 @@ export function TaskDetailPage({
                       </Button>
                       <Tooltip label="Refresh GitHub status">
                         <ActionIcon
+                          data-testid="github-refresh-button"
                           variant="light"
                           aria-label="Refresh GitHub status"
                           loading={githubBusy}
@@ -1111,6 +1112,8 @@ export function TaskDetailPage({
               <UnstyledButton
                 key={subtask.id}
                 className={classes.subtaskRow}
+                data-testid="subtask-row"
+                data-task-id={subtask.id}
                 onClick={() => onOpenSubtask(subtask)}
               >
                 <Group gap="sm" wrap="nowrap">
@@ -1148,8 +1151,15 @@ export function TaskDetailPage({
         <Tabs.Panel value="activity" pt="md">
           <Stack gap="xs">
             {canWriteTasks && (
-              <Paper component="form" withBorder p="sm" onSubmit={submitComment}>
+              <Paper
+                component="form"
+                withBorder
+                p="sm"
+                onSubmit={submitComment}
+                data-testid="task-comment-form"
+              >
                 <Textarea
+                  data-testid="task-comment-input"
                   label="Add OpenProject comment"
                   minRows={3}
                   autosize
@@ -1157,6 +1167,7 @@ export function TaskDetailPage({
                 />
                 <Group justify="flex-end" mt="sm">
                   <Button
+                    data-testid="task-comment-submit"
                     loading={commentSaving}
                     disabled={!commentForm.values.comment.trim()}
                     type="submit"
@@ -1197,14 +1208,22 @@ export function TaskDetailPage({
         <Tabs.Panel value="relations" pt="md">
           <Stack>
             {canWriteTasks && (
-              <Paper component="form" withBorder p="sm" onSubmit={submitRelation}>
+              <Paper
+                component="form"
+                withBorder
+                p="sm"
+                onSubmit={submitRelation}
+                data-testid="task-relation-form"
+              >
                 <SimpleGrid cols={{ base: 1, sm: 3 }}>
                   <TextInput
+                    data-testid="task-relation-target-input"
                     label="Target work package ID"
                     leftSection={<IconLink size="1rem" />}
                     {...relationForm.getInputProps('relationTargetId')}
                   />
                   <Select
+                    data-testid="task-relation-type-select"
                     label="Relation type"
                     value={relationForm.values.relationType}
                     onChange={(value) =>
@@ -1219,7 +1238,11 @@ export function TaskDetailPage({
                     ]}
                   />
                   <Stack justify="flex-end">
-                    <Button loading={relationSaving} type="submit">
+                    <Button
+                      loading={relationSaving}
+                      type="submit"
+                      data-testid="task-relation-submit"
+                    >
                       Add relation
                     </Button>
                   </Stack>
@@ -1227,7 +1250,13 @@ export function TaskDetailPage({
               </Paper>
             )}
             {relations.map((relation) => (
-              <Paper key={relation.id} withBorder p="sm">
+              <Paper
+                key={relation.id}
+                withBorder
+                p="sm"
+                data-testid="relation-row"
+                data-relation-id={relation.id}
+              >
                 <Group justify="space-between">
                   <Stack gap={2}>
                     <Text fw={700}>{relation.type}</Text>
@@ -1286,9 +1315,16 @@ export function TaskDetailPage({
               </Tooltip>
             </Group>
             {canWriteTasks && (
-              <Paper component="form" withBorder p="sm" onSubmit={submitTimeEntry}>
+              <Paper
+                component="form"
+                withBorder
+                p="sm"
+                onSubmit={submitTimeEntry}
+                data-testid="task-time-form"
+              >
                 <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
                   <NumberInput
+                    data-testid="task-time-hours-input"
                     label="Hours"
                     min={0.01}
                     step={0.25}
@@ -1296,6 +1332,7 @@ export function TaskDetailPage({
                     onChange={(value) => timeForm.setFieldValue('timeHours', value)}
                   />
                   <TextInput
+                    data-testid="task-time-date-input"
                     label="Spent on"
                     type="date"
                     value={timeForm.values.timeSpentOn}
@@ -1304,6 +1341,7 @@ export function TaskDetailPage({
                     }
                   />
                   <Select
+                    data-testid="task-time-activity-select"
                     label="Activity"
                     value={timeForm.values.timeActivityId}
                     onChange={(value) => timeForm.setFieldValue('timeActivityId', value || '')}
@@ -1321,9 +1359,13 @@ export function TaskDetailPage({
                           : 'Select activity'
                     }
                   />
-                  <TextInput label="Comment" {...timeForm.getInputProps('timeComment')} />
+                  <TextInput
+                    data-testid="task-time-comment-input"
+                    label="Comment"
+                    {...timeForm.getInputProps('timeComment')}
+                  />
                   <Stack justify="flex-end">
-                    <Button loading={timeSaving} type="submit">
+                    <Button loading={timeSaving} type="submit" data-testid="task-time-submit">
                       Log time
                     </Button>
                   </Stack>
@@ -1357,15 +1399,23 @@ export function TaskDetailPage({
         <Tabs.Panel value="files" pt="md">
           <Stack>
             {canWriteTasks && (
-              <Paper component="form" withBorder p="sm" onSubmit={submitAttachment}>
+              <Paper
+                component="form"
+                withBorder
+                p="sm"
+                onSubmit={submitAttachment}
+                data-testid="task-attachments-form"
+              >
                 <Group align="end">
                   <FileInput
+                    data-testid="task-attachment-input"
                     label="Upload attachment"
                     value={attachmentForm.values.attachmentFile}
                     onChange={(value) => attachmentForm.setFieldValue('attachmentFile', value)}
                     leftSection={<IconPaperclip size="1rem" />}
                   />
                   <Button
+                    data-testid="task-attachment-submit"
                     loading={attachmentSaving}
                     disabled={!attachmentForm.values.attachmentFile}
                     type="submit"

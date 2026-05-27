@@ -9,9 +9,16 @@ export interface DocumentPageProps {
   onBack: () => void;
   onSaved: (document: DocumentItem) => void;
   onError: (message: string) => void;
+  canEdit?: boolean;
 }
 
-export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPageProps) {
+export function DocumentPage({
+  document,
+  onBack,
+  onSaved,
+  onError,
+  canEdit = true,
+}: DocumentPageProps) {
   const [saving, setSaving] = useState(false);
   const form = useForm({
     initialValues: {
@@ -30,7 +37,7 @@ export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPag
       markdown: document.markdown || '',
       embedUrl: document.embedUrl || '',
     });
-  }, [document, form]);
+  }, [document]);
 
   const save = form.onSubmit(async (values) => {
     try {
@@ -52,19 +59,25 @@ export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPag
   });
 
   return (
-    <Paper className={classes.detailPage} withBorder>
+    <Paper className={classes.detailPage} withBorder data-testid="docs-page">
       <form onSubmit={save}>
         <Group justify="space-between" mb="lg">
           <Box>
             <Text size="xs" c="dimmed">
               {document.kind}
             </Text>
-            <TextInput className={classes.titleInput} {...form.getInputProps('title')} />
+            <TextInput
+              data-testid="doc-title-input"
+              className={classes.titleInput}
+              {...form.getInputProps('title')}
+            />
           </Box>
           <Group>
-            <Button loading={saving} type="submit">
-              Save
-            </Button>
+            {canEdit && (
+              <Button loading={saving} type="submit">
+                Save
+              </Button>
+            )}
             <Button type="button" variant="light" onClick={onBack}>
               Back
             </Button>
@@ -72,7 +85,12 @@ export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPag
         </Group>
         {document.kind === 'EMBED' && document.embedUrl ? (
           <Stack>
-            <TextInput label="Embed link" {...form.getInputProps('embedUrl')} />
+            <TextInput
+              data-testid="doc-embed-url-input"
+              label="Embed link"
+              readOnly={!canEdit}
+              {...form.getInputProps('embedUrl')}
+            />
             <Box className={classes.embedPreview}>
               <Text>{form.values.embedUrl}</Text>
             </Box>
@@ -80,7 +98,13 @@ export function DocumentPage({ document, onBack, onSaved, onError }: DocumentPag
         ) : document.kind === 'IMAGE' && document.fileUrl ? (
           <img src={document.fileUrl} alt={document.title} className={classes.imagePreview} />
         ) : (
-          <Textarea minRows={18} autosize {...form.getInputProps('markdown')} />
+          <Textarea
+            data-testid="doc-markdown-input"
+            minRows={18}
+            autosize
+            readOnly={!canEdit}
+            {...form.getInputProps('markdown')}
+          />
         )}
       </form>
     </Paper>

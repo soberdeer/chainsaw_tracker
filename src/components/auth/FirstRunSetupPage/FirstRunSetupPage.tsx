@@ -50,7 +50,7 @@ export function FirstRunSetupPage({ status, onCreated }: FirstRunSetupPageProps)
   });
 
   return (
-    <main className={classes.page}>
+    <main className={classes.page} data-testid="setup-screen">
       <Paper className={classes.panel} withBorder component="form" onSubmit={submit}>
         <Stack gap="md">
           <div>

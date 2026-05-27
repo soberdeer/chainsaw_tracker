@@ -35,7 +35,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
   });
 
   return (
-    <main className={classes.page}>
+    <main className={classes.page} data-testid="login-form">
       <Paper className={classes.panel} withBorder component="form" onSubmit={submit}>
         <Stack gap="md">
           <div>

@@ -122,8 +122,8 @@ function findFolderById(folders: Folder[], id?: string): Folder | undefined {
   return undefined;
 }
 
-function readInitialQuery() {
-  const params = new URLSearchParams(typeof window === 'undefined' ? '' : window.location.search);
+function readInitialQuery(search = typeof window === 'undefined' ? '' : window.location.search) {
+  const params = new URLSearchParams(search);
   return {
     taskView: params.get('view') || 'tasks',
     taskSearch: params.get('search') || '',
@@ -138,10 +138,9 @@ function readInitialQuery() {
     overdueFilter: params.get('overdue') === 'true',
     hasGitHubPrFilter: params.get('hasGitHubPr') === 'true',
     savedViewId: params.get('savedView') || null,
+    cursor: params.get('cursor') || null,
   };
 }
-
-const initialQuery = readInitialQuery();
 
 const EXPANDED_SPACE_KEY = 'op-tracker:expanded-spaces';
 const EXPANDED_FOLDER_KEY = 'op-tracker:expanded-folders';
@@ -150,6 +149,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const navigate = useNavigate();
   const location = useLocation();
   const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
+  const initialQuery = useMemo(() => readInitialQuery(location.search), []);
+  const cursorQuery = useMemo(
+    () => new URLSearchParams(location.search).get('cursor') || undefined,
+    [location.search]
+  );
   const { colorScheme, toggleColorScheme } = useMantineColorScheme();
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
   const [workspaceId, setWorkspaceId] = useState<string>();
@@ -532,7 +536,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   }, [docsAvailable, taskView]);
 
   const loadTasks = useCallback(
-    async (cursor?: string) => {
+    async (cursor?: string, append = Boolean(cursor)) => {
       if (!workspace?.id || (!isWorkspaceWide && !activeTaskList?.id)) {
         setTasks([]);
         setNextCursor(null);
@@ -573,7 +577,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           cursor,
         });
 
-        setTasks((current) => (cursor ? [...current, ...page.items] : page.items));
+        setTasks((current) => (append ? [...current, ...page.items] : page.items));
         setNextCursor(page.nextCursor || null);
       } catch (error) {
         setTasksError(getErrorMessage(error));
@@ -602,8 +606,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   );
 
   useEffect(() => {
-    loadTasks();
-  }, [loadTasks]);
+    loadTasks(cursorQuery, false);
+  }, [cursorQuery, loadTasks]);
+
+  const handleLoadMoreTasks = useCallback(() => {
+    if (!nextCursor) {
+      return;
+    }
+    void loadTasks(nextCursor, true);
+  }, [loadTasks, nextCursor]);
 
   useEffect(() => {
     if (!workspace?.id) return;
@@ -710,7 +721,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     assigneeIds?: string[];
   }) => {
     if (!selectedTaskIdList.length) return;
-    await runAction(async () => {
+    try {
+      setActionError(null);
+      setActionNotice(null);
       const result = await bulkUpdateTasks({ taskIds: selectedTaskIdList, ...input });
       setSelectedTaskIds(new Set());
       reload();
@@ -725,8 +738,12 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             .slice(0, 5)
             .join(' | ')
         );
+      } else {
+        setActionNotice('Bulk update completed.');
       }
-    }, 'Bulk update completed.');
+    } catch (caughtError) {
+      setActionError(getErrorMessage(caughtError));
+    }
   };
 
   const currentFilters = {
@@ -1169,7 +1186,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             onCreated={reload}
           />
         )}
-        <AppShell.Navbar p="md" className={classes.workspaceSidebar}>
+        <AppShell.Navbar p="md" className={classes.workspaceSidebar} data-testid="sidebar">
           <Group mb="lg" gap="sm" justify="space-between">
             <Group gap="sm">
               <Tooltip label="Workspace">
@@ -1240,6 +1257,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           </Text>
           <Stack gap={4} mb="md">
             <Button
+              data-testid="all-tasks-link"
               variant={
                 workspaceWideScope === 'all' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
               }
@@ -1255,6 +1273,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               All Tasks
             </Button>
             <Button
+              data-testid="my-tasks-link"
               variant={
                 workspaceWideScope === 'mine' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
               }
@@ -1324,6 +1343,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                 <Box key={space.id} className={classes.spaceTreeBlock}>
                   <Group wrap="nowrap" gap={0}>
                     <UnstyledButton
+                      data-testid="project-link"
+                      data-project-id={space.id}
                       className={
                         isActiveSpace
                           ? `${classes.spaceTreeRow} ${classes.active}`
@@ -1434,7 +1455,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           </ScrollArea>
         </AppShell.Navbar>
 
-        <AppShell.Main className={classes.mainShell}>
+        <AppShell.Main className={classes.mainShell} data-testid="workspace-shell">
           <Stack gap={0}>
             {actionNotice && (
               <Alert
@@ -1459,7 +1480,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               </Alert>
             )}
             <Group className={classes.topBar} justify="space-between">
-              <Breadcrumbs separator="/" separatorMargin="xs">
+              <Breadcrumbs separator="/" separatorMargin="xs" data-testid="breadcrumbs">
                 {breadcrumbItems.map((item, index) => (
                   <Group gap="xs" wrap="nowrap" key={`${item.label}:${index}`}>
                     {index === 0 && activeSpace ? (
@@ -1483,7 +1504,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                 <Menu width="22rem" position="bottom-end">
                   <Menu.Target>
                     <Tooltip label="Notifications">
-                      <ActionIcon variant="light" aria-label="Notifications">
+                      <ActionIcon
+                        variant="light"
+                        aria-label="Notifications"
+                        data-testid="notification-center"
+                      >
                         <IconBell size="1.125rem" />
                         {notificationUnread > 0 && (
                           <Badge size="xs" color="red">
@@ -1596,124 +1621,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               </Group>
             </Group>
 
-            {!selectedTask && !selectedDoc && (
-              <Box p="md" className={classes.overviewPanel}>
-                <SimpleGrid cols={{ base: 1, md: 2, xl: 4 }} spacing="md">
-                  <Alert color="blue" title={workspace.name}>
-                    <Text size="sm">
-                      Current workspace for imported OpenProject projects and work packages.
-                    </Text>
-                  </Alert>
-                  <Alert
-                    color={connectionStatus?.ok ? 'green' : canManageWorkspace ? 'yellow' : 'blue'}
-                    title="OpenProject connection"
-                  >
-                    <Text size="sm">
-                      {canManageWorkspace
-                        ? connectionStatus?.ok
-                          ? `Connected to ${connectionStatus.baseUrl}`
-                          : 'Connection status needs attention.'
-                        : 'OpenProject connection is managed by workspace admins.'}
-                    </Text>
-                  </Alert>
-                  <Alert
-                    color={latestImportReport?.status === 'SUCCESS' ? 'green' : 'yellow'}
-                    title="Last import"
-                  >
-                    <Text size="sm">
-                      {latestImportReport
-                        ? `${latestImportReport.status} • ${new Date(latestImportReport.startedAt).toLocaleString()}`
-                        : 'Import has not been run yet.'}
-                    </Text>
-                    {latestImportReport && (
-                      <Text size="xs" c="dimmed" mt={4}>
-                        {latestImportSummary.warningsCount} warnings •{' '}
-                        {latestImportSummary.errorsCount} errors
-                      </Text>
-                    )}
-                  </Alert>
-                  <Alert color="teal" title="Import coverage">
-                    <Text size="sm">
-                      {latestImportSummary.projectsImported} projects,{' '}
-                      {latestImportSummary.tasksImported} tasks, {latestImportSummary.usersImported}{' '}
-                      users, {latestImportSummary.membershipsImported} memberships,{' '}
-                      {latestImportSummary.assigneesMapped} assignees mapped.
-                    </Text>
-                  </Alert>
-                </SimpleGrid>
-                <Group mt="md">
-                  <Button
-                    variant="light"
-                    onClick={() => {
-                      setTaskView('tasks');
-                      setSelectedTask(null);
-                      setSelectedDoc(null);
-                      navigate(allTasksPath());
-                    }}
-                  >
-                    Open All Tasks
-                  </Button>
-                  <Button
-                    variant="light"
-                    disabled={!currentOpenProjectUser}
-                    onClick={() => {
-                      if (!currentOpenProjectUser) return;
-                      setTaskView('tasks');
-                      setSelectedTask(null);
-                      setSelectedDoc(null);
-                      navigate(myTasksPath());
-                    }}
-                  >
-                    Open Assigned to me
-                  </Button>
-                  <Button
-                    variant="light"
-                    onClick={() => {
-                      setWorkspaceSettingsTab('general');
-                      setWorkspaceSettingsOpen(true);
-                    }}
-                  >
-                    Open Workspace Settings
-                  </Button>
-                  {canManageWorkspace && (
-                    <Button
-                      variant="light"
-                      onClick={() => {
-                        if (latestImportReport) {
-                          void runAction(async () => {
-                            setActiveImportReport(await getImportReport(latestImportReport.id));
-                          });
-                          return;
-                        }
-                        setWorkspaceSettingsTab('imports');
-                        setWorkspaceSettingsOpen(true);
-                      }}
-                    >
-                      Open Import Reports
-                    </Button>
-                  )}
-                  {connectionStatus?.baseUrl && (
-                    <Button component="a" href={connectionStatus.baseUrl} target="_blank">
-                      Open OpenProject
-                    </Button>
-                  )}
-                </Group>
-                {canManageWorkspace && (
-                  <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }} spacing="sm" mt="md">
-                    {checklist.map((item) => (
-                      <Alert
-                        key={item.label}
-                        color={item.done ? 'green' : 'yellow'}
-                        variant="light"
-                      >
-                        <Text fw={700}>{item.label}</Text>
-                      </Alert>
-                    ))}
-                  </SimpleGrid>
-                )}
-              </Box>
-            )}
-
             <Tabs
               value={taskView}
               onChange={setTaskView}
@@ -1733,7 +1640,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               <Tabs.Panel value="tasks">
                 <Stack gap={0}>
                   <Group className={classes.taskToolbar} justify="space-between">
-                    <Group gap="xs">
+                    <Group gap="xs" data-testid="saved-view-menu">
                       <Tooltip label="Grouped by OpenProject status">
                         <Badge variant="light">Grouped by OpenProject status</Badge>
                       </Tooltip>
@@ -1745,6 +1652,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         </Tooltip>
                       )}
                       <Select
+                        data-testid="saved-view-select"
                         placeholder="Saved views"
                         data={savedViews.map((view) => ({ value: view.id, label: view.name }))}
                         value={activeSavedViewId}
@@ -1753,12 +1661,14 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="12rem"
                       />
                       <TextInput
+                        data-testid="saved-view-name-input"
                         value={savedViewName}
                         onChange={(event) => setSavedViewName(event.currentTarget.value)}
                         placeholder="View name"
                         w="9rem"
                       />
                       <Select
+                        data-testid="saved-view-visibility-select"
                         value={savedViewVisibility}
                         onChange={(value) =>
                           setSavedViewVisibility((value as 'PRIVATE' | 'WORKSPACE') || 'PRIVATE')
@@ -1770,6 +1680,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="10rem"
                       />
                       <Button
+                        data-testid="saved-view-save-button"
                         variant="light"
                         disabled={!savedViewName.trim()}
                         onClick={saveCurrentView}
@@ -1777,7 +1688,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         Save view
                       </Button>
                       {filtersActive && (
-                        <Button variant="subtle" onClick={clearFilters}>
+                        <Button
+                          variant="subtle"
+                          onClick={clearFilters}
+                          data-testid="clear-filters-button"
+                        >
                           Clear filters
                         </Button>
                       )}
@@ -1870,8 +1785,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         </Menu>
                       )}
                     </Group>
-                    <Group gap="xs">
+                    <Group gap="xs" data-testid="filter-bar">
                       <TextInput
+                        data-testid="filter-search"
                         value={taskSearch}
                         onChange={(event) => setTaskSearch(event.currentTarget.value)}
                         placeholder="Search title or task key"
@@ -1879,6 +1795,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="16rem"
                       />
                       <Select
+                        data-testid="filter-status"
                         value={statusFilter}
                         onChange={setStatusFilter}
                         clearable
@@ -1887,6 +1804,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="10rem"
                       />
                       <MultiSelect
+                        data-testid="filter-assignees"
                         value={assigneeFilter}
                         onChange={setAssigneeFilter}
                         clearable
@@ -1906,6 +1824,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         }
                       >
                         <Button
+                          data-testid="filter-assigned-to-me"
                           variant={assignedToMeActive ? 'filled' : 'light'}
                           disabled={!currentOpenProjectUser}
                           onClick={() => {
@@ -1919,6 +1838,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         </Button>
                       </Tooltip>
                       <Select
+                        data-testid="filter-priority"
                         value={priorityFilter}
                         onChange={setPriorityFilter}
                         clearable
@@ -1927,6 +1847,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="9rem"
                       />
                       <MultiSelect
+                        data-testid="filter-responsible"
                         value={responsibleFilter}
                         onChange={setResponsibleFilter}
                         clearable
@@ -1940,6 +1861,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         maxValues={1}
                       />
                       <MultiSelect
+                        data-testid="filter-type"
                         value={typeFilter}
                         onChange={setTypeFilter}
                         clearable
@@ -1952,6 +1874,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         searchable
                       />
                       <MultiSelect
+                        data-testid="filter-tags"
                         value={tagFilter}
                         onChange={setTagFilter}
                         clearable
@@ -1964,6 +1887,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         searchable
                       />
                       <TextInput
+                        data-testid="filter-due-before"
                         type="date"
                         value={dueBeforeFilter}
                         onChange={(event) => setDueBeforeFilter(event.currentTarget.value)}
@@ -1971,6 +1895,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         w="10rem"
                       />
                       <TextInput
+                        data-testid="filter-updated-since"
                         type="date"
                         value={updatedSinceFilter}
                         onChange={(event) => setUpdatedSinceFilter(event.currentTarget.value)}
@@ -1979,6 +1904,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       />
                       <Tooltip label="Show overdue tasks only">
                         <Checkbox
+                          data-testid="filter-overdue"
                           label="Overdue"
                           checked={overdueFilter}
                           onChange={(event) => setOverdueFilter(event.currentTarget.checked)}
@@ -1986,6 +1912,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       </Tooltip>
                       <Tooltip label="Show tasks linked to a GitHub pull request">
                         <Checkbox
+                          data-testid="filter-has-pr"
                           label="Has PR"
                           checked={hasGitHubPrFilter}
                           onChange={(event) => setHasGitHubPrFilter(event.currentTarget.checked)}
@@ -2030,18 +1957,21 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                     <Alert color="blue" title={`${selectedTaskIds.size} selected`}>
                       <Group gap="xs">
                         <Select
+                          data-testid="bulk-status-select"
                           placeholder="Bulk status"
                           data={statuses.map((item) => ({ value: item.id, label: item.name }))}
                           onChange={(value) => value && void runBulkUpdate({ statusId: value })}
                           w="12rem"
                         />
                         <Select
+                          data-testid="bulk-priority-select"
                           placeholder="Bulk priority"
                           data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
                           onChange={(value) => value && void runBulkUpdate({ priority: value })}
                           w="12rem"
                         />
                         <MultiSelect
+                          data-testid="bulk-assignee-select"
                           placeholder="Bulk assignee/responsible"
                           data={availableAssignees.map((user) => ({
                             value: user.id,
@@ -2089,9 +2019,12 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                   )}
                   {nextCursor && (
                     <Button
+                      data-testid="load-more-tasks"
+                      data-next-cursor={nextCursor}
+                      type="button"
                       variant="subtle"
                       loading={tasksLoading}
-                      onClick={() => loadTasks(nextCursor)}
+                      onClick={handleLoadMoreTasks}
                     >
                       Load more
                     </Button>
@@ -2169,9 +2102,29 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         onBack={backToDocs}
                         onSaved={(document) => {
                           setSelectedDoc(document);
+                          setWorkspaces((current) =>
+                            current.map((item) =>
+                              item.id !== workspace.id
+                                ? item
+                                : {
+                                    ...item,
+                                    spaces: item.spaces.map((space) =>
+                                      space.id !== document.spaceId
+                                        ? space
+                                        : {
+                                            ...space,
+                                            documents: space.documents.map((existing) =>
+                                              existing.id === document.id ? document : existing
+                                            ),
+                                          }
+                                    ),
+                                  }
+                            )
+                          );
                           reload();
                         }}
                         onError={setActionError}
+                        canEdit={Boolean(currentPermissionSet?.manageDocs)}
                       />
                     ) : (
                       <DocumentsPanel
@@ -2180,6 +2133,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                         onOpen={openDoc}
                         onChanged={reload}
                         onError={setActionError}
+                        canEdit={Boolean(currentPermissionSet?.manageDocs)}
                       />
                     )}
                   </Box>
@@ -2195,6 +2149,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         position="right"
         size="78rem"
         title={selectedTask ? `Task • ${selectedTask.taskKey || selectedTask.id}` : 'Task'}
+        data-testid="task-drawer"
       >
         {selectedTask && (
           <TaskDetailPage

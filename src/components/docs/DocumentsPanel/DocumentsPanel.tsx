@@ -36,6 +36,7 @@ export interface DocumentsPanelProps {
   onOpen: (doc: DocumentItem) => void;
   onChanged: () => void;
   onError: (message: string) => void;
+  canEdit?: boolean;
 }
 
 export function DocumentsPanel({
@@ -44,6 +45,7 @@ export function DocumentsPanel({
   onOpen,
   onChanged,
   onError,
+  canEdit = true,
 }: DocumentsPanelProps) {
   const embedForm = useForm({
     initialValues: {
@@ -93,7 +95,7 @@ export function DocumentsPanel({
   });
 
   return (
-    <Stack gap="md">
+    <Stack gap="md" data-testid="docs-page">
       <Group justify="space-between" align="flex-end">
         <Box>
           <Title order={3}>Local Docs</Title>
@@ -102,19 +104,23 @@ export function DocumentsPanel({
           </Text>
         </Box>
         <Group>
-          <FileButton
-            onChange={(file) => file && void run(() => uploadDocument(spaceId, file))}
-            accept="image/*,.md,.txt,.docx,.xlsx,.csv,.json,.html"
-          >
-            {(props) => (
-              <Button {...props} leftSection={<IconPaperclip size="1rem" />} variant="light">
-                Upload
+          {canEdit && (
+            <>
+              <FileButton
+                onChange={(file) => file && void run(() => uploadDocument(spaceId, file))}
+                accept="image/*,.md,.txt,.docx,.xlsx,.csv,.json,.html"
+              >
+                {(props) => (
+                  <Button {...props} leftSection={<IconPaperclip size="1rem" />} variant="light">
+                    Upload
+                  </Button>
+                )}
+              </FileButton>
+              <Button leftSection={<IconPlus size="1rem" />} onClick={createMd}>
+                New MD
               </Button>
-            )}
-          </FileButton>
-          <Button leftSection={<IconPlus size="1rem" />} onClick={createMd}>
-            New MD
-          </Button>
+            </>
+          )}
         </Group>
       </Group>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
@@ -142,7 +148,7 @@ export function DocumentsPanel({
                 </Tooltip>
                 <Menu width="18rem" position="bottom-end">
                   <Menu.Target>
-                    <Tooltip label="Document settings">
+                    <Tooltip label={canEdit ? 'Document settings' : 'Read-only document'}>
                       <ActionIcon
                         component="div"
                         variant="subtle"
@@ -158,59 +164,76 @@ export function DocumentsPanel({
                     onClick={(event) => event.stopPropagation()}
                   >
                     <Menu.Label>Doc settings</Menu.Label>
-                    <Menu.Item
-                      onClick={() => {
-                        void (async () => {
-                          const title = await promptForText({
-                            title: 'Rename doc',
-                            label: 'Doc name',
-                            initialValue: doc.title,
-                            confirmLabel: 'Rename',
-                          });
-                          if (!title) {
-                            return;
+                    {canEdit ? (
+                      <>
+                        <Menu.Item
+                          onClick={() => {
+                            void (async () => {
+                              const title = await promptForText({
+                                title: 'Rename doc',
+                                label: 'Doc name',
+                                initialValue: doc.title,
+                                confirmLabel: 'Rename',
+                              });
+                              if (!title) {
+                                return;
+                              }
+                              await run(() => updateDocument(doc.id, { title }));
+                            })();
+                          }}
+                        >
+                          Rename
+                        </Menu.Item>
+                        <Menu.Item
+                          onClick={() =>
+                            navigator.clipboard?.writeText(
+                              `${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`
+                            )
                           }
-                          await run(() => updateDocument(doc.id, { title }));
-                        })();
-                      }}
-                    >
-                      Rename
-                    </Menu.Item>
-                    <Menu.Item
-                      onClick={() =>
-                        navigator.clipboard?.writeText(
-                          `${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`
-                        )
-                      }
-                    >
-                      Copy link
-                    </Menu.Item>
-                    <Menu.Item onClick={() => void run(() => duplicateDocument(doc.id))}>
-                      Duplicate
-                    </Menu.Item>
-                    <Menu.Item
-                      color="red"
-                      onClick={() => {
-                        void (async () => {
-                          const confirmed = await confirmAction({
-                            title: 'Delete doc',
-                            message: `Delete "${doc.title}"? This removes the local tracker document.`,
-                            confirmLabel: 'Delete doc',
-                            confirmColor: 'red',
-                          });
-                          if (!confirmed) {
-                            return;
+                        >
+                          Copy link
+                        </Menu.Item>
+                        <Menu.Item onClick={() => void run(() => duplicateDocument(doc.id))}>
+                          Duplicate
+                        </Menu.Item>
+                        <Menu.Item
+                          color="red"
+                          onClick={() => {
+                            void (async () => {
+                              const confirmed = await confirmAction({
+                                title: 'Delete doc',
+                                message: `Delete "${doc.title}"? This removes the local tracker document.`,
+                                confirmLabel: 'Delete doc',
+                                confirmColor: 'red',
+                              });
+                              if (!confirmed) {
+                                return;
+                              }
+                              await run(() => deleteDocument(doc.id));
+                            })();
+                          }}
+                        >
+                          Delete
+                        </Menu.Item>
+                        <Menu.Divider />
+                        <Menu.Item disabled>
+                          Managed through workspace members and project access
+                        </Menu.Item>
+                      </>
+                    ) : (
+                      <>
+                        <Menu.Item
+                          onClick={() =>
+                            navigator.clipboard?.writeText(
+                              `${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`
+                            )
                           }
-                          await run(() => deleteDocument(doc.id));
-                        })();
-                      }}
-                    >
-                      Delete
-                    </Menu.Item>
-                    <Menu.Divider />
-                    <Menu.Item disabled>
-                      Managed through workspace members and project access
-                    </Menu.Item>
+                        >
+                          Copy link
+                        </Menu.Item>
+                        <Menu.Item disabled>Your current role can view local docs only.</Menu.Item>
+                      </>
+                    )}
                   </Menu.Dropdown>
                 </Menu>
               </Group>
@@ -229,29 +252,31 @@ export function DocumentsPanel({
           </UnstyledButton>
         ))}
       </SimpleGrid>
-      <Box component="form" onSubmit={createEmbed}>
-        <Group align="end">
-          <TextInput
-            label="Embed title"
-            placeholder="Prototype board"
-            {...embedForm.getInputProps('title')}
-            className={classes.grow}
-          />
-          <TextInput
-            label="Embed link"
-            placeholder="Miro, Google Drive PDF, Figma preview..."
-            {...embedForm.getInputProps('embedUrl')}
-            className={classes.grow}
-          />
-          <Button
-            type="submit"
-            variant="light"
-            disabled={!embedForm.values.embedUrl.trim() || !embedForm.values.title.trim()}
-          >
-            Add embed
-          </Button>
-        </Group>
-      </Box>
+      {canEdit && (
+        <Box component="form" onSubmit={createEmbed}>
+          <Group align="end">
+            <TextInput
+              label="Embed title"
+              placeholder="Prototype board"
+              {...embedForm.getInputProps('title')}
+              className={classes.grow}
+            />
+            <TextInput
+              label="Embed link"
+              placeholder="Miro, Google Drive PDF, Figma preview..."
+              {...embedForm.getInputProps('embedUrl')}
+              className={classes.grow}
+            />
+            <Button
+              type="submit"
+              variant="light"
+              disabled={!embedForm.values.embedUrl.trim() || !embedForm.values.title.trim()}
+            >
+              Add embed
+            </Button>
+          </Group>
+        </Box>
+      )}
     </Stack>
   );
 }
