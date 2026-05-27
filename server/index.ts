@@ -5,6 +5,7 @@ import { toHttpError } from './errors.js';
 import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermissions.js';
 import { openProjectRouter } from './openproject/routes.js';
 import { authRouter } from './routes/auth.js';
+import { checklistsRouter } from './routes/checklists.js';
 import { documentsRouter } from './routes/documents.js';
 import { importReportsRouter } from './routes/importReports.js';
 import { integrationsRouter } from './routes/integrations.js';
@@ -37,6 +38,7 @@ export function createApp() {
   app.use('/api/workspaces', workspacesRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
+  app.use('/api', checklistsRouter);
   app.use('/api/openproject', openProjectRouter);
   app.use('/api/documents', documentsRouter);
   app.use('/api/saved-views', savedViewsRouter);

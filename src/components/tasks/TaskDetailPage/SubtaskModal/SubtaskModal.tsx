@@ -10,7 +10,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createTask,
   getTask,
@@ -57,10 +57,12 @@ export function SubtaskModal({
       title: (value) => (value.trim().length ? null : 'Subtask name is required'),
     },
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     if (opened) {
-      form.setValues({
+      formRef.current.setValues({
         title: '',
         description: '',
         statusId: parentTask.statusId || statuses[0]?.id || '',
@@ -69,7 +71,7 @@ export function SubtaskModal({
         startDate: '',
         dueDate: '',
       });
-      form.resetDirty();
+      formRef.current.resetDirty();
     }
   }, [
     opened,
@@ -78,7 +80,6 @@ export function SubtaskModal({
     parentTask.statusId,
     parentTask.assignees,
     statuses,
-    form,
   ]);
 
   const create = form.onSubmit(async (values) => {

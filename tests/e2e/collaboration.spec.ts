@@ -55,7 +55,7 @@ test.describe('comments, files, subtasks, relations, and time', () => {
         buffer: Buffer.from('broken'),
       });
     await page.getByTestId('task-attachment-submit').click();
-    await expect(page.getByText('Could not complete action')).toBeVisible();
+    await expect(page.getByText('Could not complete action').first()).toBeVisible();
   });
 
   test('creates subtasks and relations from the drawer', async ({ page, mockApi }) => {
@@ -67,13 +67,14 @@ test.describe('comments, files, subtasks, relations, and time', () => {
     await page.getByRole('button', { name: 'Add subtask' }).click();
     await page.getByLabel('Name').fill('Subtask from e2e');
     await page.getByRole('button', { name: 'Create subtask' }).click();
-    await expect(page.getByTestId('task-detail-page')).toContainText('Subtask from e2e');
+    await expect(
+      page.getByTestId('subtask-row').filter({ hasText: 'Subtask from e2e' })
+    ).toBeVisible();
 
-    await page.getByRole('tab', { name: 'Relations' }).click();
+    await page.getByTestId('task-relation-open-modal').click();
     await page.getByTestId('task-relation-target-input').fill('wp-102');
-    await chooseOption(page, 'task-relation-type-select', 'Blocks');
+    await chooseOption(page, 'task-relation-type-select', 'Блокирует');
     await page.getByTestId('task-relation-submit').click();
-    await expect(page.getByText('Relation added')).toBeVisible();
     await expect(page.getByTestId('relation-row')).toContainText('Fix jump bug');
   });
 

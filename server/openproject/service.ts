@@ -308,7 +308,7 @@ async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPac
 
   const workPackageIds = items.map((item) => item.id);
   const runtimeWorkspace = await getOpenProjectRuntimeWorkspace().catch(() => null);
-  const [pullRequests, branches, workPackageTags] = await Promise.all([
+  const [pullRequests, branches, workPackageTags, checklists] = await Promise.all([
     prisma.gitHubPullRequest.findMany({
       where: { workPackageId: { in: workPackageIds } },
       include: { repository: true },
@@ -329,11 +329,28 @@ async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPac
           orderBy: { tag: { name: 'asc' } },
         })
       : Promise.resolve([]),
+    runtimeWorkspace
+      ? prisma.checklist
+          .findMany({
+            where: {
+              workspaceId: runtimeWorkspace.id,
+              workPackageId: { in: workPackageIds },
+            },
+            include: {
+              items: true,
+            },
+          })
+          .catch(() => [])
+      : Promise.resolve([]),
   ]);
 
   const prsByWorkPackageId = new Map<string, typeof pullRequests>();
   const branchesByWorkPackageId = new Map<string, typeof branches>();
   const tagsByWorkPackageId = new Map<string, typeof workPackageTags>();
+  const checklistsByWorkPackageId = new Map<
+    string,
+    Array<{ items: Array<{ completed: boolean }> }>
+  >();
   for (const pullRequest of pullRequests) {
     if (!pullRequest.workPackageId) {
       continue;
@@ -355,6 +372,11 @@ async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPac
     bucket.push(workPackageTag);
     tagsByWorkPackageId.set(workPackageTag.workPackageId, bucket);
   }
+  for (const checklist of checklists) {
+    const bucket = checklistsByWorkPackageId.get(checklist.workPackageId) || [];
+    bucket.push(checklist);
+    checklistsByWorkPackageId.set(checklist.workPackageId, bucket);
+  }
 
   return items.map((item) => {
     const githubPullRequests = (prsByWorkPackageId.get(item.id) || []).map(
@@ -364,9 +386,21 @@ async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPac
     const tags = (tagsByWorkPackageId.get(item.id) || []).map((workPackageTag) => ({
       tag: serializeOpenProjectTag(workPackageTag.tag),
     }));
+    const checklists = checklistsByWorkPackageId.get(item.id) || [];
+    const checklistSummary = checklists.length
+      ? {
+          completed: checklists.reduce(
+            (sum, checklist) =>
+              sum + checklist.items.filter((checklistItem) => checklistItem.completed).length,
+            0
+          ),
+          total: checklists.reduce((sum, checklist) => sum + checklist.items.length, 0),
+        }
+      : null;
     return {
       ...item,
       tags,
+      checklistSummary,
       githubPullRequests,
       githubBranches,
       developmentStatus: computeTaskDevelopmentStatus({
@@ -1550,6 +1584,7 @@ export async function updateTask(
     assigneeIds?: string[];
     startDate?: string | null;
     dueDate?: string | null;
+    estimatedHours?: number | null;
   }
 ) {
   const [existing, priorityItems] = await Promise.all([
@@ -1576,6 +1611,10 @@ export async function updateTask(
     body.startDate = input.startDate ? toMillisDate(input.startDate) : null;
   if (input.dueDate !== undefined)
     body.dueDate = input.dueDate ? toMillisDate(input.dueDate) : null;
+  if (input.estimatedHours !== undefined) {
+    body.estimatedTime =
+      input.estimatedHours === null ? null : hoursToDuration(Number(input.estimatedHours));
+  }
   const updated = await openProjectRequest<OpenProjectWorkPackage>(
     `/api/v3/work_packages/${taskId}`,
     { method: 'PATCH', body }

@@ -79,6 +79,9 @@ export type OpenProjectWorkPackage = {
   description?: OpenProjectText;
   startDate?: string | null;
   dueDate?: string | null;
+  estimatedTime?: string | null;
+  remainingTime?: string | null;
+  spentTime?: string | null;
   createdAt?: string;
   updatedAt?: string;
   _links: Record<string, HalLink>;

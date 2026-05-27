@@ -10,7 +10,7 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconGitPullRequest, IconGripVertical, IconPlus } from '@tabler/icons-react';
+import { IconChecklist, IconGitPullRequest, IconGripVertical, IconPlus } from '@tabler/icons-react';
 import { Fragment, useState } from 'react';
 import type { Task, TaskStatus } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
@@ -27,6 +27,13 @@ export interface TaskBoardProps {
     statusId: string,
     targetTaskId?: string | null
   ) => Promise<void> | void;
+}
+
+function formatEstimate(hours?: number | null) {
+  if (!hours || hours <= 0) {
+    return null;
+  }
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
 export function TaskBoard({
@@ -129,81 +136,104 @@ export function TaskBoard({
               </Group>
 
               <Stack gap="sm" className={classes.cards}>
-                {columnTasks.map((task) => (
-                  <Fragment key={task.id}>
-                    {canWriteTasks && (
-                      <Divider
-                        data-testid="board-dropzone"
-                        data-status-id={status.id}
-                        data-target-task-id={task.id}
-                        className={classes.dropZone}
+                {columnTasks.map((task) => {
+                  const estimate = formatEstimate(task.estimatedHours);
+                  return (
+                    <Fragment key={task.id}>
+                      {canWriteTasks && (
+                        <Divider
+                          data-testid="board-dropzone"
+                          data-status-id={status.id}
+                          data-target-task-id={task.id}
+                          className={classes.dropZone}
+                          onDragOver={(event) => {
+                            event.preventDefault();
+                          }}
+                          onDrop={async (event) => {
+                            event.preventDefault();
+                            event.stopPropagation();
+                            if (!draggingTaskId) return;
+                            await onMoveTask(draggingTaskId, status.id, task.id);
+                            setDraggingTaskId(null);
+                          }}
+                        />
+                      )}
+                      <UnstyledButton
+                        data-testid="task-card"
+                        data-task-id={task.id}
+                        className={classes.card}
+                        draggable={canWriteTasks}
+                        onDragStart={() => setDraggingTaskId(task.id)}
+                        onDragEnd={() => setDraggingTaskId(null)}
                         onDragOver={(event) => {
-                          event.preventDefault();
+                          if (canWriteTasks) {
+                            event.preventDefault();
+                          }
                         }}
                         onDrop={async (event) => {
                           event.preventDefault();
                           event.stopPropagation();
-                          if (!draggingTaskId) return;
+                          if (!canWriteTasks || !draggingTaskId) return;
                           await onMoveTask(draggingTaskId, status.id, task.id);
                           setDraggingTaskId(null);
                         }}
-                      />
-                    )}
-                    <UnstyledButton
-                      data-testid="task-card"
-                      data-task-id={task.id}
-                      className={classes.card}
-                      draggable={canWriteTasks}
-                      onDragStart={() => setDraggingTaskId(task.id)}
-                      onDragEnd={() => setDraggingTaskId(null)}
-                      onDragOver={(event) => {
-                        if (canWriteTasks) {
-                          event.preventDefault();
-                        }
-                      }}
-                      onDrop={async (event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        if (!canWriteTasks || !draggingTaskId) return;
-                        await onMoveTask(draggingTaskId, status.id, task.id);
-                        setDraggingTaskId(null);
-                      }}
-                      onClick={() => onOpenTask(task)}
-                    >
-                      <Group gap="xs" wrap="nowrap" align="flex-start">
-                        {canWriteTasks && (
-                          <Tooltip label="Drag to another status">
-                            <IconGripVertical size="1rem" className={classes.dragIcon} />
-                          </Tooltip>
-                        )}
-                        <Box className={classes.cardBody}>
-                          {task.taskKey && (
-                            <Text size="xs" c="dimmed" fw={700}>
-                              {task.taskKey}
-                            </Text>
-                          )}
-                          <Text size="sm" fw={700} lineClamp={3}>
-                            {task.title}
-                          </Text>
-                          <Group gap="xs" mt="xs">
-                            <Tooltip label={`Priority: ${task.priority}`}>
-                              <Badge variant="light">{task.priority}</Badge>
+                        onClick={() => onOpenTask(task)}
+                      >
+                        <Group gap="xs" wrap="nowrap" align="flex-start">
+                          {canWriteTasks && (
+                            <Tooltip label="Drag to another status">
+                              <IconGripVertical size="1rem" className={classes.dragIcon} />
                             </Tooltip>
-                            {task.tags.slice(0, 2).map(({ tag }) => (
-                              <Tooltip key={tag.id} label={tag.name}>
-                                <Badge variant="outline">{tag.name}</Badge>
+                          )}
+                          <Box className={classes.cardBody}>
+                            {task.taskKey && (
+                              <Text size="xs" c="dimmed" fw={700}>
+                                {task.taskKey}
+                              </Text>
+                            )}
+                            <Text size="sm" fw={700} lineClamp={3}>
+                              {task.title}
+                            </Text>
+                            <Group gap="xs" mt="xs">
+                              <Tooltip label={`Priority: ${task.priority}`}>
+                                <Badge variant="light">{task.priority}</Badge>
                               </Tooltip>
-                            ))}
-                            {pullRequestBadge(task)}
-                            {task.assignees?.length ? (
-                              <AvatarStack users={task.assignees} size="1.5rem" max={3} />
-                            ) : null}
-                          </Group>
-                        </Box>
-                      </Group>
-                    </UnstyledButton>
-                  </Fragment>
-                ))}
+                              {estimate && (
+                                <Tooltip label={`Estimate: ${estimate}`}>
+                                  <Badge color="cyan" variant="light">
+                                    {estimate}
+                                  </Badge>
+                                </Tooltip>
+                              )}
+                              {task.checklistSummary?.total ? (
+                                <Tooltip
+                                  label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
+                                >
+                                  <Badge
+                                    color="lime"
+                                    variant="light"
+                                    leftSection={<IconChecklist size="0.75rem" />}
+                                  >
+                                    {task.checklistSummary.completed}/{task.checklistSummary.total}
+                                  </Badge>
+                                </Tooltip>
+                              ) : null}
+                              {task.tags.slice(0, 2).map(({ tag }) => (
+                                <Tooltip key={tag.id} label={tag.name}>
+                                  <Badge variant="outline">{tag.name}</Badge>
+                                </Tooltip>
+                              ))}
+                              {pullRequestBadge(task)}
+                              {task.assignees?.length ? (
+                                <AvatarStack users={task.assignees} size="1.5rem" max={3} />
+                              ) : null}
+                            </Group>
+                          </Box>
+                        </Group>
+                      </UnstyledButton>
+                    </Fragment>
+                  );
+                })}
                 {canWriteTasks && columnTasks.length > 0 && (
                   <Divider
                     data-testid="board-dropzone"

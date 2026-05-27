@@ -292,6 +292,7 @@ openProjectRouter.patch('/tasks/:taskId', async (req, res) => {
       assigneeIds: z.array(z.string()).optional(),
       startDate: z.string().nullable().optional(),
       dueDate: z.string().nullable().optional(),
+      estimatedHours: z.coerce.number().nonnegative().nullable().optional(),
     })
     .parse(req.body);
   const task = await service.updateTask(req.params.taskId, body);

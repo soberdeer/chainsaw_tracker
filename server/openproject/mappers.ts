@@ -38,6 +38,19 @@ function priorityFromOpenProject(name?: string | null): TaskPriority {
   return 'NORMAL';
 }
 
+export function parseDuration(iso: string | null | undefined): number | null {
+  if (!iso) {
+    return null;
+  }
+  const match = iso.match(/^P(?:T(?:(\d+(?:\.\d+)?)H)?(?:(\d+(?:\.\d+)?)M)?)$/i);
+  if (!match) {
+    return null;
+  }
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  return hours + minutes / 60;
+}
+
 export function priorityToOpenProjectName(priority?: string) {
   if (priority === 'URGENT') return 'Immediate';
   if (priority === 'HIGH') return 'High';
@@ -261,6 +274,9 @@ export function mapWorkPackage(
     type: workPackage._links.type?.title || undefined,
     startDate: workPackage.startDate || undefined,
     dueDate: workPackage.dueDate || undefined,
+    estimatedHours: parseDuration(workPackage.estimatedTime),
+    remainingHours: parseDuration(workPackage.remainingTime),
+    spentHours: parseDuration(workPackage.spentTime),
     externalSource: 'OPENPROJECT',
     externalId: String(workPackage.id),
     externalUrl: openProjectWebUrl(`/work_packages/${workPackage.id}`),

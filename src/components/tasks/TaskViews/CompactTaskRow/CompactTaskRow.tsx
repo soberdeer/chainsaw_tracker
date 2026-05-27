@@ -4,6 +4,7 @@ import {
   IconChevronRight,
   IconFlag,
   IconGitPullRequest,
+  IconChecklist,
   IconList,
 } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -24,6 +25,13 @@ export interface CompactTaskRowProps {
   onSelectedChange?: (taskId: string, selected: boolean) => void;
 }
 
+function formatEstimate(hours?: number | null) {
+  if (!hours || hours <= 0) {
+    return null;
+  }
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+}
+
 export function CompactTaskRow({
   task,
   onOpen,
@@ -36,6 +44,7 @@ export function CompactTaskRow({
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
+  const estimate = formatEstimate(task.estimatedHours);
   const [_, setShowSubtasks] = useState(false);
 
   const toggleSubtasks = (e: any) => {
@@ -94,6 +103,22 @@ export function CompactTaskRow({
             <Badge color="grape">{task.milestone.title}</Badge>
           </Tooltip>
         )}
+        {estimate && (
+          <Tooltip label={`Estimate: ${estimate}`}>
+            <Badge color="cyan" variant="light">
+              {estimate}
+            </Badge>
+          </Tooltip>
+        )}
+        {task.checklistSummary?.total ? (
+          <Tooltip
+            label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
+          >
+            <Badge color="lime" variant="light" leftSection={<IconChecklist size="0.75rem" />}>
+              {task.checklistSummary.completed}/{task.checklistSummary.total}
+            </Badge>
+          </Tooltip>
+        ) : null}
         {task.tags.map(({ tag }) => (
           <Tooltip key={tag.id} label={tag.name}>
             <Badge>{tag.name}</Badge>

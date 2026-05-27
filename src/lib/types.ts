@@ -67,6 +67,9 @@ export type Task = {
   typeId?: string;
   type?: string;
   githubUrl?: string;
+  estimatedHours?: number | null;
+  remainingHours?: number | null;
+  spentHours?: number | null;
   externalSource?: 'CLICKUP' | 'OPENPROJECT' | 'LOCAL';
   externalId?: string;
   externalUrl?: string;
@@ -93,6 +96,11 @@ export type Task = {
   githubBranches?: GitHubBranch[];
   githubPullRequests?: GitHubPullRequest[];
   activityLogs?: ActivityLog[];
+  checklists?: Checklist[];
+  checklistSummary?: {
+    completed: number;
+    total: number;
+  } | null;
 };
 
 export type ActivityLog = {
@@ -170,6 +178,25 @@ export type OpenProjectRelationItem = {
   toId?: string;
   toTitle?: string;
   description?: string;
+};
+
+export type ChecklistItem = {
+  id: string;
+  text: string;
+  completed: boolean;
+  position: number;
+  completedAt?: string | null;
+  completedByUserId?: string | null;
+};
+
+export type Checklist = {
+  id: string;
+  workPackageId: string;
+  title: string;
+  position: number;
+  items: ChecklistItem[];
+  completedItems: number;
+  totalItems: number;
 };
 
 export type OpenProjectTimeEntryItem = {

@@ -26,28 +26,23 @@ import {
   IconExternalLink,
   IconFlag,
   IconGitPullRequest,
-  IconLink,
   IconPaperclip,
   IconPlus,
   IconRefresh,
   IconClock,
-  IconTrash,
   IconUsers,
 } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   addTaskComment,
-  addTaskRelation,
   addTaskTimeEntry,
   createOpenProjectTag,
-  deleteTaskRelation,
   getOpenProjectTags,
   getGitHubRepositories,
   getTask,
   getTaskActivity,
   getTaskAttachments,
   getTaskCustomFields,
-  getTaskRelations,
   getTaskTags,
   getTaskTimeEntryActivities,
   getTaskTimeEntries,
@@ -68,7 +63,6 @@ import {
   type GitHubRepository,
   type OpenProjectAttachmentItem,
   type OpenProjectCustomFieldItem,
-  type OpenProjectRelationItem,
   type OpenProjectTimeEntryActivityOption,
   type OpenProjectTimeEntryItem,
   type Tag,
@@ -78,6 +72,8 @@ import {
   type Workspace,
 } from '@/lib';
 import { AvatarStack } from '../../common/AvatarStack';
+import { TaskChecklists } from '../TaskChecklists/TaskChecklists';
+import { TaskRelations } from '../TaskRelations/TaskRelations';
 import { SubtaskModal } from './SubtaskModal/SubtaskModal';
 import classes from './TaskDetailPage.module.css';
 
@@ -90,6 +86,13 @@ export interface TaskDetailPageProps {
   onOpenSubtask: (task: Task) => void;
   onError: (message: string) => void;
   canWriteTasks: boolean;
+}
+
+function formatHours(hours?: number | null) {
+  if (!hours || hours <= 0) {
+    return null;
+  }
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
 export function TaskDetailPage({
@@ -109,8 +112,6 @@ export function TaskDetailPage({
   const [subtaskModalOpen, setSubtaskModalOpen] = useState(false);
   const [activity, setActivity] = useState<ActivityLog[]>([]);
   const [commentSaving, setCommentSaving] = useState(false);
-  const [relations, setRelations] = useState<OpenProjectRelationItem[]>([]);
-  const [relationSaving, setRelationSaving] = useState(false);
   const [timeEntries, setTimeEntries] = useState<OpenProjectTimeEntryItem[]>([]);
   const [totalHours, setTotalHours] = useState(0);
   const [timeSaving, setTimeSaving] = useState(false);
@@ -135,6 +136,7 @@ export function TaskDetailPage({
       assigneeIds: [] as string[],
       startDate: toDateInput(task.startDate),
       dueDate: toDateInput(task.dueDate),
+      estimatedHours: task.estimatedHours ?? '',
     },
     validate: {
       title: (value) => (value.trim().length ? null : 'Task title is required'),
@@ -143,16 +145,6 @@ export function TaskDetailPage({
   const commentForm = useForm({
     initialValues: {
       comment: '',
-    },
-  });
-  const relationForm = useForm({
-    initialValues: {
-      relationTargetId: '',
-      relationType: 'relates',
-    },
-    validate: {
-      relationTargetId: (value) =>
-        value.trim().length ? null : 'Target work package ID is required',
     },
   });
   const timeForm = useForm({
@@ -188,9 +180,19 @@ export function TaskDetailPage({
     },
   });
   const githubSupportedForTask = true;
+  const detailsFormRef = useRef(detailsForm);
+  const commentFormRef = useRef(commentForm);
+  const timeFormRef = useRef(timeForm);
+  const attachmentFormRef = useRef(attachmentForm);
+  const githubFormRef = useRef(githubForm);
+  detailsFormRef.current = detailsForm;
+  commentFormRef.current = commentForm;
+  timeFormRef.current = timeForm;
+  attachmentFormRef.current = attachmentForm;
+  githubFormRef.current = githubForm;
 
   useEffect(() => {
-    detailsForm.setValues({
+    detailsFormRef.current.setValues({
       title: task.title,
       description: task.description || '',
       statusId: task.statusId || '',
@@ -200,22 +202,19 @@ export function TaskDetailPage({
       ),
       startDate: toDateInput(task.startDate),
       dueDate: toDateInput(task.dueDate),
+      estimatedHours: task.estimatedHours ?? '',
     });
-    commentForm.reset();
-    relationForm.reset();
-    timeForm.setValues({
+    commentFormRef.current.reset();
+    timeFormRef.current.setValues({
       timeHours: 1,
       timeSpentOn: toDateInput(new Date().toISOString()),
       timeComment: '',
       timeActivityId: '',
     });
-    attachmentForm.reset();
+    attachmentFormRef.current.reset();
     getTaskActivity(task.id)
       .then((page) => setActivity(page.items))
       .catch((error) => onError(getErrorMessage(error)));
-    getTaskRelations(task.id)
-      .then((page) => setRelations(page.items))
-      .catch(() => setRelations([]));
     getTaskTimeEntries(task.id)
       .then((page) => {
         setTimeEntries(page.items);
@@ -238,14 +237,14 @@ export function TaskDetailPage({
           items.length ? null : 'OpenProject did not return any time entry activities.'
         );
         const nextActivityId =
-          items.find((activity) => activity.id === timeForm.values.timeActivityId)?.id ||
+          items.find((activity) => activity.id === timeFormRef.current.values.timeActivityId)?.id ||
           (items.length === 1 ? items[0]?.id || '' : '');
-        timeForm.setFieldValue('timeActivityId', nextActivityId);
+        timeFormRef.current.setFieldValue('timeActivityId', nextActivityId);
       })
       .catch((error) => {
         setTimeEntryActivities([]);
         setTimeActivitiesError(getErrorMessage(error));
-        timeForm.setFieldValue('timeActivityId', '');
+        timeFormRef.current.setFieldValue('timeActivityId', '');
       });
     Promise.all([getOpenProjectTags(workspace.id), getTaskTags(task.id)])
       .then(([tags, page]) => {
@@ -261,7 +260,7 @@ export function TaskDetailPage({
       getGitHubRepositories(workspace.id)
         .then((items) => {
           setRepositories(items);
-          githubForm.setValues({
+          githubFormRef.current.setValues({
             selectedRepositoryId: items[0]?.id || '',
             manualPr: '',
           });
@@ -269,20 +268,9 @@ export function TaskDetailPage({
         .catch(() => setRepositories([]));
     } else {
       setRepositories([]);
-      githubForm.reset();
+      githubFormRef.current.reset();
     }
-  }, [
-    task,
-    workspace,
-    onError,
-    githubSupportedForTask,
-    detailsForm,
-    commentForm,
-    relationForm,
-    timeForm,
-    attachmentForm,
-    githubForm,
-  ]);
+  }, [task, workspace, onError, githubSupportedForTask]);
 
   const tagOptions = workspaceTags.map((item) => ({
     value: item.id,
@@ -397,6 +385,7 @@ export function TaskDetailPage({
         assigneeIds: values.assigneeIds,
         startDate: values.startDate || null,
         dueDate: values.dueDate || null,
+        estimatedHours: values.estimatedHours === '' ? null : Number(values.estimatedHours) || null,
       });
       onSaved(saved);
       showToast({
@@ -442,38 +431,6 @@ export function TaskDetailPage({
       });
     } finally {
       setCommentSaving(false);
-    }
-  });
-
-  const submitRelation = relationForm.onSubmit(async (values) => {
-    const trimmedTargetId = values.relationTargetId.trim();
-    if (!canWriteTasks || !trimmedTargetId || trimmedTargetId === task.id) {
-      return;
-    }
-    try {
-      setRelationSaving(true);
-      await addTaskRelation(task.id, {
-        targetTaskId: trimmedTargetId,
-        type: values.relationType,
-      });
-      relationForm.reset();
-      const page = await getTaskRelations(task.id);
-      setRelations(page.items);
-      showToast({
-        tone: 'success',
-        title: 'Relation added',
-        message: 'The dependency was saved in OpenProject.',
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not add relation',
-        message,
-      });
-    } finally {
-      setRelationSaving(false);
     }
   });
 
@@ -744,6 +701,43 @@ export function TaskDetailPage({
           description="OpenProject stores one assignee and one responsible user."
           disabled={!canWriteTasks}
         />
+        <Stack gap="xs">
+          <NumberInput
+            label="Estimate"
+            value={detailsForm.values.estimatedHours}
+            onChange={(value) => detailsForm.setFieldValue('estimatedHours', value)}
+            min={0}
+            step={0.5}
+            decimalScale={2}
+            suffix="h"
+            disabled={!canWriteTasks}
+            description="Saved as OpenProject estimated time."
+            onBlur={() =>
+              void updateAndRefresh({
+                estimatedHours:
+                  detailsForm.values.estimatedHours === ''
+                    ? null
+                    : Number(detailsForm.values.estimatedHours),
+              })
+            }
+          />
+          <Group gap="xs">
+            {formatHours(task.remainingHours) && (
+              <Tooltip label="OpenProject remaining time">
+                <Badge color="orange" variant="light">
+                  Remaining {formatHours(task.remainingHours)}
+                </Badge>
+              </Tooltip>
+            )}
+            {formatHours(task.spentHours) && (
+              <Tooltip label="OpenProject spent time">
+                <Badge color="teal" variant="light">
+                  Spent {formatHours(task.spentHours)}
+                </Badge>
+              </Tooltip>
+            )}
+          </Group>
+        </Stack>
         <TextInput
           label="Start date"
           leftSection={<IconCalendarDue size="1rem" />}
@@ -859,6 +853,27 @@ export function TaskDetailPage({
         {...detailsForm.getInputProps('description')}
       />
 
+      <TaskChecklists
+        taskId={task.id}
+        canWriteTasks={canWriteTasks}
+        onError={onError}
+        onChanged={() => {
+          void getTask(task.id)
+            .then(onSaved)
+            .catch((error) => onError(getErrorMessage(error)));
+        }}
+      />
+      <TaskRelations
+        taskId={task.id}
+        canWriteTasks={canWriteTasks}
+        onError={onError}
+        onOpenTask={(targetTaskId) => {
+          void getTask(targetTaskId)
+            .then(onOpenSubtask)
+            .catch((error) => onError(getErrorMessage(error)));
+        }}
+      />
+
       <Tabs defaultValue="subtasks">
         <Tabs.List>
           <Tabs.Tab value="details">Details</Tabs.Tab>
@@ -879,7 +894,6 @@ export function TaskDetailPage({
             </Tooltip>
           </Tabs.Tab>
           <Tabs.Tab value="activity">Activity</Tabs.Tab>
-          <Tabs.Tab value="relations">Relations</Tabs.Tab>
           <Tabs.Tab value="time" data-testid="time-tab">
             Time
           </Tabs.Tab>
@@ -1212,107 +1226,6 @@ export function TaskDetailPage({
               <Text c="dimmed">
                 No OpenProject activity yet. Comments and field changes will appear here after the
                 first update.
-              </Text>
-            )}
-          </Stack>
-        </Tabs.Panel>
-        <Tabs.Panel value="relations" pt="md">
-          <Stack>
-            {canWriteTasks && (
-              <Paper
-                component="form"
-                withBorder
-                p="sm"
-                onSubmit={submitRelation}
-                data-testid="task-relation-form"
-              >
-                <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                  <TextInput
-                    data-testid="task-relation-target-input"
-                    label="Target work package ID"
-                    leftSection={<IconLink size="1rem" />}
-                    {...relationForm.getInputProps('relationTargetId')}
-                  />
-                  <Select
-                    data-testid="task-relation-type-select"
-                    label="Relation type"
-                    value={relationForm.values.relationType}
-                    onChange={(value) =>
-                      relationForm.setFieldValue('relationType', value || 'relates')
-                    }
-                    data={[
-                      { value: 'relates', label: 'Relates' },
-                      { value: 'blocks', label: 'Blocks' },
-                      { value: 'blockedBy', label: 'Blocked by' },
-                      { value: 'precedes', label: 'Precedes' },
-                      { value: 'follows', label: 'Follows' },
-                    ]}
-                  />
-                  <Stack justify="flex-end">
-                    <Button
-                      loading={relationSaving}
-                      type="submit"
-                      data-testid="task-relation-submit"
-                    >
-                      Add relation
-                    </Button>
-                  </Stack>
-                </SimpleGrid>
-              </Paper>
-            )}
-            {relations.map((relation) => (
-              <Paper
-                key={relation.id}
-                withBorder
-                p="sm"
-                data-testid="relation-row"
-                data-relation-id={relation.id}
-              >
-                <Group justify="space-between">
-                  <Stack gap={2}>
-                    <Text fw={700}>{relation.type}</Text>
-                    <Text size="sm" c="dimmed">
-                      {relation.fromTitle || relation.fromId} → {relation.toTitle || relation.toId}
-                    </Text>
-                  </Stack>
-                  {canWriteTasks && (
-                    <Tooltip label="Delete relation">
-                      <ActionIcon
-                        color="red"
-                        variant="subtle"
-                        aria-label="Delete relation"
-                        onClick={async () => {
-                          try {
-                            await deleteTaskRelation(task.id, relation.id);
-                            const page = await getTaskRelations(task.id);
-                            setRelations(page.items);
-                            showToast({
-                              tone: 'success',
-                              title: 'Relation removed',
-                              message: 'The OpenProject relation was deleted.',
-                            });
-                          } catch (error) {
-                            const message = getErrorMessage(error);
-                            onError(message);
-                            showToast({
-                              tone: 'error',
-                              title: 'Could not remove relation',
-                              message,
-                            });
-                          }
-                        }}
-                      >
-                        <IconTrash size="1rem" />
-                      </ActionIcon>
-                    </Tooltip>
-                  )}
-                </Group>
-              </Paper>
-            ))}
-            {!relations.length && (
-              <Text c="dimmed">
-                No OpenProject relations yet. Use this tab to link blockers, dependencies, and
-                related work packages.
               </Text>
             )}
           </Stack>

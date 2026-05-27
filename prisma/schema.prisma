@@ -158,6 +158,7 @@ model Workspace {
   migrationRuns              MigrationRun[]
   boardOrders                OpenProjectBoardCardOrder[]
   openProjectWorkPackageTags OpenProjectWorkPackageTag[]
+  checklists                 Checklist[]
 }
 
 model Membership {
@@ -253,6 +254,36 @@ model OpenProjectWorkPackageTag {
   @@index([workspaceId, projectId])
   @@index([workspaceId, workPackageId])
   @@index([tagId])
+}
+
+model Checklist {
+  id            String          @id @default(cuid())
+  workspaceId   String
+  workPackageId String
+  title         String
+  position      Int             @default(0)
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  workspace     Workspace       @relation(fields: [workspaceId], references: [id], onDelete: Cascade)
+  items         ChecklistItem[]
+
+  @@index([workPackageId])
+  @@index([workspaceId, workPackageId, position])
+}
+
+model ChecklistItem {
+  id                String    @id @default(cuid())
+  checklistId       String
+  text              String
+  completed         Boolean   @default(false)
+  position          Int       @default(0)
+  completedAt       DateTime?
+  completedByUserId String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  checklist         Checklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([checklistId, position])
 }
 
 model MigrationRun {

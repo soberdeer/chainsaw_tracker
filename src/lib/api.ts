@@ -1,6 +1,7 @@
 import type {
   ActivityLog,
   AuthSetupStatus,
+  Checklist,
   DocumentItem,
   GitHubPullRequest,
   GitHubRepository,
@@ -279,6 +280,52 @@ export function getTaskRelations(taskId: string) {
   );
 }
 
+export function getTaskChecklists(taskId: string) {
+  return request<{ items: Checklist[] }>(`/api/tasks/${taskId}/checklists`);
+}
+
+export function createTaskChecklist(taskId: string, title: string) {
+  return request<Checklist>(`/api/tasks/${taskId}/checklists`, {
+    method: 'POST',
+    body: JSON.stringify({ title }),
+  });
+}
+
+export function deleteTaskChecklist(checklistId: string) {
+  return request<void>(`/api/checklists/${checklistId}`, { method: 'DELETE' });
+}
+
+export function updateTaskChecklist(
+  checklistId: string,
+  input: { title?: string; position?: number }
+) {
+  return request<Checklist>(`/api/checklists/${checklistId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function addChecklistItem(checklistId: string, text: string) {
+  return request<Checklist>(`/api/checklists/${checklistId}/items`, {
+    method: 'POST',
+    body: JSON.stringify({ text }),
+  });
+}
+
+export function updateChecklistItem(
+  itemId: string,
+  input: { text?: string; completed?: boolean; position?: number }
+) {
+  return request<Checklist>(`/api/checklist-items/${itemId}`, {
+    method: 'PATCH',
+    body: JSON.stringify(input),
+  });
+}
+
+export function deleteChecklistItem(itemId: string) {
+  return request<void>(`/api/checklist-items/${itemId}`, { method: 'DELETE' });
+}
+
 export function addTaskRelation(
   taskId: string,
   input: { targetTaskId: string; type: string; description?: string }
@@ -363,6 +410,7 @@ export function updateTask(
     taskKey?: string | null;
     startDate?: string | null;
     dueDate?: string | null;
+    estimatedHours?: number | null;
     githubUrl?: string | null;
     tagNames?: string[];
   }
