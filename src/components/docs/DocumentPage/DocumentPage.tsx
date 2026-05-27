@@ -37,7 +37,7 @@ export function DocumentPage({
       markdown: document.markdown || '',
       embedUrl: document.embedUrl || '',
     });
-  }, [document]);
+  }, [document, form]);
 
   const save = form.onSubmit(async (values) => {
     try {

@@ -125,7 +125,7 @@ export function WorkspaceSettingsModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, workspaceId, initialTab]);
+  }, [opened, workspaceId, initialTab, generalForm]);
 
   const saveGeneral = generalForm.onSubmit(async (values) => {
     if (!settings) return;

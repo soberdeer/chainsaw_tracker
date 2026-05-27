@@ -271,7 +271,18 @@ export function TaskDetailPage({
       setRepositories([]);
       githubForm.reset();
     }
-  }, [task, workspace, onError, githubSupportedForTask]);
+  }, [
+    task,
+    workspace,
+    onError,
+    githubSupportedForTask,
+    detailsForm,
+    commentForm,
+    relationForm,
+    timeForm,
+    attachmentForm,
+    githubForm,
+  ]);
 
   const tagOptions = workspaceTags.map((item) => ({
     value: item.id,

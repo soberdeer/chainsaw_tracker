@@ -78,7 +78,7 @@ export function TaskCreateModal({
       dueDate: '',
     });
     form.resetDirty();
-  }, [opened, initialStatusId, statuses]);
+  }, [opened, initialStatusId, statuses, form]);
 
   const submit = form.onSubmit(async (values) => {
     if (!taskList?.id || !values.title.trim()) {

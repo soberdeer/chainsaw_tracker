@@ -54,7 +54,6 @@ import {
   getNotifications,
   getOpenProjectTags,
   getOpenProjectTaskTypes,
-  getWorkspaceOpenProjectStatus,
   getSavedViews,
   getTasks,
   getWorkspaces,
@@ -74,7 +73,6 @@ import {
   parseAppPath,
   docPath,
   buildWorkspaceBreadcrumbs,
-  buildWorkspaceChecklist,
   describeTaskCollectionState,
   showToast,
   summarizeImportRun,
@@ -86,7 +84,6 @@ import {
   type Folder,
   type MigrationRun,
   type NotificationItem,
-  type OpenProjectConnectionStatus,
   type OpenProjectTaskTypeOption,
   type SavedView,
   type Tag,
@@ -149,7 +146,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const navigate = useNavigate();
   const location = useLocation();
   const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
-  const initialQuery = useMemo(() => readInitialQuery(location.search), []);
+  const initialQuery = useMemo(() => readInitialQuery(location.search), [location.search]);
   const cursorQuery = useMemo(
     () => new URLSearchParams(location.search).get('cursor') || undefined,
     [location.search]
@@ -229,9 +226,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [taskTypes, setTaskTypes] = useState<OpenProjectTaskTypeOption[]>([]);
   const [openProjectTags, setOpenProjectTags] = useState<Tag[]>([]);
   const [activeImportReport, setActiveImportReport] = useState<MigrationRun | null>(null);
-  const [connectionStatus, setConnectionStatus] = useState<OpenProjectConnectionStatus | null>(
-    null
-  );
   const profileUser = {
     id: currentUser.id,
     email: currentUser.email,
@@ -485,19 +479,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const assignedToMeActive = Boolean(
     currentOpenProjectUser && assigneeFilter.includes(currentOpenProjectUser.id)
   );
-  const latestImportReport = importReports[0] || null;
-  const latestImportSummary = summarizeImportRun(latestImportReport);
   const workspaceWideScope = route.scope || null;
   const workspaceWideLabel =
     workspaceWideScope === 'mine' ? 'My Tasks' : workspaceWideScope === 'all' ? 'All Tasks' : null;
   const isWorkspaceWide = Boolean(workspaceWideScope);
   const canManageBoardOrder = canWriteTasks && !isWorkspaceWide && Boolean(activeTaskList);
-  const checklist = buildWorkspaceChecklist({
-    connectionStatus,
-    latestImport: latestImportReport,
-    workspaceMemberCount: workspace?.memberships.length || 0,
-    githubEnabled: Boolean(workspace?.githubIntegration),
-  });
   const docsAvailable = Boolean(activeSpace?.documents.length);
   const filtersActive = Boolean(
     taskSearch.trim() ||
@@ -636,13 +622,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     getImportReports()
       .then(setImportReports)
       .catch(() => setImportReports([]));
-    if (canManageWorkspace) {
-      getWorkspaceOpenProjectStatus(workspace.id)
-        .then(setConnectionStatus)
-        .catch(() => setConnectionStatus(null));
-    } else {
-      setConnectionStatus(null);
-    }
   }, [workspace?.id, refreshKey, canManageWorkspace]);
 
   useEffect(() => {
