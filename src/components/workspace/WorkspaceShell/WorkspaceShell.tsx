@@ -10,51 +10,40 @@ import {
   Drawer,
   Group,
   Loader,
-  Menu,
   Modal,
   MultiSelect,
+  Popover,
   SimpleGrid,
-  ScrollArea,
   Select,
   Stack,
   Tabs,
   Text,
   TextInput,
-  ThemeIcon,
   Title,
   Tooltip,
-  UnstyledButton,
   useMantineColorScheme,
 } from '@mantine/core';
 import {
-  IconCheck,
-  IconBell,
-  IconChevronDown,
-  IconChevronRight,
-  IconDots,
-  IconFolder,
+  IconFilter,
   IconLayoutKanban,
   IconList,
-  IconLock,
   IconPlus,
-  IconReport,
   IconSearch,
-  IconSettings,
-  IconTableOptions,
+  IconSortAscending,
+  IconSortDescending,
 } from '@tabler/icons-react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
+import { listToOpProjectId, useProjectUsers } from '@/hooks/useProjectUsers';
+import { useTaskFilters } from '@/hooks/useTaskFilters';
 import {
   getTask,
   bulkUpdateTasks,
-  createSavedView,
-  deleteSavedView,
   getImportReport,
   getImportReports,
   getNotifications,
   getOpenProjectTags,
   getOpenProjectTaskTypes,
-  getSavedViews,
   getTasks,
   getWorkspaces,
   logout,
@@ -65,7 +54,6 @@ import {
   reorderBoardTasks,
   saveBoardCardOrder,
   updateTask,
-  updateSavedView,
   firstTaskFolder,
   firstTaskList,
   folderPath,
@@ -85,14 +73,11 @@ import {
   type MigrationRun,
   type NotificationItem,
   type OpenProjectTaskTypeOption,
-  type SavedView,
   type Tag,
   type User,
   type Workspace,
 } from '@/lib';
-import { confirmAction, promptForText } from '@/lib/modals';
 import { ProfileModal } from '../../auth/ProfileModal/ProfileModal';
-import { AvatarStack } from '../../common/AvatarStack';
 import { DocumentPage } from '../../docs/DocumentPage/DocumentPage';
 import { DocumentsPanel } from '../../docs/DocumentsPanel/DocumentsPanel';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
@@ -103,6 +88,9 @@ import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
 import { ProjectAccessModal } from '../ProjectAccessModal/ProjectAccessModal';
 import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
 import { WorkspaceSettingsModal } from '../WorkspaceSettingsModal/WorkspaceSettingsModal';
+import { ImportReportsMenu } from './ImportReportsMenu';
+import { NotificationMenu } from './NotificationMenu';
+import { WorkspaceSidebar } from './WorkspaceSidebar';
 import classes from './WorkspaceShell.module.css';
 
 export interface WorkspaceShellProps {
@@ -117,6 +105,20 @@ function findFolderById(folders: Folder[], id?: string): Folder | undefined {
     if (child) return child;
   }
   return undefined;
+}
+
+/**
+ * Given a folder ID, find the Space that contains it.
+ * Without a seeded hierarchy the backend sets task.departmentId to the project's own ID,
+ * which for child projects is a folder ID rather than a space ID.
+ * This helper resolves the correct space by scanning the workspace tree.
+ */
+function findSpaceForFolder(
+  spaces: { id: string; folders: Folder[] }[],
+  folderId: string | undefined
+): { id: string; folders: Folder[] } | undefined {
+  if (!folderId) return undefined;
+  return spaces.find((space) => Boolean(findFolderById(space.folders, folderId)));
 }
 
 function readInitialQuery(search = typeof window === 'undefined' ? '' : window.location.search) {
@@ -134,8 +136,8 @@ function readInitialQuery(search = typeof window === 'undefined' ? '' : window.l
     updatedSinceFilter: params.get('updatedSince') || '',
     overdueFilter: params.get('overdue') === 'true',
     hasGitHubPrFilter: params.get('hasGitHubPr') === 'true',
-    savedViewId: params.get('savedView') || null,
     cursor: params.get('cursor') || null,
+    sortDir: (params.get('sort') === 'desc' ? 'desc' : 'asc') as 'asc' | 'desc',
   };
 }
 
@@ -145,6 +147,8 @@ const EXPANDED_FOLDER_KEY = 'op-tracker:expanded-folders';
 export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceShellProps) {
   const navigate = useNavigate();
   const location = useLocation();
+  const locationRef = useRef(location);
+  locationRef.current = location;
   const route = useMemo(() => parseAppPath(location.pathname), [location.pathname]);
   const initialQuery = useMemo(() => readInitialQuery(location.search), [location.search]);
   const cursorQuery = useMemo(
@@ -165,19 +169,37 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [tasksLoading, setTasksLoading] = useState(false);
   const [tasksError, setTasksError] = useState<string | null>(null);
   const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [taskSearch, setTaskSearch] = useState(initialQuery.taskSearch);
-  const [statusFilter, setStatusFilter] = useState<string | null>(initialQuery.statusFilter);
-  const [assigneeFilter, setAssigneeFilter] = useState<string[]>(initialQuery.assigneeFilter);
-  const [responsibleFilter, setResponsibleFilter] = useState<string[]>(
-    initialQuery.responsibleFilter
-  );
-  const [typeFilter, setTypeFilter] = useState<string[]>(initialQuery.typeFilter);
-  const [tagFilter, setTagFilter] = useState<string[]>(initialQuery.tagFilter);
-  const [dueBeforeFilter, setDueBeforeFilter] = useState(initialQuery.dueBeforeFilter);
-  const [updatedSinceFilter, setUpdatedSinceFilter] = useState(initialQuery.updatedSinceFilter);
-  const [overdueFilter, setOverdueFilter] = useState(initialQuery.overdueFilter);
-  const [hasGitHubPrFilter, setHasGitHubPrFilter] = useState(initialQuery.hasGitHubPrFilter);
-  const [priorityFilter, setPriorityFilter] = useState<string | null>(initialQuery.priorityFilter);
+  const {
+    taskView,
+    setTaskView,
+    taskSearch,
+    setTaskSearch,
+    statusFilter,
+    setStatusFilter,
+    priorityFilter,
+    setPriorityFilter,
+    assigneeFilter,
+    setAssigneeFilter,
+    responsibleFilter,
+    setResponsibleFilter,
+    typeFilter,
+    setTypeFilter,
+    tagFilter,
+    setTagFilter,
+    dueBeforeFilter,
+    setDueBeforeFilter,
+    updatedSinceFilter,
+    setUpdatedSinceFilter,
+    overdueFilter,
+    setOverdueFilter,
+    hasGitHubPrFilter,
+    setHasGitHubPrFilter,
+    sortDir,
+    setSortDir,
+    filtersActive,
+    clearFilters,
+    buildActiveChips,
+  } = useTaskFilters(initialQuery);
   const [actionError, setActionError] = useState<string | null>(null);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -187,7 +209,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [workspaceSettingsTab, setWorkspaceSettingsTab] = useState<string | undefined>(undefined);
   const [projectAccessOpen, setProjectAccessOpen] = useState(false);
   const [spaceCreateOpen, setSpaceCreateOpen] = useState(false);
-  const [taskView, setTaskView] = useState<string | null>(initialQuery.taskView);
   const [taskReturnPath, setTaskReturnPath] = useState<string | null>(null);
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') {
@@ -212,26 +233,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     }
   });
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(() => new Set());
-  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
-  const [savedViewName, setSavedViewName] = useState('');
-  const [savedViewVisibility, setSavedViewVisibility] = useState<'PRIVATE' | 'WORKSPACE'>(
-    'PRIVATE'
-  );
-  const [activeSavedViewId, setActiveSavedViewId] = useState<string | null>(
-    initialQuery.savedViewId
-  );
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [notificationUnread, setNotificationUnread] = useState(0);
   const [importReports, setImportReports] = useState<MigrationRun[]>([]);
   const [taskTypes, setTaskTypes] = useState<OpenProjectTaskTypeOption[]>([]);
   const [openProjectTags, setOpenProjectTags] = useState<Tag[]>([]);
   const [activeImportReport, setActiveImportReport] = useState<MigrationRun | null>(null);
-  const profileUser = {
-    id: currentUser.id,
-    email: currentUser.email,
-    name: currentUser.name,
-    avatarUrl: currentUser.avatarUrl || undefined,
-  };
 
   const reload = () => setRefreshKey((key) => key + 1);
   const runAction = async (action: () => Promise<void>, successMessage?: string) => {
@@ -300,7 +308,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   }, [expandedFolderIds]);
 
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
+    const loc = locationRef.current;
+    const params = new URLSearchParams(loc.search);
     taskView ? params.set('view', taskView) : params.delete('view');
     taskSearch ? params.set('search', taskSearch) : params.delete('search');
     statusFilter ? params.set('status', statusFilter) : params.delete('status');
@@ -319,19 +328,18 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       : params.delete('updatedSince');
     overdueFilter ? params.set('overdue', 'true') : params.delete('overdue');
     hasGitHubPrFilter ? params.set('hasGitHubPr', 'true') : params.delete('hasGitHubPr');
-    activeSavedViewId ? params.set('savedView', activeSavedViewId) : params.delete('savedView');
+    sortDir === 'desc' ? params.set('sort', 'desc') : params.delete('sort');
     const nextSearch = params.toString() ? `?${params.toString()}` : '';
-    if (nextSearch !== location.search) {
+    if (nextSearch !== loc.search) {
       navigate(
         {
-          pathname: location.pathname,
+          pathname: loc.pathname,
           search: nextSearch,
         },
         { replace: true }
       );
     }
   }, [
-    activeSavedViewId,
     assigneeFilter,
     responsibleFilter,
     typeFilter,
@@ -340,10 +348,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     updatedSinceFilter,
     overdueFilter,
     hasGitHubPrFilter,
-    location.pathname,
-    location.search,
     navigate,
     priorityFilter,
+    sortDir,
     statusFilter,
     taskSearch,
     taskView,
@@ -353,7 +360,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     getWorkspaces()
       .then((items) => {
         setWorkspaces(items);
-        const route = parseAppPath(location.pathname);
+        const route = parseAppPath(locationRef.current.pathname);
         const defaultWorkspace =
           items.find((item) => item.spaces.some((space) => space.id === route.spaceId)) ||
           items.find((item) => item.id === workspaceId) ||
@@ -385,15 +392,17 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           getTask(route.taskId)
             .then((task) => {
               setSelectedTask(task);
-              if (task.departmentId) {
-                setSpaceId(task.departmentId);
-              }
-              if (task.folderId) {
-                setFolderId(task.folderId);
-              }
-              if (task.taskListId) {
-                setTaskListId(task.taskListId);
-              }
+              // task.departmentId can equal the sub-project's own ID (a folder ID)
+              // when there is no seeded hierarchy, so we resolve the space by finding
+              // which space actually contains the task's folder.
+              const allSpaces = items.flatMap((w) => w.spaces);
+              const taskFolderId = task.folderId;
+              const taskSpace =
+                findSpaceForFolder(allSpaces, taskFolderId) ||
+                allSpaces.find((s) => s.id === task.departmentId);
+              if (taskSpace?.id) setSpaceId(taskSpace.id);
+              if (taskFolderId) setFolderId(taskFolderId);
+              if (task.taskListId) setTaskListId(task.taskListId);
             })
             .catch((error) => setActionError(getErrorMessage(error)));
           setSelectedDoc(null);
@@ -420,7 +429,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         setActionError(getErrorMessage(error));
         setLoading(false);
       });
-  }, [refreshKey, workspaceId, location.pathname, navigate]);
+  }, [refreshKey, workspaceId, navigate, setTaskView]);
 
   const workspace = workspaces.find((item) => item.id === workspaceId) || workspaces[0];
   const currentMembership = workspace?.memberships.find(
@@ -429,9 +438,10 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const currentPermissionSet = workspace?.permissionSets.find(
     (set) => set.role === currentMembership?.role
   );
-  const canWriteTasks = Boolean(currentPermissionSet?.manageTasks);
-  const canManageSpaces = Boolean(currentPermissionSet?.manageSpaces);
-  const canManageWorkspace = Boolean(currentPermissionSet?.manageWorkspace);
+  const isPrivilegedRole = currentMembership?.role === 'ADMIN';
+  const canWriteTasks = isPrivilegedRole || Boolean(currentPermissionSet?.manageTasks);
+  const canManageSpaces = isPrivilegedRole || Boolean(currentPermissionSet?.manageSpaces);
+  const canManageWorkspace = isPrivilegedRole || Boolean(currentPermissionSet?.manageWorkspace);
   const activeSpace = useMemo(
     () => workspace?.spaces.find((space) => space.id === spaceId) || workspace?.spaces[0],
     [workspace, spaceId]
@@ -467,6 +477,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     });
     return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [workspace, tasks]);
+  const activeTaskListOpProjectId = listToOpProjectId(activeTaskList?.id);
+  const { users: activeTaskListUsers, loading: activeTaskListUsersLoading } = useProjectUsers(
+    workspace?.id,
+    activeTaskListOpProjectId
+  );
   const currentOpenProjectUser = useMemo(
     () =>
       availableAssignees.find(
@@ -476,6 +491,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       ),
     [availableAssignees, currentUser.email, currentUser.openProjectUserId]
   );
+  const currentOpenProjectUserRef = useRef(currentOpenProjectUser);
+  currentOpenProjectUserRef.current = currentOpenProjectUser;
   const assignedToMeActive = Boolean(
     currentOpenProjectUser && assigneeFilter.includes(currentOpenProjectUser.id)
   );
@@ -483,21 +500,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const workspaceWideLabel =
     workspaceWideScope === 'mine' ? 'My Tasks' : workspaceWideScope === 'all' ? 'All Tasks' : null;
   const isWorkspaceWide = Boolean(workspaceWideScope);
-  const canManageBoardOrder = canWriteTasks && !isWorkspaceWide && Boolean(activeTaskList);
+  const canManageBoardOrder = canWriteTasks;
   const docsAvailable = Boolean(activeSpace?.documents.length);
-  const filtersActive = Boolean(
-    taskSearch.trim() ||
-    statusFilter ||
-    priorityFilter ||
-    assigneeFilter.length ||
-    responsibleFilter.length ||
-    typeFilter.length ||
-    tagFilter.length ||
-    dueBeforeFilter ||
-    updatedSinceFilter ||
-    overdueFilter ||
-    hasGitHubPrFilter
-  );
   const emptyState = describeTaskCollectionState({
     hasLinkedOpenProjectUser: Boolean(currentOpenProjectUser),
     assignedToMeActive: assignedToMeActive || workspaceWideScope === 'mine',
@@ -519,7 +523,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     if (taskView === 'docs' && !docsAvailable) {
       setTaskView('tasks');
     }
-  }, [docsAvailable, taskView]);
+  }, [docsAvailable, taskView, setTaskView]);
 
   const loadTasks = useCallback(
     async (cursor?: string, append = Boolean(cursor)) => {
@@ -528,7 +532,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         setNextCursor(null);
         return;
       }
-      if (workspaceWideScope === 'mine' && !currentOpenProjectUser) {
+      const currentOPUser = currentOpenProjectUserRef.current;
+      if (workspaceWideScope === 'mine' && !currentOPUser) {
         setTasks([]);
         setNextCursor(null);
         setTasksLoading(false);
@@ -539,8 +544,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         setTasksLoading(true);
         setTasksError(null);
         const effectiveAssigneeIds =
-          workspaceWideScope === 'mine' && currentOpenProjectUser
-            ? [currentOpenProjectUser.id]
+          workspaceWideScope === 'mine' && currentOPUser
+            ? [currentOPUser.id]
             : assigneeFilter.length
               ? assigneeFilter
               : undefined;
@@ -587,7 +592,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       taskSearch,
       isWorkspaceWide,
       workspaceWideScope,
-      currentOpenProjectUser,
     ]
   );
 
@@ -604,9 +608,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
   useEffect(() => {
     if (!workspace?.id) return;
-    getSavedViews(workspace.id)
-      .then(setSavedViews)
-      .catch(() => setSavedViews([]));
     getOpenProjectTags(workspace.id)
       .then(setOpenProjectTags)
       .catch(() => setOpenProjectTags([]));
@@ -636,7 +637,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   };
 
   const moveTask = async (taskId: string, statusId: string, targetTaskId?: string | null) => {
-    if (!canWriteTasks || !activeTaskList) return;
+    if (!canWriteTasks) return;
     const task = tasks.find((item) => item.id === taskId);
     if (!task) return;
     const nextBoard = reorderBoardTasks(tasks, statuses, {
@@ -668,11 +669,13 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         }
       }
 
-      await saveBoardCardOrder({
-        listId: activeTaskList.id,
-        orders: nextBoard.orders,
-      });
-      setActionNotice(statusChanged ? 'Task status and order updated.' : 'Task order updated.');
+      if (activeTaskList) {
+        await saveBoardCardOrder({
+          listId: activeTaskList.id,
+          orders: nextBoard.orders,
+        });
+      }
+      setActionNotice(statusChanged ? 'Task status updated.' : 'Task order updated.');
     } catch (error) {
       if (statusUpdated && previousStatusId) {
         await updateTask(taskId, { statusId: previousStatusId }).catch(() => undefined);
@@ -725,118 +728,44 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     }
   };
 
-  const currentFilters = {
-    search: taskSearch,
-    statusId: statusFilter,
-    assigneeIds: assigneeFilter,
-    responsibleIds: responsibleFilter,
-    typeIds: typeFilter,
-    tagIds: tagFilter,
-    dueBefore: dueBeforeFilter || null,
-    updatedSince: updatedSinceFilter || null,
-    overdue: overdueFilter,
-    hasGitHubPr: hasGitHubPrFilter,
-    priority: priorityFilter,
-    scope: workspaceWideScope || 'list',
-    viewType: taskView,
-  };
-
-  const saveCurrentView = async () => {
-    if (!workspace?.id || !savedViewName.trim()) return;
-    await runAction(async () => {
-      const view = await createSavedView({
-        workspaceId: workspace.id,
-        listId: isWorkspaceWide ? null : activeTaskList?.id,
-        name: savedViewName.trim(),
-        filters: currentFilters,
-        visibility: savedViewVisibility,
-      });
-      setSavedViews((current) => [view, ...current]);
-      setSavedViewName('');
-      setSavedViewVisibility('PRIVATE');
-      setActiveSavedViewId(view.id);
-    }, 'Saved view created.');
-  };
-
-  const applySavedView = (viewId: string | null) => {
-    setActiveSavedViewId(viewId);
-    const view = savedViews.find((item) => item.id === viewId);
-    if (!view) {
-      clearFilters();
-      return;
-    }
-    const filters = view.filters as {
-      search?: string;
-      statusId?: string | null;
-      assigneeIds?: string[];
-      responsibleIds?: string[];
-      typeIds?: string[];
-      tagIds?: string[];
-      dueBefore?: string | null;
-      updatedSince?: string | null;
-      overdue?: boolean;
-      hasGitHubPr?: boolean;
-      priority?: string | null;
-      scope?: string;
-      viewType?: string | null;
-    };
-    setTaskSearch(filters.search || '');
-    setStatusFilter(filters.statusId || null);
-    setAssigneeFilter(filters.assigneeIds || []);
-    setResponsibleFilter(filters.responsibleIds || []);
-    setTypeFilter(filters.typeIds || []);
-    setTagFilter(filters.tagIds || []);
-    setDueBeforeFilter(filters.dueBefore || '');
-    setUpdatedSinceFilter(filters.updatedSince || '');
-    setOverdueFilter(Boolean(filters.overdue));
-    setHasGitHubPrFilter(Boolean(filters.hasGitHubPr));
-    setPriorityFilter(filters.priority || null);
-    if (
-      filters.viewType === 'board' ||
-      filters.viewType === 'docs' ||
-      filters.viewType === 'tasks'
-    ) {
-      setTaskView(filters.viewType);
-    }
-    if (filters.scope === 'all') {
-      navigate(allTasksPath());
-    } else if (filters.scope === 'mine') {
-      navigate(myTasksPath());
-    } else if (activeSpace && activeFolder) {
-      navigate(folderPath(activeSpace.id, activeFolder.id));
-    }
-  };
-
   const openTask = (task: Task) => {
     setSelectedTask(task);
     setSelectedDoc(null);
     setTaskReturnPath(location.pathname);
-    const taskSpaceId = task.departmentId || activeSpace?.id;
-    const taskFolderId = task.folderId || activeFolder?.id;
-    if (taskSpaceId) {
-      setSpaceId(taskSpaceId);
+
+    // For workspace-wide views ("All Tasks" / "My Tasks") navigate to the task's
+    // canonical folder so the sidebar and underlying list reflect the task's home.
+    // For folder-specific views we must NOT change spaceId / folderId / taskListId —
+    // doing so would cause the task list behind the drawer to reload with different
+    // content (jumping back to the default folder).
+    if (isWorkspaceWide) {
+      const taskFolderId = task.folderId || activeFolder?.id;
+      // task.departmentId may equal the sub-project's own ID (a folder ID) rather than
+      // the root space ID when there is no seeded hierarchy — resolve from the tree.
+      const taskSpace =
+        findSpaceForFolder(workspace?.spaces || [], taskFolderId) ||
+        workspace?.spaces.find((s) => s.id === task.departmentId);
+      const taskSpaceId = taskSpace?.id || activeSpace?.id;
+      if (taskSpaceId) setSpaceId(taskSpaceId);
+      if (taskFolderId) setFolderId(taskFolderId);
+      if (taskSpaceId && taskFolderId) {
+        navigate(taskPath(taskSpaceId, taskFolderId, task.id));
+      }
+    } else {
+      // Stay in the current folder — only update the URL to include the task id.
+      const curSpaceId = activeSpace?.id;
+      const curFolderId = activeFolder?.id;
+      if (curSpaceId && curFolderId) {
+        navigate(taskPath(curSpaceId, curFolderId, task.id));
+      }
     }
-    if (taskFolderId) {
-      setFolderId(taskFolderId);
-    }
-    if (task.taskListId) {
-      setTaskListId(task.taskListId);
-    }
-    if (taskSpaceId && taskFolderId) {
-      navigate(taskPath(taskSpaceId, taskFolderId, task.id));
-    }
+
+    // Fetch full task details (relations, attachments, etc.).
+    // Do NOT mutate spaceId / folderId / taskListId from the async result —
+    // navigation context is already correct from the sync block above.
     getTask(task.id)
       .then((fullTask) => {
         setSelectedTask(fullTask);
-        if (fullTask.departmentId) {
-          setSpaceId(fullTask.departmentId);
-        }
-        if (fullTask.folderId) {
-          setFolderId(fullTask.folderId);
-        }
-        if (fullTask.taskListId) {
-          setTaskListId(fullTask.taskListId);
-        }
       })
       .catch((error) => setActionError(getErrorMessage(error)));
   };
@@ -850,8 +779,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   };
 
   const openSubtask = (task: Task) => {
-    const targetSpaceId = task.departmentId || activeSpace?.id;
     const targetFolderId = task.folderId || activeFolder?.id;
+    const targetSpace =
+      findSpaceForFolder(workspace?.spaces || [], targetFolderId) ||
+      workspace?.spaces.find((s) => s.id === task.departmentId);
+    const targetSpaceId = targetSpace?.id || activeSpace?.id;
     if (!targetSpaceId || !targetFolderId) return;
     setSelectedTask(task);
     setTaskReturnPath(location.pathname);
@@ -889,58 +821,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     navigate(`/space/${activeSpace.id}`);
   };
 
-  const clearFilters = () => {
-    setTaskSearch('');
-    setStatusFilter(null);
-    setPriorityFilter(null);
-    setAssigneeFilter([]);
-    setResponsibleFilter([]);
-    setTypeFilter([]);
-    setTagFilter([]);
-    setDueBeforeFilter('');
-    setUpdatedSinceFilter('');
-    setOverdueFilter(false);
-    setHasGitHubPrFilter(false);
-    setActiveSavedViewId(null);
-  };
-
-  const activeFilterChips = [
-    statusFilter
-      ? {
-          key: 'status',
-          label: `Status: ${statuses.find((item) => item.id === statusFilter)?.name || statusFilter}`,
-        }
-      : null,
-    priorityFilter ? { key: 'priority', label: `Priority: ${priorityFilter}` } : null,
-    assigneeFilter.length
-      ? { key: 'assignees', label: `Assignees: ${assigneeFilter.length}` }
-      : null,
-    responsibleFilter.length
-      ? { key: 'responsibles', label: `Responsible: ${responsibleFilter.length}` }
-      : null,
-    typeFilter.length
-      ? {
-          key: 'types',
-          label: `Type: ${typeFilter
-            .map((typeId) => taskTypes.find((item) => item.id === typeId)?.name || typeId)
-            .join(', ')}`,
-        }
-      : null,
-    tagFilter.length
-      ? {
-          key: 'tags',
-          label: `Tags: ${tagFilter
-            .map((tagId) => openProjectTags.find((item) => item.id === tagId)?.name || tagId)
-            .join(', ')}`,
-        }
-      : null,
-    dueBeforeFilter ? { key: 'dueBefore', label: `Due by: ${dueBeforeFilter}` } : null,
-    updatedSinceFilter
-      ? { key: 'updatedSince', label: `Updated since: ${updatedSinceFilter}` }
-      : null,
-    overdueFilter ? { key: 'overdue', label: 'Overdue' } : null,
-    hasGitHubPrFilter ? { key: 'github', label: 'Has GitHub PR' } : null,
-  ].filter(Boolean) as Array<{ key: string; label: string }>;
+  const activeFilterChips = buildActiveChips(statuses, taskTypes, openProjectTags);
 
   const toggleSpace = (id: string) => {
     setExpandedSpaceIds((current) => {
@@ -972,65 +853,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     navigate(folderPath(spaceIdValue, folder.id));
   };
 
-  const renderFolder = (spaceIdValue: string, folder: Folder, depth = 0) => {
-    const isExpanded = expandedFolderIds.has(folder.id);
-    const hasChildren = Boolean(folder.folders?.length);
-    const list = firstTaskList(folder);
-    return (
-      <Box key={folder.id}>
-        <UnstyledButton
-          className={
-            folder.id === activeFolder?.id
-              ? `${classes.folderTreeRow} ${classes.active}`
-              : classes.folderTreeRow
-          }
-          style={{ paddingLeft: `${0.5 + depth * 1.1}rem` }}
-          onClick={() => {
-            if (list) openFolder(spaceIdValue, folder);
-            else toggleFolder(folder.id);
-          }}
-        >
-          <span className={classes.treeCaret}>
-            {hasChildren ? (
-              isExpanded ? (
-                <IconChevronDown size="0.875rem" />
-              ) : (
-                <IconChevronRight size="0.875rem" />
-              )
-            ) : (
-              <IconFolder size="0.875rem" />
-            )}
-          </span>
-          <span>{folder.name}</span>
-          {folder.locked && <IconLock size="0.875rem" className={classes.mutedIcon} />}
-        </UnstyledButton>
-        {folder.taskLists?.map((taskList) => (
-          <UnstyledButton
-            key={taskList.id}
-            className={
-              taskList.id === activeTaskList?.id
-                ? `${classes.taskListNav} ${classes.active}`
-                : classes.taskListNav
-            }
-            style={{ marginLeft: `${1.375 + depth * 1.1}rem` }}
-            onClick={() => openFolder(spaceIdValue, folder)}
-          >
-            <Tooltip label={`Task list: ${taskList.name}`}>
-              <span className={classes.taskListIcon}>{taskList.icon || '✓'}</span>
-            </Tooltip>
-            <span>{taskList.name}</span>
-            <Tooltip
-              label={`${taskList._count?.tasks ?? taskList.tasks?.length ?? 0} tasks in ${taskList.name}`}
-            >
-              <Badge variant="light">{taskList._count?.tasks ?? taskList.tasks?.length ?? 0}</Badge>
-            </Tooltip>
-          </UnstyledButton>
-        ))}
-        {isExpanded && folder.folders?.map((child) => renderFolder(spaceIdValue, child, depth + 1))}
-      </Box>
-    );
-  };
-
   if (loading)
     return (
       <Box className={classes.center}>
@@ -1042,7 +864,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     if (actionError) {
       return (
         <Box className={`${classes.center} ${classes.setupScreen}`}>
-          <Alert color="red" title="Could not load OpenProject workspace">
+          <Alert color="red" title="Could not load ChainsawLeg workspace">
             {actionError}
           </Alert>
         </Box>
@@ -1050,7 +872,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     }
     return (
       <Box className={`${classes.center} ${classes.setupScreen}`}>
-        <Alert color="yellow" title="No OpenProject projects">
+        <Alert color="yellow" title="No ChainsawLeg projects">
           The OpenProject API returned no projects for this token.
         </Alert>
       </Box>
@@ -1086,7 +908,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       </Box>
     );
   }
-
+  console.log(workspace.spaces);
   return (
     <>
       <AppShell navbar={{ width: '21.75rem', breakpoint: 'sm' }} padding={0}>
@@ -1108,7 +930,8 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           opened={Boolean(createTaskStatusId)}
           taskList={activeTaskList}
           statuses={statuses}
-          users={availableAssignees}
+          users={activeTaskListUsers.length > 0 ? activeTaskListUsers : availableAssignees}
+          usersLoading={activeTaskListUsersLoading}
           initialStatusId={createTaskStatusId || statuses[0]?.id}
           onClose={() => setCreateTaskStatusId(null)}
           onCreated={() => reload()}
@@ -1166,272 +989,53 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           />
         )}
         <AppShell.Navbar p="md" className={classes.workspaceSidebar} data-testid="sidebar">
-          <Group mb="lg" gap="sm" justify="space-between">
-            <Group gap="sm">
-              <Tooltip label="Workspace">
-                <ThemeIcon size="lg" radius="md" color="dark">
-                  <IconCheck size="1.25rem" />
-                </ThemeIcon>
-              </Tooltip>
-              <div>
-                <Text fw={800}>{workspace.name}</Text>
-                <Text size="xs" c="dimmed">
-                  OpenProject-backed tracker workspace
-                </Text>
-              </div>
-            </Group>
-            <Group gap="xs">
-              <Tooltip label="Workspace settings">
-                <ActionIcon
-                  variant="light"
-                  aria-label="Workspace settings"
-                  onClick={() => {
-                    setWorkspaceSettingsTab('general');
-                    setWorkspaceSettingsOpen(true);
-                  }}
-                >
-                  <IconSettings size="1.25rem" />
-                </ActionIcon>
-              </Tooltip>
-              {canManageSpaces && (
-                <Tooltip label="Add space">
-                  <ActionIcon
-                    variant="light"
-                    aria-label="Add space"
-                    onClick={() => setSpaceCreateOpen(true)}
-                  >
-                    <IconPlus size="1.25rem" />
-                  </ActionIcon>
-                </Tooltip>
-              )}
-            </Group>
-          </Group>
-          <UnstyledButton className={classes.profileButton} onClick={() => setProfileOpen(true)}>
-            <AvatarStack users={[profileUser]} size="1.75rem" />
-            <span>
-              <Text size="sm" fw={700}>
-                {currentUser.name || currentUser.email}
-              </Text>
-              <Text size="xs" c="dimmed">
-                {currentMembership?.role || 'No role'} •{' '}
-                {currentUser.openProjectUserId
-                  ? 'linked to OpenProject'
-                  : 'not linked to OpenProject'}
-              </Text>
-            </span>
-          </UnstyledButton>
-          <Button
-            variant="subtle"
-            size="compact-sm"
-            mb="md"
-            onClick={async () => {
+          <WorkspaceSidebar
+            workspace={workspace}
+            currentUser={currentUser}
+            currentMembership={currentMembership}
+            canManageSpaces={canManageSpaces}
+            activeSpace={activeSpace}
+            activeFolder={activeFolder}
+            expandedSpaceIds={expandedSpaceIds}
+            expandedFolderIds={expandedFolderIds}
+            workspaceWideScope={workspaceWideScope}
+            taskView={taskView}
+            docsAvailable={docsAvailable}
+            selectedTask={selectedTask}
+            selectedDoc={selectedDoc}
+            currentOpenProjectUser={currentOpenProjectUser}
+            onToggleSpace={toggleSpace}
+            onToggleFolder={toggleFolder}
+            onOpenFolder={openFolder}
+            onSelectAllTasks={() => {
+              setTaskView('tasks');
+              setSelectedTask(null);
+              setSelectedDoc(null);
+              navigate(allTasksPath());
+            }}
+            onSelectMyTasks={() => {
+              if (!currentOpenProjectUser) return;
+              setTaskView('tasks');
+              setSelectedTask(null);
+              setSelectedDoc(null);
+              navigate(myTasksPath());
+            }}
+            onSelectDocs={() => {
+              setTaskView('docs');
+              setSelectedTask(null);
+            }}
+            onOpenProfile={() => setProfileOpen(true)}
+            onOpenSettings={() => {
+              setWorkspaceSettingsTab('general');
+              setWorkspaceSettingsOpen(true);
+            }}
+            onOpenProjectAccess={() => setProjectAccessOpen(true)}
+            onCreateSpace={() => setSpaceCreateOpen(true)}
+            onLogout={async () => {
               await logout().catch(() => undefined);
               onCurrentUserChange(null);
             }}
-          >
-            Logout
-          </Button>
-          <Text size="sm" fw={700} mb="xs">
-            Workspace
-          </Text>
-          <Stack gap={4} mb="md">
-            <Button
-              data-testid="all-tasks-link"
-              variant={
-                workspaceWideScope === 'all' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
-              }
-              justify="flex-start"
-              leftSection={<IconList size="1rem" />}
-              onClick={() => {
-                setTaskView('tasks');
-                setSelectedTask(null);
-                setSelectedDoc(null);
-                navigate(allTasksPath());
-              }}
-            >
-              All Tasks
-            </Button>
-            <Button
-              data-testid="my-tasks-link"
-              variant={
-                workspaceWideScope === 'mine' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
-              }
-              justify="flex-start"
-              leftSection={<IconCheck size="1rem" />}
-              disabled={!currentOpenProjectUser}
-              onClick={() => {
-                if (!currentOpenProjectUser) {
-                  return;
-                }
-                setTaskView('tasks');
-                setSelectedTask(null);
-                setSelectedDoc(null);
-                navigate(myTasksPath());
-              }}
-            >
-              My Tasks
-            </Button>
-            {docsAvailable && (
-              <Button
-                variant={taskView === 'docs' ? 'light' : 'subtle'}
-                justify="flex-start"
-                leftSection={<IconFolder size="1rem" />}
-                onClick={() => {
-                  setTaskView('docs');
-                  setSelectedTask(null);
-                }}
-              >
-                Local Docs
-              </Button>
-            )}
-            {canManageWorkspace && (
-              <>
-                <Button
-                  variant="subtle"
-                  justify="flex-start"
-                  leftSection={<IconReport size="1rem" />}
-                  onClick={() => {
-                    setWorkspaceSettingsTab('imports');
-                    setWorkspaceSettingsOpen(true);
-                  }}
-                >
-                  Import Reports
-                </Button>
-                <Button
-                  variant="subtle"
-                  justify="flex-start"
-                  leftSection={<IconSettings size="1rem" />}
-                  onClick={() => {
-                    setWorkspaceSettingsTab('general');
-                    setWorkspaceSettingsOpen(true);
-                  }}
-                >
-                  Workspace Settings
-                </Button>
-              </>
-            )}
-          </Stack>
-          <Text size="lg" fw={700} mb="md">
-            Spaces
-          </Text>
-          <ScrollArea className={classes.spacesTree}>
-            {workspace.spaces.map((space) => {
-              const isActiveSpace = space.id === activeSpace.id;
-              const isExpanded = expandedSpaceIds.has(space.id);
-              return (
-                <Box key={space.id} className={classes.spaceTreeBlock}>
-                  <Group wrap="nowrap" gap={0}>
-                    <UnstyledButton
-                      data-testid="project-link"
-                      data-project-id={space.id}
-                      className={
-                        isActiveSpace
-                          ? `${classes.spaceTreeRow} ${classes.active}`
-                          : classes.spaceTreeRow
-                      }
-                      onClick={() => {
-                        toggleSpace(space.id);
-                        if (!isActiveSpace) {
-                          setSpaceId(space.id);
-                          const folder = firstTaskFolder(space);
-                          setFolderId(folder?.id);
-                          setTaskListId(firstTaskList(folder)?.id);
-                          setSelectedTask(null);
-                          setSelectedDoc(null);
-                          setTaskView('tasks');
-                          if (folder) navigate(folderPath(space.id, folder.id));
-                        }
-                      }}
-                    >
-                      <span className={classes.treeCaret}>
-                        {isExpanded ? (
-                          <IconChevronDown size="0.875rem" />
-                        ) : (
-                          <IconChevronRight size="0.875rem" />
-                        )}
-                      </span>
-                      <span className={classes.spaceInitial} style={{ background: space.color }}>
-                        {space.initials || space.name.slice(0, 1)}
-                      </span>
-                      <span className={classes.spaceName}>{space.name}</span>
-                      {space.locked && (
-                        <Tooltip label={`${space.name} is private`}>
-                          <IconLock size="1rem" className={classes.mutedIcon} />
-                        </Tooltip>
-                      )}
-                    </UnstyledButton>
-                    {isActiveSpace && (
-                      <Menu width="22rem" position="right-start">
-                        <Menu.Target>
-                          <Tooltip label="Space actions">
-                            <ActionIcon
-                              component="div"
-                              variant="subtle"
-                              aria-label="Space actions"
-                              className={classes.rowAction}
-                            >
-                              <IconDots size="1.125rem" />
-                            </ActionIcon>
-                          </Tooltip>
-                        </Menu.Target>
-                        <Menu.Dropdown
-                          className={classes.menuDropdown}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
-                          <Menu.Item onClick={() => setProjectAccessOpen(true)}>
-                            OpenProject access
-                          </Menu.Item>
-                          <Menu.Item
-                            onClick={() =>
-                              navigator.clipboard?.writeText(
-                                `${window.location.origin}/space/${space.id}`
-                              )
-                            }
-                          >
-                            Copy link
-                          </Menu.Item>
-                          <Menu.Divider />
-                          <Menu.Label>Create new</Menu.Label>
-                          <Menu.Item disabled>Folders are not available in OpenProject</Menu.Item>
-                          <Menu.Item disabled>Lists are not available in OpenProject</Menu.Item>
-                        </Menu.Dropdown>
-                      </Menu>
-                    )}
-                    {isActiveSpace && (
-                      <Tooltip label="OpenProject projects do not have folders">
-                        <ActionIcon
-                          variant="subtle"
-                          aria-label="Folders are not available in OpenProject"
-                          className={classes.rowAction}
-                          disabled
-                        >
-                          <IconPlus size="1.125rem" />
-                        </ActionIcon>
-                      </Tooltip>
-                    )}
-                  </Group>
-
-                  {isExpanded && (
-                    <Box className={classes.folderTree}>
-                      {space.folders.map((folder) => renderFolder(space.id, folder))}
-                    </Box>
-                  )}
-                </Box>
-              );
-            })}
-            {canManageSpaces && (
-              <UnstyledButton
-                className={classes.newSpaceRow}
-                onClick={async () => {
-                  setSpaceCreateOpen(true);
-                }}
-              >
-                <IconPlus size="1.125rem" />
-                New Space
-              </UnstyledButton>
-            )}
-          </ScrollArea>
+          />
         </AppShell.Navbar>
 
         <AppShell.Main className={classes.mainShell} data-testid="workspace-shell">
@@ -1480,112 +1084,44 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                 ))}
               </Breadcrumbs>
               <Group gap="md">
-                <Menu width="22rem" position="bottom-end">
-                  <Menu.Target>
-                    <Tooltip label="Notifications">
-                      <ActionIcon
-                        variant="light"
-                        aria-label="Notifications"
-                        data-testid="notification-center"
-                      >
-                        <IconBell size="1.125rem" />
-                        {notificationUnread > 0 && (
-                          <Badge size="xs" color="red">
-                            {notificationUnread}
-                          </Badge>
-                        )}
-                      </ActionIcon>
-                    </Tooltip>
-                  </Menu.Target>
-                  <Menu.Dropdown>
-                    <Menu.Label>Notifications</Menu.Label>
-                    {notifications.slice(0, 8).map((notification) => (
-                      <Menu.Item
-                        key={notification.id}
-                        fw={notification.readAt ? 400 : 700}
-                        onClick={async () => {
-                          setNotifications((current) =>
-                            current.map((item) =>
-                              item.id === notification.id
-                                ? { ...item, readAt: new Date().toISOString() }
-                                : item
-                            )
-                          );
-                          setNotificationUnread((current) => Math.max(0, current - 1));
-                          await markNotificationRead(notification.id).catch((error) =>
-                            setActionError(getErrorMessage(error))
-                          );
-                          if (notification.workPackageId && activeSpace && activeFolder) {
-                            navigate(
-                              taskPath(activeSpace.id, activeFolder.id, notification.workPackageId)
-                            );
-                          }
-                        }}
-                      >
-                        <Stack gap={2}>
-                          <Text size="sm" fw={notification.readAt ? 500 : 700}>
-                            {notification.title}
-                          </Text>
-                          {notification.message && (
-                            <Text size="xs" c="dimmed">
-                              {notification.message}
-                            </Text>
-                          )}
-                        </Stack>
-                      </Menu.Item>
-                    ))}
-                    {!notifications.length && <Menu.Item disabled>No notifications yet.</Menu.Item>}
-                    <Menu.Divider />
-                    <Menu.Item
-                      onClick={async () => {
-                        setNotifications((current) =>
-                          current.map((item) => ({ ...item, readAt: new Date().toISOString() }))
-                        );
-                        setNotificationUnread(0);
-                        await markAllNotificationsRead().catch((error) =>
-                          setActionError(getErrorMessage(error))
-                        );
-                      }}
-                    >
-                      Mark all as read
-                    </Menu.Item>
-                  </Menu.Dropdown>
-                </Menu>
+                <NotificationMenu
+                  notifications={notifications}
+                  unreadCount={notificationUnread}
+                  onMarkRead={async (id) => {
+                    setNotifications((current) =>
+                      current.map((item) =>
+                        item.id === id ? { ...item, readAt: new Date().toISOString() } : item
+                      )
+                    );
+                    setNotificationUnread((current) => Math.max(0, current - 1));
+                    await markNotificationRead(id).catch((error) =>
+                      setActionError(getErrorMessage(error))
+                    );
+                  }}
+                  onMarkAllRead={async () => {
+                    setNotifications((current) =>
+                      current.map((item) => ({ ...item, readAt: new Date().toISOString() }))
+                    );
+                    setNotificationUnread(0);
+                    await markAllNotificationsRead().catch((error) =>
+                      setActionError(getErrorMessage(error))
+                    );
+                  }}
+                  onNavigateToTask={(workPackageId) => {
+                    if (activeSpace && activeFolder) {
+                      navigate(taskPath(activeSpace.id, activeFolder.id, workPackageId));
+                    }
+                  }}
+                />
                 {canManageWorkspace && (
-                  <Menu width="24rem" position="bottom-end">
-                    <Menu.Target>
-                      <Tooltip label="Import reports">
-                        <ActionIcon variant="light" aria-label="Import reports">
-                          <IconReport size="1.125rem" />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Menu.Target>
-                    <Menu.Dropdown>
-                      <Menu.Label>Latest import reports</Menu.Label>
-                      {importReports.slice(0, 8).map((report) => (
-                        <Menu.Item
-                          key={report.id}
-                          onClick={() =>
-                            void runAction(async () => {
-                              setActiveImportReport(await getImportReport(report.id));
-                            })
-                          }
-                        >
-                          <Stack gap={2}>
-                            <Text size="sm" fw={700}>
-                              {report.source} • {report.status}
-                            </Text>
-                            <Text size="xs" c="dimmed">
-                              {new Date(report.startedAt).toLocaleString()}
-                            </Text>
-                          </Stack>
-                        </Menu.Item>
-                      ))}
-                      {!importReports.length && (
-                        <Menu.Item disabled>No import reports yet</Menu.Item>
-                      )}
-                    </Menu.Dropdown>
-                  </Menu>
+                  <ImportReportsMenu
+                    reports={importReports}
+                    onOpenReport={(report) =>
+                      void runAction(async () => {
+                        setActiveImportReport(await getImportReport(report.id));
+                      })
+                    }
+                  />
                 )}
                 <Button
                   variant="light"
@@ -1618,300 +1154,216 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
               <Tabs.Panel value="tasks">
                 <Stack gap={0}>
-                  <Group className={classes.taskToolbar} justify="space-between">
-                    <Group gap="xs" data-testid="saved-view-menu">
-                      <Tooltip label="Grouped by OpenProject status">
-                        <Badge variant="light">Grouped by OpenProject status</Badge>
-                      </Tooltip>
-                      {!canWriteTasks && (
-                        <Tooltip label="Your current workspace role is read-only for OpenProject-backed task changes.">
-                          <Badge color="yellow" variant="light">
-                            Read-only
-                          </Badge>
-                        </Tooltip>
-                      )}
-                      <Select
-                        data-testid="saved-view-select"
-                        placeholder="Saved views"
-                        data={savedViews.map((view) => ({ value: view.id, label: view.name }))}
-                        value={activeSavedViewId}
-                        onChange={applySavedView}
-                        leftSection={<IconTableOptions size="1rem" />}
-                        w="12rem"
-                      />
-                      <TextInput
-                        data-testid="saved-view-name-input"
-                        value={savedViewName}
-                        onChange={(event) => setSavedViewName(event.currentTarget.value)}
-                        placeholder="View name"
-                        w="9rem"
-                      />
-                      <Select
-                        data-testid="saved-view-visibility-select"
-                        value={savedViewVisibility}
-                        onChange={(value) =>
-                          setSavedViewVisibility((value as 'PRIVATE' | 'WORKSPACE') || 'PRIVATE')
-                        }
-                        data={[
-                          { value: 'PRIVATE', label: 'Private' },
-                          { value: 'WORKSPACE', label: 'Workspace' },
-                        ]}
-                        w="10rem"
-                      />
-                      <Button
-                        data-testid="saved-view-save-button"
-                        variant="light"
-                        disabled={!savedViewName.trim()}
-                        onClick={saveCurrentView}
-                      >
-                        Save view
-                      </Button>
-                      {filtersActive && (
-                        <Button
-                          variant="subtle"
-                          onClick={clearFilters}
-                          data-testid="clear-filters-button"
-                        >
-                          Clear filters
-                        </Button>
-                      )}
-                      {savedViews.length > 0 && (
-                        <Menu>
-                          <Menu.Target>
-                            <ActionIcon variant="subtle" aria-label="Manage saved views">
-                              <IconDots size="1rem" />
-                            </ActionIcon>
-                          </Menu.Target>
-                          <Menu.Dropdown>
-                            {savedViews.map((view) => (
-                              <Box key={view.id}>
-                                <Menu.Item
-                                  onClick={async () => {
-                                    const nextName = await promptForText({
-                                      title: 'Rename saved view',
-                                      label: 'View name',
-                                      initialValue: view.name,
-                                      confirmLabel: 'Rename',
-                                    });
-                                    if (!nextName) return;
-                                    const updated = await updateSavedView(view.id, {
-                                      name: nextName,
-                                    }).catch((error) => {
-                                      setActionError(getErrorMessage(error));
-                                      return null;
-                                    });
-                                    if (!updated) return;
-                                    setSavedViews((current) =>
-                                      current.map((item) =>
-                                        item.id === updated.id ? updated : item
-                                      )
-                                    );
-                                    setActionNotice('Saved view renamed.');
-                                  }}
-                                >
-                                  Rename {view.name}
-                                </Menu.Item>
-                                <Menu.Item
-                                  onClick={async () => {
-                                    const nextVisibility =
-                                      view.visibility === 'PRIVATE' ? 'WORKSPACE' : 'PRIVATE';
-                                    const updated = await updateSavedView(view.id, {
-                                      visibility: nextVisibility,
-                                    }).catch((error) => {
-                                      setActionError(getErrorMessage(error));
-                                      return null;
-                                    });
-                                    if (!updated) return;
-                                    setSavedViews((current) =>
-                                      current.map((item) =>
-                                        item.id === updated.id ? updated : item
-                                      )
-                                    );
-                                    setActionNotice('Saved view access updated.');
-                                  }}
-                                >
-                                  Make {view.visibility === 'PRIVATE' ? 'workspace' : 'private'}
-                                </Menu.Item>
-                                <Menu.Item
-                                  color="red"
-                                  onClick={async () => {
-                                    const confirmed = await confirmAction({
-                                      title: 'Delete saved view',
-                                      message: `Delete saved view "${view.name}"?`,
-                                      confirmLabel: 'Delete view',
-                                      confirmColor: 'red',
-                                    });
-                                    if (!confirmed) {
-                                      return;
-                                    }
-                                    await deleteSavedView(view.id).catch((error) =>
-                                      setActionError(getErrorMessage(error))
-                                    );
-                                    setSavedViews((current) =>
-                                      current.filter((item) => item.id !== view.id)
-                                    );
-                                    if (activeSavedViewId === view.id) {
-                                      setActiveSavedViewId(null);
-                                    }
-                                    setActionNotice('Saved view deleted.');
-                                  }}
-                                >
-                                  Delete {view.name}
-                                </Menu.Item>
-                              </Box>
-                            ))}
-                          </Menu.Dropdown>
-                        </Menu>
-                      )}
-                    </Group>
-                    <Group gap="xs" data-testid="filter-bar">
+                  <Group
+                    className={classes.taskToolbar}
+                    justify="space-between"
+                    data-testid="filter-bar"
+                  >
+                    <Group gap="xs">
                       <TextInput
                         data-testid="filter-search"
                         value={taskSearch}
                         onChange={(event) => setTaskSearch(event.currentTarget.value)}
-                        placeholder="Search title or task key"
+                        placeholder="Search tasks…"
                         leftSection={<IconSearch size="1rem" />}
-                        w="16rem"
-                      />
-                      <Select
-                        data-testid="filter-status"
-                        value={statusFilter}
-                        onChange={setStatusFilter}
-                        clearable
-                        placeholder="Status"
-                        data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-                        w="10rem"
-                      />
-                      <MultiSelect
-                        data-testid="filter-assignees"
-                        value={assigneeFilter}
-                        onChange={setAssigneeFilter}
-                        clearable
-                        placeholder="Assignees"
-                        data={availableAssignees.map((user) => ({
-                          value: user.id,
-                          label: user.name,
-                        }))}
                         w="14rem"
-                        searchable
                       />
+                      <Popover
+                        opened={filterMenuOpen}
+                        onChange={setFilterMenuOpen}
+                        position="bottom-start"
+                        width={340}
+                        withArrow
+                        shadow="md"
+                        trapFocus
+                      >
+                        <Popover.Target>
+                          <Button
+                            variant={filtersActive ? 'filled' : 'light'}
+                            leftSection={<IconFilter size="1rem" />}
+                            rightSection={
+                              activeFilterChips.length > 0 ? (
+                                <Badge size="xs" color="red" circle>
+                                  {activeFilterChips.length}
+                                </Badge>
+                              ) : undefined
+                            }
+                            onClick={() => setFilterMenuOpen((o) => !o)}
+                            data-testid="filters-dropdown-button"
+                          >
+                            Filters
+                          </Button>
+                        </Popover.Target>
+                        <Popover.Dropdown>
+                          <Stack gap="sm">
+                            <Select
+                              data-testid="filter-status"
+                              label="Status"
+                              value={statusFilter}
+                              onChange={setStatusFilter}
+                              clearable
+                              placeholder="Any status"
+                              data={statuses.map((item) => ({ value: item.id, label: item.name }))}
+                            />
+                            <Select
+                              data-testid="filter-priority"
+                              label="Priority"
+                              value={priorityFilter}
+                              onChange={setPriorityFilter}
+                              clearable
+                              placeholder="Any priority"
+                              data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+                            />
+                            <MultiSelect
+                              data-testid="filter-assignees"
+                              label="Assignees"
+                              value={assigneeFilter}
+                              onChange={setAssigneeFilter}
+                              clearable
+                              placeholder="Anyone"
+                              data={availableAssignees.map((user) => ({
+                                value: user.id,
+                                label: user.name,
+                              }))}
+                              searchable
+                            />
+                            <Tooltip
+                              label={
+                                currentOpenProjectUser
+                                  ? 'Filter tasks assigned to you'
+                                  : 'Your account is not linked to an OpenProject user'
+                              }
+                            >
+                              <Button
+                                data-testid="filter-assigned-to-me"
+                                variant={assignedToMeActive ? 'filled' : 'light'}
+                                size="xs"
+                                disabled={!currentOpenProjectUser}
+                                onClick={() => {
+                                  if (!currentOpenProjectUser) return;
+                                  setAssigneeFilter(
+                                    assignedToMeActive ? [] : [currentOpenProjectUser.id]
+                                  );
+                                }}
+                              >
+                                Assigned to me
+                              </Button>
+                            </Tooltip>
+                            <MultiSelect
+                              data-testid="filter-responsible"
+                              label="Responsible"
+                              value={responsibleFilter}
+                              onChange={setResponsibleFilter}
+                              clearable
+                              placeholder="Anyone"
+                              data={availableAssignees.map((user) => ({
+                                value: user.id,
+                                label: user.name,
+                              }))}
+                              searchable
+                              maxValues={1}
+                            />
+                            <MultiSelect
+                              data-testid="filter-type"
+                              label="Type"
+                              value={typeFilter}
+                              onChange={setTypeFilter}
+                              clearable
+                              placeholder="Any type"
+                              data={taskTypes.map((type) => ({
+                                value: type.id,
+                                label: type.name,
+                              }))}
+                              searchable
+                            />
+                            <MultiSelect
+                              data-testid="filter-tags"
+                              label="Tags"
+                              value={tagFilter}
+                              onChange={setTagFilter}
+                              clearable
+                              placeholder="Any tag"
+                              data={openProjectTags.map((tag) => ({
+                                value: tag.id,
+                                label: tag.name,
+                              }))}
+                              searchable
+                            />
+                            <TextInput
+                              data-testid="filter-due-before"
+                              label="Due before"
+                              type="date"
+                              value={dueBeforeFilter}
+                              onChange={(event) => setDueBeforeFilter(event.currentTarget.value)}
+                            />
+                            <TextInput
+                              data-testid="filter-updated-since"
+                              label="Updated since"
+                              type="date"
+                              value={updatedSinceFilter}
+                              onChange={(event) => setUpdatedSinceFilter(event.currentTarget.value)}
+                            />
+                            <Group gap="lg">
+                              <Checkbox
+                                data-testid="filter-overdue"
+                                label="Overdue only"
+                                checked={overdueFilter}
+                                onChange={(event) => setOverdueFilter(event.currentTarget.checked)}
+                              />
+                              <Checkbox
+                                data-testid="filter-has-pr"
+                                label="Has GitHub PR"
+                                checked={hasGitHubPrFilter}
+                                onChange={(event) =>
+                                  setHasGitHubPrFilter(event.currentTarget.checked)
+                                }
+                              />
+                            </Group>
+                            {filtersActive && (
+                              <Button
+                                variant="subtle"
+                                color="red"
+                                size="xs"
+                                onClick={() => {
+                                  clearFilters();
+                                  setFilterMenuOpen(false);
+                                }}
+                                data-testid="clear-filters-button"
+                              >
+                                Clear all filters
+                              </Button>
+                            )}
+                          </Stack>
+                        </Popover.Dropdown>
+                      </Popover>
+                    </Group>
+                    <Group gap="xs">
                       <Tooltip
                         label={
-                          currentOpenProjectUser
-                            ? 'Filter tasks assigned to current user'
-                            : 'Current tracker user is not linked to an OpenProject user'
+                          sortDir === 'asc'
+                            ? 'Sort: oldest first (click for newest first)'
+                            : 'Sort: newest first (click for oldest first)'
                         }
                       >
-                        <Button
-                          data-testid="filter-assigned-to-me"
-                          variant={assignedToMeActive ? 'filled' : 'light'}
-                          disabled={!currentOpenProjectUser}
-                          onClick={() => {
-                            if (!currentOpenProjectUser) return;
-                            setAssigneeFilter(
-                              assignedToMeActive ? [] : [currentOpenProjectUser.id]
-                            );
-                          }}
-                        >
-                          Assigned to me
-                        </Button>
-                      </Tooltip>
-                      <Select
-                        data-testid="filter-priority"
-                        value={priorityFilter}
-                        onChange={setPriorityFilter}
-                        clearable
-                        placeholder="Priority"
-                        data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-                        w="9rem"
-                      />
-                      <MultiSelect
-                        data-testid="filter-responsible"
-                        value={responsibleFilter}
-                        onChange={setResponsibleFilter}
-                        clearable
-                        placeholder="Responsible"
-                        data={availableAssignees.map((user) => ({
-                          value: user.id,
-                          label: user.name,
-                        }))}
-                        w="14rem"
-                        searchable
-                        maxValues={1}
-                      />
-                      <MultiSelect
-                        data-testid="filter-type"
-                        value={typeFilter}
-                        onChange={setTypeFilter}
-                        clearable
-                        placeholder="Type"
-                        data={taskTypes.map((type) => ({
-                          value: type.id,
-                          label: type.name,
-                        }))}
-                        w="12rem"
-                        searchable
-                      />
-                      <MultiSelect
-                        data-testid="filter-tags"
-                        value={tagFilter}
-                        onChange={setTagFilter}
-                        clearable
-                        placeholder="Tags"
-                        data={openProjectTags.map((tag) => ({
-                          value: tag.id,
-                          label: tag.name,
-                        }))}
-                        w="13rem"
-                        searchable
-                      />
-                      <TextInput
-                        data-testid="filter-due-before"
-                        type="date"
-                        value={dueBeforeFilter}
-                        onChange={(event) => setDueBeforeFilter(event.currentTarget.value)}
-                        placeholder="Due by"
-                        w="10rem"
-                      />
-                      <TextInput
-                        data-testid="filter-updated-since"
-                        type="date"
-                        value={updatedSinceFilter}
-                        onChange={(event) => setUpdatedSinceFilter(event.currentTarget.value)}
-                        placeholder="Updated since"
-                        w="11rem"
-                      />
-                      <Tooltip label="Show overdue tasks only">
-                        <Checkbox
-                          data-testid="filter-overdue"
-                          label="Overdue"
-                          checked={overdueFilter}
-                          onChange={(event) => setOverdueFilter(event.currentTarget.checked)}
-                        />
-                      </Tooltip>
-                      <Tooltip label="Show tasks linked to a GitHub pull request">
-                        <Checkbox
-                          data-testid="filter-has-pr"
-                          label="Has PR"
-                          checked={hasGitHubPrFilter}
-                          onChange={(event) => setHasGitHubPrFilter(event.currentTarget.checked)}
-                        />
-                      </Tooltip>
-                      <Tooltip label="Open search">
                         <ActionIcon
-                          className={classes.pillIcon}
-                          variant="subtle"
-                          aria-label="Search"
-                          onClick={() => setSearchOpen(true)}
+                          variant="light"
+                          aria-label="Toggle sort direction"
+                          data-testid="sort-direction-toggle"
+                          onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
                         >
-                          <IconSearch size="1.25rem" />
+                          {sortDir === 'asc' ? (
+                            <IconSortAscending size="1rem" />
+                          ) : (
+                            <IconSortDescending size="1rem" />
+                          )}
                         </ActionIcon>
                       </Tooltip>
                       {canWriteTasks && !isWorkspaceWide && activeTaskList && (
                         <Button
                           color="teal"
-                          rightSection={<IconChevronDown size="1rem" />}
+                          leftSection={<IconPlus size="1rem" />}
                           onClick={() => statuses[0] && addTask(statuses[0].id)}
+                          data-testid="add-task-button"
                         >
                           Add Task
                         </Button>
@@ -1994,6 +1446,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       canWriteTasks={canWriteTasks}
                       selectedTaskIds={selectedTaskIds}
                       onSelectedTaskChange={toggleSelectedTask}
+                      sortDir={sortDir}
                     />
                   )}
                   {nextCursor && (
@@ -2013,42 +1466,36 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
               <Tabs.Panel value="board">
                 <Stack gap={0}>
-                  <Group className={classes.taskToolbar} justify="space-between">
-                    <Group gap="xs">
-                      <Tooltip
-                        label={
-                          isWorkspaceWide
-                            ? 'Aggregate board views reuse OpenProject statuses, but manual card order is only stored inside a concrete project work package list.'
-                            : 'Board columns are OpenProject statuses. Dragging changes status and local card order is persisted for this project list.'
-                        }
+                  <Group className={classes.taskToolbar} justify="flex-end">
+                    <Tooltip
+                      label={
+                        sortDir === 'asc'
+                          ? 'Sort: oldest first (click for newest first)'
+                          : 'Sort: newest first (click for oldest first)'
+                      }
+                    >
+                      <ActionIcon
+                        variant="light"
+                        aria-label="Toggle sort direction"
+                        onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
                       >
-                        <Badge variant="light">OpenProject status board</Badge>
-                      </Tooltip>
-                      {!canManageBoardOrder && (
-                        <Tooltip
-                          label={
-                            canWriteTasks
-                              ? 'Reordering is only available inside a concrete OpenProject list view, not in aggregate boards.'
-                              : 'Your current workspace role is read-only for OpenProject-backed task changes.'
-                          }
-                        >
-                          <Badge color="yellow" variant="light">
-                            Read-only
-                          </Badge>
-                        </Tooltip>
-                      )}
-                    </Group>
-                    <Group gap="xs">
-                      {canWriteTasks && !isWorkspaceWide && activeTaskList && (
-                        <Button
-                          color="teal"
-                          rightSection={<IconChevronDown size="1rem" />}
-                          onClick={() => statuses[0] && addTask(statuses[0].id)}
-                        >
-                          Add Task
-                        </Button>
-                      )}
-                    </Group>
+                        {sortDir === 'asc' ? (
+                          <IconSortAscending size="1rem" />
+                        ) : (
+                          <IconSortDescending size="1rem" />
+                        )}
+                      </ActionIcon>
+                    </Tooltip>
+                    {canWriteTasks && !isWorkspaceWide && activeTaskList && (
+                      <Button
+                        color="teal"
+                        leftSection={<IconPlus size="1rem" />}
+                        onClick={() => statuses[0] && addTask(statuses[0].id)}
+                        data-testid="board-add-task-button"
+                      >
+                        Add Task
+                      </Button>
+                    )}
                   </Group>
                   {tasksError && (
                     <Alert color="red" title="Could not load tasks">
@@ -2067,6 +1514,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
                       onOpenTask={openTask}
                       onMoveTask={moveTask}
                       canWriteTasks={canManageBoardOrder}
+                      sortDir={sortDir}
                     />
                   )}
                 </Stack>

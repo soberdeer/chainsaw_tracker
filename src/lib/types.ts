@@ -1,4 +1,4 @@
-export type WorkspaceRole = 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+export type WorkspaceRole = 'ADMIN' | 'MEMBER' | 'READER';
 
 export type AuthSetupStatus = {
   setupRequired: boolean;
@@ -34,6 +34,8 @@ export type User = {
   openProjectUserId?: string;
   openProjectLogin?: string;
   lastLoginAt?: string | null;
+  opAdmin?: boolean;
+  opStatus?: string;
 };
 
 export type PermissionSet = {
@@ -256,6 +258,9 @@ export type Folder = {
   _count?: { tasks: number };
 };
 
+/** Semantic workflow phase for a status. */
+export type TaskStatusType = 'open' | 'prep' | 'progress' | 'test' | 'done' | 'closed';
+
 export type TaskStatus = {
   id: string;
   taskListId: string;
@@ -263,6 +268,7 @@ export type TaskStatus = {
   color: string;
   position: number;
   isDone: boolean;
+  statusType?: TaskStatusType;
 };
 
 export type TaskList = {
@@ -355,6 +361,7 @@ export type OpenProjectProjectMember = {
   openProjectLogin?: string;
   openProjectName: string;
   openProjectEmail?: string;
+  avatarUrl?: string;
   roles: string[];
   linkedLocalUser?: User;
   source?: string;

@@ -18,7 +18,14 @@ export function AvatarStack({ users, size = 'md', max = 4 }: AvatarStackProps) {
   return (
     <Avatar.Group>
       {visible.map((a, i) => (
-        <Avatar key={i} src={a.avatarUrl} size={size} radius="xl" color="initials" name={a.name} />
+        <Avatar
+          key={i}
+          src={a.avatarUrl}
+          size={size}
+          radius="xl"
+          color="initials"
+          name={a.name.replace('ㅤ', '')}
+        />
       ))}
       {rest > 0 && (
         <Tooltip label={`${rest} more assignees`}>

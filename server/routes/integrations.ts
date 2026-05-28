@@ -72,7 +72,7 @@ async function requireTaskGithubAccess(req: Request, taskId: string) {
       Object.assign(error, { statusCode: 403 });
       throw error;
     }
-    if (['OWNER', 'ADMIN', 'LEAD'].includes(membership.role)) {
+    if (['ADMIN', 'MEMBER'].includes(membership.role)) {
       return {
         kind: 'local' as const,
         task,

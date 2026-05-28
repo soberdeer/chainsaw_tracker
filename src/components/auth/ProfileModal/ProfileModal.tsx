@@ -14,7 +14,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   changePassword,
   getErrorMessage,
@@ -74,14 +74,18 @@ export function ProfileModal({
         value === values.newPassword ? null : 'Password confirmation does not match',
     },
   });
+  const profileFormRef = useRef(profileForm);
+  profileFormRef.current = profileForm;
+  const passwordFormRef = useRef(passwordForm);
+  passwordFormRef.current = passwordForm;
 
   useEffect(() => {
     if (!opened) return;
-    profileForm.setValues({
+    profileFormRef.current.setValues({
       name: user.name || '',
       avatarUrl: user.avatarUrl || '',
     });
-    passwordForm.reset();
+    passwordFormRef.current.reset();
     setPasswordMessage(null);
     setSuccess(null);
     setError(null);
@@ -99,7 +103,7 @@ export function ProfileModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, user, profileForm, passwordForm]);
+  }, [opened, user]);
 
   const save = profileForm.onSubmit(async (values) => {
     try {

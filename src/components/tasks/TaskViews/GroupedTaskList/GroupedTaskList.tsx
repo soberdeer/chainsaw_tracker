@@ -1,4 +1,13 @@
-import { ActionIcon, Box, Group, Text, Tooltip } from '@mantine/core';
+import {
+  ActionIcon,
+  Box,
+  Group,
+  isLightColor,
+  Text,
+  Tooltip,
+  useComputedColorScheme,
+  useMantineTheme,
+} from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import { displayStatus, type Task, type TaskStatus } from '@/lib';
@@ -17,6 +26,7 @@ export interface GroupedTaskListProps {
   canWriteTasks: boolean;
   selectedTaskIds?: Set<string>;
   onSelectedTaskChange?: (taskId: string, selected: boolean) => void;
+  sortDir?: 'asc' | 'desc';
 }
 
 export function GroupedTaskList({
@@ -30,7 +40,14 @@ export function GroupedTaskList({
   canWriteTasks,
   selectedTaskIds,
   onSelectedTaskChange,
+  sortDir = 'asc',
 }: GroupedTaskListProps) {
+  const theme = useMantineTheme();
+  const computedTheme = useComputedColorScheme();
+  const shade =
+    typeof theme.primaryShade === 'object'
+      ? theme.primaryShade[computedTheme as 'light' | 'dark']
+      : theme.primaryShade;
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
   const orderedStatuses = useMemo(
     () => [...statuses].sort((a, b) => a.position - b.position),
@@ -55,9 +72,11 @@ export function GroupedTaskList({
         const meta = displayStatus(status);
         const groupTasks = tasks
           .filter((task) => task.statusId === status.id || task.status === status.name)
-          .sort((a, b) => (a.position ?? 0) - (b.position ?? 0));
+          .sort((a, b) => {
+            const diff = (a.position ?? 0) - (b.position ?? 0);
+            return sortDir === 'desc' ? -diff : diff;
+          });
         const isCollapsed = collapsedStatuses.has(status.id);
-
         return (
           <section className={classes.statusSection} key={status.id}>
             <Group gap="sm" className={classes.statusHeading}>
@@ -74,11 +93,11 @@ export function GroupedTaskList({
                 <Box
                   className={classes.statusPill}
                   style={{
-                    background: meta.color,
-                    color: meta.tone === 'mint' ? '#07110f' : '#fff',
+                    background: `var(--mantine-color-${meta.tone}-${shade})`,
+                    color: isLightColor(theme.colors[meta.tone][shade], 0.5) ? 'black' : 'white',
                   }}
                 >
-                  <StatusIcon statusId={status.id} />
+                  <StatusIcon type={status.statusType} />
                   <span className={classes.statusPillName}>{meta.label}</span>
                 </Box>
               </Tooltip>

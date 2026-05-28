@@ -6,9 +6,12 @@ import type {
   TaskList,
   TaskPriority,
   TaskStatus,
+  TaskStatusType,
   User,
   Workspace,
+  WorkspaceRole,
 } from '../../src/lib/types.js';
+import { ROLE_PERMISSIONS } from '../services/permissions.js';
 import { extractTaskKey } from '../services/taskKeys.js';
 import { openProjectWebUrl } from './client.js';
 import { statusIdForOpenProjectStatus, type SeededTaskList } from './hierarchyStore.js';
@@ -64,7 +67,29 @@ export function mapUser(user: OpenProjectUser): User {
     email: user.email || user.login || `${user.id}@openproject.local`,
     name: user.name || user.login || String(user.id),
     avatarUrl: user.avatar,
+    opAdmin: user.admin === true,
+    opStatus: user.status,
   };
+}
+
+// Theme colors for each required status (Mantine palette tone 5).
+// Used both here and in the seed script so colours are always consistent.
+export const STATUS_THEME: Record<string, { color: string; type: TaskStatusType }> = {
+  backlog: { color: '#adb5bd', type: 'open' },
+  scoping: { color: '#339af0', type: 'prep' },
+  'in progress': { color: '#cc5de8', type: 'progress' },
+  'in testing': { color: '#22b8cf', type: 'test' },
+  shipped: { color: '#51cf66', type: 'done' },
+  closed: { color: '#adb5bd', type: 'closed' },
+  'on hold': { color: '#fcc419', type: 'open' },
+};
+
+export function statusThemeColor(opName: string): string {
+  return STATUS_THEME[opName.toLowerCase()]?.color ?? '#adb5bd';
+}
+
+export function statusThemeType(opName: string): TaskStatusType {
+  return STATUS_THEME[opName.toLowerCase()]?.type ?? 'open';
 }
 
 export function mapStatus(status: OpenProjectStatus, taskListId: string): TaskStatus {
@@ -72,27 +97,29 @@ export function mapStatus(status: OpenProjectStatus, taskListId: string): TaskSt
     id: String(status.id),
     taskListId,
     name: status.name,
-    color: status.isClosed
-      ? '#4d9f87'
-      : status.name.toLowerCase().includes('progress')
-        ? '#228be6'
-        : '#868e96',
+    color: statusThemeColor(status.name),
     position: Number(status.position || status.id),
     isDone: Boolean(status.isClosed),
+    statusType: statusThemeType(status.name),
   };
 }
 
 export function projectTaskList(project: OpenProjectProject, statuses: TaskStatus[]): TaskList {
   return {
     id: String(project.id),
-    folderId: `${project.id}:work-packages`,
-    name: 'Work packages',
+    folderId: `${project.id}`,
+    name: project.name,
     icon: '✓',
     statuses: statuses.map((status) => ({ ...status, taskListId: String(project.id) })),
     _count: { tasks: 0 },
   };
 }
 
+/**
+ * Maps a child OP project to a Folder.
+ * ID uses the same `{projectId}` scheme so it always matches the task
+ * list's `folderId` and task records' `folderId` field.
+ */
 function mapProjectFolder(
   project: OpenProjectProject,
   statuses: TaskStatus[],
@@ -100,7 +127,7 @@ function mapProjectFolder(
   childFolders: Folder[] = []
 ): Folder {
   return {
-    id: `${project.id}:project`,
+    id: `${project.id}`,
     spaceId,
     name: project.name,
     kind: 'TEAM',
@@ -119,15 +146,24 @@ export function mapProjectTree(
   statuses: TaskStatus[],
   childFolders: Folder[] = []
 ): Space {
-  const ownList = projectTaskList(project, statuses);
-  const ownFolder: Folder = {
-    id: `${project.id}:work-packages`,
-    spaceId: String(project.id),
-    name: 'Work packages',
-    kind: 'TEAM',
-    locked: !project.public,
-    taskLists: [ownList],
-  };
+  // When the root project has child-project folders, expose those directly as
+  // the space's top-level folders – no extra "Work packages" wrapper in between.
+  // When there are no children, create a single folder using the project name
+  // (not "Work packages") so the sidebar always shows a meaningful label.
+  const folders: Folder[] =
+    childFolders.length > 0
+      ? childFolders
+      : [
+          {
+            id: `${project.id}`,
+            spaceId: String(project.id),
+            name: project.name,
+            kind: 'TEAM' as const,
+            locked: !project.public,
+            taskLists: [projectTaskList(project, statuses)],
+          },
+        ];
+
   return {
     id: String(project.id),
     workspaceId: 'openproject',
@@ -136,7 +172,7 @@ export function mapProjectTree(
     color: '#228be6',
     initials: project.name.slice(0, 1).toUpperCase(),
     locked: !project.public,
-    folders: [ownFolder, ...childFolders],
+    folders,
     documents: [],
   };
 }
@@ -186,48 +222,17 @@ export function mapWorkspace(
     slug: 'openproject',
     spaces: buildProjectSpaces(projects, statuses),
     memberships: [],
-    permissionSets: [
-      {
-        role: 'OWNER',
-        manageWorkspace: true,
-        manageSpaces: true,
-        manageDocs: false,
-        manageTasks: true,
-        inviteMembers: false,
-      },
-      {
-        role: 'ADMIN',
-        manageWorkspace: true,
-        manageSpaces: true,
-        manageDocs: false,
-        manageTasks: true,
-        inviteMembers: false,
-      },
-      {
-        role: 'LEAD',
-        manageWorkspace: false,
-        manageSpaces: false,
-        manageDocs: false,
-        manageTasks: true,
-        inviteMembers: false,
-      },
-      {
-        role: 'MEMBER',
-        manageWorkspace: false,
-        manageSpaces: false,
-        manageDocs: false,
-        manageTasks: true,
-        inviteMembers: false,
-      },
-      {
-        role: 'VIEWER',
-        manageWorkspace: false,
-        manageSpaces: false,
-        manageDocs: false,
-        manageTasks: false,
-        inviteMembers: false,
-      },
-    ],
+    permissionSets: Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => ({
+      role: role as WorkspaceRole,
+      manageWorkspace: Boolean(perms.manageWorkspace),
+      manageSpaces: Boolean(perms.manageSpaces),
+      manageDocs: Boolean(perms.manageDocs),
+      manageTasks: Boolean(perms.manageTasks),
+      inviteMembers: Boolean(perms.inviteMembers),
+      manageIntegrations: Boolean(perms.manageIntegrations),
+      manageImports: Boolean(perms.manageImports),
+      viewReports: Boolean(perms.viewReports),
+    })),
   };
 }
 
@@ -244,8 +249,7 @@ export function mapWorkPackage(
 ): Task {
   const projectId = linkId(workPackage._links.project?.href) || fallback?.projectId || '';
   const taskListId = fallback?.taskList?.id || projectId;
-  const folderId =
-    fallback?.folderId || fallback?.taskList?.folderId || `${projectId}:work-packages`;
+  const folderId = fallback?.folderId || fallback?.taskList?.folderId || `${projectId}`;
   const rawStatusId = linkId(workPackage._links.status?.href) || '';
   const statusId = statusIdForOpenProjectStatus(fallback?.taskList, rawStatusId);
   const typeId = linkId(workPackage._links.type?.href) || undefined;
@@ -294,7 +298,11 @@ export function mapWorkPackage(
       icon: '✓',
       statuses: fallback?.taskList?.statuses || [],
     },
-    folder: { id: folderId, spaceId: fallback?.spaceId || projectId, name: 'Work packages' },
+    folder: {
+      id: folderId,
+      spaceId: fallback?.spaceId || projectId,
+      name: fallback?.projectName || workPackage._links.project?.title || 'Work packages',
+    },
     statusRef: statusId
       ? {
           id: statusId,

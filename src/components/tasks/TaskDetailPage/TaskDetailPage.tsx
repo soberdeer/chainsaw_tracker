@@ -1,10 +1,6 @@
 import {
-  ActionIcon,
-  Alert,
   Badge,
   Button,
-  Checkbox,
-  FileInput,
   Group,
   MultiSelect,
   NumberInput,
@@ -16,65 +12,40 @@ import {
   Text,
   Textarea,
   TextInput,
-  Title,
   Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import {
-  IconCalendarDue,
-  IconExternalLink,
-  IconFlag,
-  IconGitPullRequest,
-  IconPaperclip,
-  IconPlus,
-  IconRefresh,
-  IconClock,
-  IconUsers,
-} from '@tabler/icons-react';
+import { IconCalendarDue, IconFlag } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
+import { listToOpProjectId, useProjectUsers } from '@/hooks/useProjectUsers';
+import { useTaskDetailData } from '@/hooks/useTaskDetailData';
 import {
-  addTaskComment,
-  addTaskTimeEntry,
   createOpenProjectTag,
-  getOpenProjectTags,
-  getGitHubRepositories,
-  getTask,
-  getTaskActivity,
-  getTaskAttachments,
-  getTaskCustomFields,
-  getTaskTags,
-  getTaskTimeEntryActivities,
-  getTaskTimeEntries,
-  linkTaskPullRequest,
-  refreshTaskGitHub,
-  setTaskTags,
-  showToast,
-  uploadTaskAttachment,
-  unlinkTaskPullRequest,
-  updateTaskCustomField,
-  updateTask,
   displayStatus,
   formatDueDate,
+  formatHours,
   getErrorMessage,
+  getTask,
   priorityColor,
+  setTaskTags,
+  showToast,
+  stripClickUpMeta,
   toDateInput,
-  type ActivityLog,
-  type GitHubRepository,
-  type OpenProjectAttachmentItem,
-  type OpenProjectCustomFieldItem,
-  type OpenProjectTimeEntryActivityOption,
-  type OpenProjectTimeEntryItem,
-  type Tag,
+  updateTask,
   type Task,
   type TaskPriority,
   type TaskStatus,
   type Workspace,
 } from '@/lib';
-import { AvatarStack } from '../../common/AvatarStack';
+import { UserSelect } from '../../common/UserSelect';
 import { TaskChecklists } from '../TaskChecklists/TaskChecklists';
 import { TaskRelations } from '../TaskRelations/TaskRelations';
-import { SubtaskModal } from './SubtaskModal/SubtaskModal';
+import { TaskActivityTab } from './TaskActivityTab';
+import { TaskCustomFieldsTab } from './TaskCustomFieldsTab';
+import { TaskFilesTab } from './TaskFilesTab';
+import { TaskGitHubTab } from './TaskGitHubTab';
+import { TaskSubtasksTab } from './TaskSubtasksTab';
+import { TaskTimeTab } from './TaskTimeTab';
 import classes from './TaskDetailPage.module.css';
 
 export interface TaskDetailPageProps {
@@ -86,13 +57,6 @@ export interface TaskDetailPageProps {
   onOpenSubtask: (task: Task) => void;
   onError: (message: string) => void;
   canWriteTasks: boolean;
-}
-
-function formatHours(hours?: number | null) {
-  if (!hours || hours <= 0) {
-    return null;
-  }
-  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
 export function TaskDetailPage({
@@ -109,250 +73,77 @@ export function TaskDetailPage({
   const start = formatDueDate(task.startDate);
   const status = displayStatus(undefined, task.status);
   const [saving, setSaving] = useState(false);
-  const [subtaskModalOpen, setSubtaskModalOpen] = useState(false);
-  const [activity, setActivity] = useState<ActivityLog[]>([]);
-  const [commentSaving, setCommentSaving] = useState(false);
-  const [timeEntries, setTimeEntries] = useState<OpenProjectTimeEntryItem[]>([]);
-  const [totalHours, setTotalHours] = useState(0);
-  const [timeSaving, setTimeSaving] = useState(false);
-  const [timeEntryActivities, setTimeEntryActivities] = useState<
-    OpenProjectTimeEntryActivityOption[]
-  >([]);
-  const [timeActivitiesError, setTimeActivitiesError] = useState<string | null>(null);
-  const [attachments, setAttachments] = useState<OpenProjectAttachmentItem[]>([]);
-  const [attachmentSaving, setAttachmentSaving] = useState(false);
-  const [customFields, setCustomFields] = useState<OpenProjectCustomFieldItem[]>([]);
-  const [workspaceTags, setWorkspaceTags] = useState<Tag[]>([]);
-  const [taskTagIds, setTaskTagIds] = useState<string[]>([]);
   const [tagSaving, setTagSaving] = useState(false);
-  const [repositories, setRepositories] = useState<GitHubRepository[]>([]);
-  const [githubBusy, setGithubBusy] = useState(false);
+
+  const {
+    activity,
+    timeEntries,
+    totalHours,
+    timeEntryActivities,
+    timeActivitiesError,
+    defaultTimeActivityId,
+    attachments,
+    customFields,
+    setCustomFields,
+    workspaceTags,
+    setWorkspaceTags,
+    taskTagIds,
+    setTaskTagIds,
+    repositories,
+    refreshActivity,
+    refreshTimeEntries,
+    refreshAttachments,
+  } = useTaskDetailData(task, workspace.id, onError);
+
   const detailsForm = useForm({
     initialValues: {
       title: task.title,
-      description: task.description || '',
+      description: stripClickUpMeta(task.description),
       statusId: task.statusId || '',
       priority: task.priority,
       assigneeIds: [] as string[],
       startDate: toDateInput(task.startDate),
       dueDate: toDateInput(task.dueDate),
-      estimatedHours: task.estimatedHours ?? '',
+      estimatedHours: task.estimatedHours ?? ('' as number | string),
     },
     validate: {
       title: (value) => (value.trim().length ? null : 'Task title is required'),
     },
   });
-  const commentForm = useForm({
-    initialValues: {
-      comment: '',
-    },
-  });
-  const timeForm = useForm({
-    initialValues: {
-      timeHours: 1 as number | string,
-      timeSpentOn: toDateInput(new Date().toISOString()),
-      timeComment: '',
-      timeActivityId: '',
-    },
-    validate: {
-      timeHours: (value) => (Number(value) > 0 ? null : 'Hours must be greater than zero'),
-      timeSpentOn: (value) => (value ? null : 'Spent on date is required'),
-      timeActivityId: (value) => (value ? null : 'Activity is required'),
-    },
-  });
-  const attachmentForm = useForm({
-    initialValues: {
-      attachmentFile: null as File | null,
-    },
-  });
-  const githubForm = useForm({
-    initialValues: {
-      selectedRepositoryId: '',
-      manualPr: '',
-    },
-  });
+
   const tagForm = useForm({
-    initialValues: {
-      newTagName: '',
-    },
+    initialValues: { newTagName: '' },
     validate: {
       newTagName: (value) => (value.trim().length ? null : 'Tag name is required'),
     },
   });
-  const githubSupportedForTask = true;
+
   const detailsFormRef = useRef(detailsForm);
-  const commentFormRef = useRef(commentForm);
-  const timeFormRef = useRef(timeForm);
-  const attachmentFormRef = useRef(attachmentForm);
-  const githubFormRef = useRef(githubForm);
   detailsFormRef.current = detailsForm;
-  commentFormRef.current = commentForm;
-  timeFormRef.current = timeForm;
-  attachmentFormRef.current = attachmentForm;
-  githubFormRef.current = githubForm;
 
   useEffect(() => {
     detailsFormRef.current.setValues({
       title: task.title,
-      description: task.description || '',
+      description: stripClickUpMeta(task.description),
       statusId: task.statusId || '',
       priority: task.priority,
-      assigneeIds: (task.assignees || (task.assignee ? [task.assignee] : [])).map(
-        (user) => user.id
-      ),
+      assigneeIds: (task.assignees || (task.assignee ? [task.assignee] : [])).map((u) => u.id),
       startDate: toDateInput(task.startDate),
       dueDate: toDateInput(task.dueDate),
       estimatedHours: task.estimatedHours ?? '',
     });
-    commentFormRef.current.reset();
-    timeFormRef.current.setValues({
-      timeHours: 1,
-      timeSpentOn: toDateInput(new Date().toISOString()),
-      timeComment: '',
-      timeActivityId: '',
-    });
-    attachmentFormRef.current.reset();
-    getTaskActivity(task.id)
-      .then((page) => setActivity(page.items))
-      .catch((error) => onError(getErrorMessage(error)));
-    getTaskTimeEntries(task.id)
-      .then((page) => {
-        setTimeEntries(page.items);
-        setTotalHours(page.totalHours);
-      })
-      .catch(() => {
-        setTimeEntries([]);
-        setTotalHours(0);
-      });
-    getTaskAttachments(task.id)
-      .then((page) => setAttachments(page.items))
-      .catch(() => setAttachments([]));
-    getTaskCustomFields(task.id)
-      .then((page) => setCustomFields(page.items))
-      .catch(() => setCustomFields([]));
-    getTaskTimeEntryActivities()
-      .then(({ items }) => {
-        setTimeEntryActivities(items);
-        setTimeActivitiesError(
-          items.length ? null : 'OpenProject did not return any time entry activities.'
-        );
-        const nextActivityId =
-          items.find((activity) => activity.id === timeFormRef.current.values.timeActivityId)?.id ||
-          (items.length === 1 ? items[0]?.id || '' : '');
-        timeFormRef.current.setFieldValue('timeActivityId', nextActivityId);
-      })
-      .catch((error) => {
-        setTimeEntryActivities([]);
-        setTimeActivitiesError(getErrorMessage(error));
-        timeFormRef.current.setFieldValue('timeActivityId', '');
-      });
-    Promise.all([getOpenProjectTags(workspace.id), getTaskTags(task.id)])
-      .then(([tags, page]) => {
-        setWorkspaceTags(tags);
-        setTaskTagIds(page.items.map((item) => item.id));
-      })
-      .catch((error) => {
-        setWorkspaceTags([]);
-        setTaskTagIds([]);
-        onError(getErrorMessage(error));
-      });
-    if (githubSupportedForTask) {
-      getGitHubRepositories(workspace.id)
-        .then((items) => {
-          setRepositories(items);
-          githubFormRef.current.setValues({
-            selectedRepositoryId: items[0]?.id || '',
-            manualPr: '',
-          });
-        })
-        .catch(() => setRepositories([]));
-    } else {
-      setRepositories([]);
-      githubFormRef.current.reset();
-    }
-  }, [task, workspace, onError, githubSupportedForTask]);
+  }, [task]);
 
-  const tagOptions = workspaceTags.map((item) => ({
-    value: item.id,
-    label: item.name,
-  }));
-
-  const syncTaskTags = async (nextTagIds: string[]) => {
-    const previousTagIds = taskTagIds;
-    setTaskTagIds(nextTagIds);
-    try {
-      setTagSaving(true);
-      const page = await setTaskTags(task.id, nextTagIds);
-      setTaskTagIds(page.items.map((item) => item.id));
-      onSaved(await getTask(task.id));
-      showToast({
-        tone: 'success',
-        title: 'Tags updated',
-        message: 'Task tags were saved for this OpenProject work package.',
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      setTaskTagIds(previousTagIds);
-      onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not save tags',
-        message,
-      });
-    } finally {
-      setTagSaving(false);
-    }
-  };
-
-  const createAndAssignTag = tagForm.onSubmit(async (values) => {
-    if (!canWriteTasks) {
-      return;
-    }
-    try {
-      setTagSaving(true);
-      const created = await createOpenProjectTag({
-        workspaceId: workspace.id,
-        name: values.newTagName.trim(),
-      });
-      setWorkspaceTags((current) =>
-        [...current.filter((item) => item.id !== created.id), created].sort((left, right) =>
-          left.name.localeCompare(right.name)
-        )
-      );
-      tagForm.reset();
-      const nextTagIds = [...new Set([...taskTagIds, created.id])];
-      const page = await setTaskTags(task.id, nextTagIds);
-      setTaskTagIds(page.items.map((item) => item.id));
-      onSaved(await getTask(task.id));
-      showToast({
-        tone: 'success',
-        title: 'Tag created',
-        message: `Added ${created.name} to this work package.`,
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not create tag',
-        message,
-      });
-    } finally {
-      setTagSaving(false);
-    }
-  });
-
-  const showGitHubTab = Boolean(
-    githubSupportedForTask &&
-    ((task.githubPullRequests?.length || 0) > 0 ||
-      (task.githubBranches?.length || 0) > 0 ||
-      repositories.length > 0)
+  const opProjectId = listToOpProjectId(task.taskListId ?? task.taskList?.id);
+  const { users: projectUsers, loading: projectUsersLoading } = useProjectUsers(
+    workspace.id,
+    opProjectId
   );
 
+  const tagOptions = workspaceTags.map((item) => ({ value: item.id, label: item.name }));
+
   const updateAndRefresh = async (input: Parameters<typeof updateTask>[1]) => {
-    if (!canWriteTasks) {
-      return;
-    }
+    if (!canWriteTasks) return;
     try {
       onSaved(await updateTask(task.id, input));
       showToast({
@@ -363,18 +154,12 @@ export function TaskDetailPage({
     } catch (error) {
       const message = getErrorMessage(error);
       onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not update task',
-        message,
-      });
+      showToast({ tone: 'error', title: 'Could not update task', message });
     }
   };
 
   const save = detailsForm.onSubmit(async (values) => {
-    if (!canWriteTasks) {
-      return;
-    }
+    if (!canWriteTasks) return;
     try {
       setSaving(true);
       const saved = await updateTask(task.id, {
@@ -396,261 +181,81 @@ export function TaskDetailPage({
     } catch (error) {
       const message = getErrorMessage(error);
       onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not save task',
-        message,
-      });
+      showToast({ tone: 'error', title: 'Could not save task', message });
     } finally {
       setSaving(false);
     }
   });
 
-  const submitComment = commentForm.onSubmit(async (values) => {
-    if (!canWriteTasks || !values.comment.trim()) {
-      return;
-    }
+  const syncTaskTags = async (nextTagIds: string[]) => {
+    const previousTagIds = taskTagIds;
+    setTaskTagIds(nextTagIds);
     try {
-      setCommentSaving(true);
-      await addTaskComment(task.id, values.comment.trim());
-      commentForm.reset();
-      const page = await getTaskActivity(task.id);
-      setActivity(page.items);
+      setTagSaving(true);
+      const page = await setTaskTags(task.id, nextTagIds);
+      setTaskTagIds(page.items.map((item) => item.id));
+      onSaved(await getTask(task.id));
       showToast({
         tone: 'success',
-        title: 'Comment posted',
-        message: 'Your comment was saved in OpenProject activity.',
+        title: 'Tags updated',
+        message: 'Task tags were saved for this OpenProject work package.',
       });
     } catch (error) {
       const message = getErrorMessage(error);
+      setTaskTagIds(previousTagIds);
       onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not post comment',
-        message,
-      });
+      showToast({ tone: 'error', title: 'Could not save tags', message });
     } finally {
-      setCommentSaving(false);
+      setTagSaving(false);
     }
-  });
-
-  const submitTimeEntry = timeForm.onSubmit(async (values) => {
-    if (!canWriteTasks || !Number(values.timeHours) || !values.timeSpentOn) {
-      return;
-    }
-    try {
-      setTimeSaving(true);
-      await addTaskTimeEntry(task.id, {
-        hours: Number(values.timeHours),
-        spentOn: values.timeSpentOn,
-        comment: values.timeComment,
-        activityId: values.timeActivityId,
-      });
-      timeForm.setValues({
-        timeHours: 1,
-        timeSpentOn: toDateInput(new Date().toISOString()),
-        timeComment: '',
-        timeActivityId:
-          timeEntryActivities.length === 1
-            ? timeEntryActivities[0]?.id || ''
-            : values.timeActivityId,
-      });
-      const page = await getTaskTimeEntries(task.id);
-      setTimeEntries(page.items);
-      setTotalHours(page.totalHours);
-      showToast({
-        tone: 'success',
-        title: 'Time logged',
-        message: 'The OpenProject time entry was created.',
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not log time',
-        message,
-      });
-    } finally {
-      setTimeSaving(false);
-    }
-  });
-
-  const submitAttachment = attachmentForm.onSubmit(async (values) => {
-    if (!canWriteTasks || !values.attachmentFile) {
-      return;
-    }
-    try {
-      setAttachmentSaving(true);
-      await uploadTaskAttachment(task.id, values.attachmentFile);
-      attachmentForm.reset();
-      const page = await getTaskAttachments(task.id);
-      setAttachments(page.items);
-      showToast({
-        tone: 'success',
-        title: 'Attachment uploaded',
-        message: 'The file is now attached to the OpenProject task.',
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      onError(message);
-      showToast({
-        tone: 'error',
-        title: 'Could not upload attachment',
-        message,
-      });
-    } finally {
-      setAttachmentSaving(false);
-    }
-  });
-
-  const renderCustomFieldInput = (field: OpenProjectCustomFieldItem) => {
-    const commonDescription = field.editable
-      ? 'Saved through OpenProject custom field PATCH'
-      : 'Read-only OpenProject custom field';
-
-    if (field.kind === 'boolean') {
-      return (
-        <Checkbox
-          label={field.label}
-          checked={Boolean(field.rawValue)}
-          disabled={!canWriteTasks || !field.editable}
-          description={commonDescription}
-          onChange={async (event) => {
-            if (!canWriteTasks || !field.editable) return;
-            try {
-              const page = await updateTaskCustomField(
-                task.id,
-                field.key,
-                event.currentTarget.checked
-              );
-              setCustomFields(page.items);
-            } catch (error) {
-              onError(getErrorMessage(error));
-            }
-          }}
-        />
-      );
-    }
-
-    if (field.kind === 'integer' || field.kind === 'float') {
-      return (
-        <NumberInput
-          label={field.label}
-          value={typeof field.rawValue === 'number' ? field.rawValue : undefined}
-          decimalScale={field.kind === 'integer' ? 0 : 2}
-          allowDecimal={field.kind === 'float'}
-          allowNegative
-          disabled={!canWriteTasks || !field.editable}
-          description={commonDescription}
-          onBlur={async (event) => {
-            if (!canWriteTasks || !field.editable) return;
-            const value = event.currentTarget.value.trim();
-            if (!value || value === String(field.rawValue ?? '')) return;
-            try {
-              const page = await updateTaskCustomField(
-                task.id,
-                field.key,
-                field.kind === 'integer' ? Number.parseInt(value, 10) : Number.parseFloat(value)
-              );
-              setCustomFields(page.items);
-            } catch (error) {
-              onError(getErrorMessage(error));
-            }
-          }}
-        />
-      );
-    }
-
-    if (field.kind === 'textarea') {
-      return (
-        <Textarea
-          label={field.label}
-          defaultValue={field.value}
-          readOnly={!canWriteTasks || !field.editable}
-          description={commonDescription}
-          autosize
-          minRows={3}
-          onBlur={async (event) => {
-            if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
-              return;
-            try {
-              const page = await updateTaskCustomField(
-                task.id,
-                field.key,
-                event.currentTarget.value
-              );
-              setCustomFields(page.items);
-            } catch (error) {
-              onError(getErrorMessage(error));
-            }
-          }}
-        />
-      );
-    }
-
-    if (field.kind === 'date') {
-      return (
-        <TextInput
-          label={field.label}
-          type="date"
-          defaultValue={typeof field.rawValue === 'string' ? field.rawValue : field.value}
-          readOnly={!canWriteTasks || !field.editable}
-          description={commonDescription}
-          onBlur={async (event) => {
-            if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
-              return;
-            try {
-              const page = await updateTaskCustomField(
-                task.id,
-                field.key,
-                event.currentTarget.value
-              );
-              setCustomFields(page.items);
-            } catch (error) {
-              onError(getErrorMessage(error));
-            }
-          }}
-        />
-      );
-    }
-
-    return (
-      <TextInput
-        label={field.label}
-        defaultValue={field.value}
-        readOnly={!canWriteTasks || !field.editable}
-        description={commonDescription}
-        onBlur={async (event) => {
-          if (!canWriteTasks || !field.editable || event.currentTarget.value === field.value)
-            return;
-          try {
-            const page = await updateTaskCustomField(task.id, field.key, event.currentTarget.value);
-            setCustomFields(page.items);
-          } catch (error) {
-            onError(getErrorMessage(error));
-          }
-        }}
-      />
-    );
   };
+
+  const createAndAssignTag = tagForm.onSubmit(async (values) => {
+    if (!canWriteTasks) return;
+    try {
+      setTagSaving(true);
+      const created = await createOpenProjectTag({
+        workspaceId: workspace.id,
+        name: values.newTagName.trim(),
+      });
+      setWorkspaceTags((current) =>
+        [...current.filter((item) => item.id !== created.id), created].sort((a, b) =>
+          a.name.localeCompare(b.name)
+        )
+      );
+      tagForm.reset();
+      const nextTagIds = [...new Set([...taskTagIds, created.id])];
+      const page = await setTaskTags(task.id, nextTagIds);
+      setTaskTagIds(page.items.map((item) => item.id));
+      onSaved(await getTask(task.id));
+      showToast({
+        tone: 'success',
+        title: 'Tag created',
+        message: `Added ${created.name} to this work package.`,
+      });
+    } catch (error) {
+      const message = getErrorMessage(error);
+      onError(message);
+      showToast({ tone: 'error', title: 'Could not create tag', message });
+    } finally {
+      setTagSaving(false);
+    }
+  });
+
+  const showGitHubTab = Boolean(
+    (task.githubPullRequests?.length || 0) > 0 ||
+    (task.githubBranches?.length || 0) > 0 ||
+    repositories.length > 0
+  );
 
   return (
     <Paper className={classes.detailPage} withBorder data-testid="task-detail-page">
-      <SubtaskModal
-        opened={subtaskModalOpen}
-        parentTask={task}
-        statuses={statuses}
-        users={workspace.memberships.map((membership) => membership.user)}
-        onClose={() => setSubtaskModalOpen(false)}
-        onCreated={onSaved}
-        onError={onError}
-      />
       <Group justify="space-between" mb="lg">
         <TextInput
           data-testid="task-title-input"
           className={classes.titleInput}
           readOnly={!canWriteTasks}
+          style={{ flexGrow: 1 }}
           {...detailsForm.getInputProps('title')}
         />
         <Group>
@@ -682,23 +287,17 @@ export function TaskDetailPage({
         />
         {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
         <TextInput label="List" value={task.taskList?.name || task.taskListId || ''} readOnly />
-        <MultiSelect
+        <UserSelect
           data-testid="task-assignee-select"
           label="Assignee / responsible"
-          leftSection={<IconUsers size="1rem" />}
+          users={projectUsers}
+          loading={projectUsersLoading}
           value={detailsForm.values.assigneeIds}
           onChange={(value) => {
             detailsForm.setFieldValue('assigneeIds', value);
             void updateAndRefresh({ assigneeIds: value });
           }}
-          data={workspace.memberships.map((membership) => ({
-            value: membership.user.id,
-            label: membership.user.name,
-          }))}
-          searchable
-          clearable
           maxValues={2}
-          description="OpenProject stores one assignee and one responsible user."
           disabled={!canWriteTasks}
         />
         <Stack gap="xs">
@@ -711,7 +310,6 @@ export function TaskDetailPage({
             decimalScale={2}
             suffix="h"
             disabled={!canWriteTasks}
-            description="Saved as OpenProject estimated time."
             onBlur={() =>
               void updateAndRefresh({
                 estimatedHours:
@@ -841,6 +439,18 @@ export function TaskDetailPage({
             </Text>
           )}
         </Stack>
+        <Stack gap="xs">
+          <Text fw={700}>Priority badge</Text>
+          <Tooltip label={`Priority: ${task.priority}`}>
+            <Badge
+              color={priorityColor[task.priority]}
+              variant="light"
+              style={{ alignSelf: 'flex-start' }}
+            >
+              {task.priority}
+            </Badge>
+          </Tooltip>
+        </Stack>
       </SimpleGrid>
 
       <Textarea
@@ -900,6 +510,7 @@ export function TaskDetailPage({
           <Tabs.Tab value="files">Files</Tabs.Tab>
           {customFields.length > 0 && <Tabs.Tab value="custom-fields">Custom fields</Tabs.Tab>}
         </Tabs.List>
+
         <Tabs.Panel value="details" pt="md">
           <Stack>
             <Text c="dimmed">
@@ -913,483 +524,75 @@ export function TaskDetailPage({
             </Text>
           </Stack>
         </Tabs.Panel>
+
         {showGitHubTab && (
           <Tabs.Panel value="github" pt="md">
-            <Paper withBorder className={classes.relationshipPanel}>
-              <Group justify="space-between" mb="md">
-                <Title order={3}>GitHub</Title>
-                <Tooltip label={`Development status: ${task.developmentStatus || 'NOT_STARTED'}`}>
-                  <Badge variant="light">{task.developmentStatus || 'NOT_STARTED'}</Badge>
-                </Tooltip>
-              </Group>
-              <Stack>
-                {(task.githubBranches || []).map((branch) => (
-                  <Group
-                    key={branch.id}
-                    justify="space-between"
-                    className={classes.relationshipRow}
-                  >
-                    <Group gap="xs">
-                      <Tooltip label="GitHub branch">
-                        <IconGitPullRequest size="1rem" />
-                      </Tooltip>
-                      <Text fw={700}>{branch.name}</Text>
-                    </Group>
-                    {branch.url && (
-                      <Button
-                        size="xs"
-                        variant="subtle"
-                        component="a"
-                        href={branch.url}
-                        target="_blank"
-                        leftSection={<IconExternalLink size="0.875rem" />}
-                      >
-                        Open
-                      </Button>
-                    )}
-                  </Group>
-                ))}
-                {(task.githubPullRequests || []).map((pr) => (
-                  <Paper key={pr.id} withBorder p="md">
-                    <Group justify="space-between" align="flex-start">
-                      <Stack gap={2}>
-                        <Text fw={800}>
-                          #{pr.number} {pr.title}
-                        </Text>
-                        <Text size="sm" c="dimmed">
-                          {pr.repository?.owner}/{pr.repository?.repo} • {pr.headBranch} →{' '}
-                          {pr.baseBranch}
-                        </Text>
-                        <Group gap="xs">
-                          <Tooltip label={`PR state: ${pr.state}`}>
-                            <Badge>{pr.state}</Badge>
-                          </Tooltip>
-                          <Tooltip label={`PR readiness: ${pr.draft ? 'Draft' : 'Ready'}`}>
-                            <Badge color={pr.draft ? 'gray' : 'green'}>
-                              {pr.draft ? 'Draft' : 'Ready'}
-                            </Badge>
-                          </Tooltip>
-                          <Tooltip label={`Review status: ${pr.reviewStatus}`}>
-                            <Badge
-                              color={
-                                pr.reviewStatus === 'CHANGES_REQUESTED'
-                                  ? 'red'
-                                  : pr.reviewStatus === 'APPROVED'
-                                    ? 'green'
-                                    : 'blue'
-                              }
-                            >
-                              {pr.reviewStatus}
-                            </Badge>
-                          </Tooltip>
-                          {pr.authorLogin && (
-                            <Tooltip label={`Author: ${pr.authorLogin}`}>
-                              <Badge variant="light">{pr.authorLogin}</Badge>
-                            </Tooltip>
-                          )}
-                        </Group>
-                        <Text size="xs" c="dimmed">
-                          Last sync: {pr.syncedAt ? new Date(pr.syncedAt).toLocaleString() : '-'}
-                        </Text>
-                      </Stack>
-                      <Group gap="xs">
-                        <Button
-                          size="xs"
-                          variant="subtle"
-                          component="a"
-                          href={pr.url}
-                          target="_blank"
-                          leftSection={<IconExternalLink size="0.875rem" />}
-                        >
-                          Open
-                        </Button>
-                        <Button
-                          size="xs"
-                          variant="subtle"
-                          color="red"
-                          onClick={async () => {
-                            try {
-                              await unlinkTaskPullRequest(task.id, pr.id);
-                              onSaved(await getTask(task.id));
-                            } catch (error) {
-                              onError(getErrorMessage(error));
-                            }
-                          }}
-                        >
-                          Unlink
-                        </Button>
-                      </Group>
-                    </Group>
-                  </Paper>
-                ))}
-                {!task.githubPullRequests?.length && !task.githubBranches?.length && (
-                  <Text c="dimmed">
-                    No linked GitHub branch or PR yet. Link a synced pull request or let the GitHub
-                    webhook match this work package by task key.
-                  </Text>
-                )}
-                <SimpleGrid cols={{ base: 1, sm: 3 }}>
-                  <Select
-                    data-testid="github-repository-select"
-                    label="Repository"
-                    value={githubForm.values.selectedRepositoryId}
-                    onChange={(value) =>
-                      githubForm.setFieldValue('selectedRepositoryId', value || '')
-                    }
-                    data={repositories.map((repo) => ({
-                      value: repo.id,
-                      label: `${repo.owner}/${repo.repo}`,
-                    }))}
-                    placeholder="Add repository in API first"
-                  />
-                  <TextInput
-                    data-testid="github-manual-pr-input"
-                    label="PR URL or number"
-                    {...githubForm.getInputProps('manualPr')}
-                    placeholder="https://github.com/.../pull/12"
-                  />
-                  <Stack justify="flex-end">
-                    <Group gap="xs">
-                      <Button
-                        data-testid="github-link-pr-submit"
-                        leftSection={<IconGitPullRequest size="1rem" />}
-                        disabled={
-                          !githubForm.values.selectedRepositoryId ||
-                          !githubForm.values.manualPr.trim()
-                        }
-                        loading={githubBusy}
-                        onClick={async () => {
-                          try {
-                            setGithubBusy(true);
-                            const trimmedPr = githubForm.values.manualPr.trim();
-                            const number = /^\d+$/.test(trimmedPr) ? Number(trimmedPr) : undefined;
-                            await linkTaskPullRequest(task.id, {
-                              repositoryId: githubForm.values.selectedRepositoryId,
-                              number,
-                              url: number ? undefined : trimmedPr,
-                            });
-                            githubForm.setFieldValue('manualPr', '');
-                            onSaved(await getTask(task.id));
-                          } catch (error) {
-                            onError(getErrorMessage(error));
-                          } finally {
-                            setGithubBusy(false);
-                          }
-                        }}
-                      >
-                        Link PR
-                      </Button>
-                      <Tooltip label="Refresh GitHub status">
-                        <ActionIcon
-                          data-testid="github-refresh-button"
-                          variant="light"
-                          aria-label="Refresh GitHub status"
-                          loading={githubBusy}
-                          onClick={async () => {
-                            try {
-                              setGithubBusy(true);
-                              await refreshTaskGitHub(task.id);
-                              onSaved(await getTask(task.id));
-                            } catch (error) {
-                              onError(getErrorMessage(error));
-                            } finally {
-                              setGithubBusy(false);
-                            }
-                          }}
-                        >
-                          <IconRefresh size="1rem" />
-                        </ActionIcon>
-                      </Tooltip>
-                    </Group>
-                  </Stack>
-                </SimpleGrid>
-              </Stack>
-            </Paper>
+            <TaskGitHubTab
+              task={task}
+              repositories={repositories}
+              canWriteTasks={canWriteTasks}
+              onSaved={onSaved}
+              onError={onError}
+            />
           </Tabs.Panel>
         )}
+
         <Tabs.Panel value="subtasks" pt="md">
-          <Paper withBorder className={classes.subtaskTable}>
-            <Group justify="space-between" p="md">
-              <Group>
-                <Title order={4}>Subtasks</Title>
-                <Tooltip label={`${task.subtasks?.length || 0} subtasks`}>
-                  <Badge variant="light">{task.subtasks?.length || 0}</Badge>
-                </Tooltip>
-              </Group>
-              {canWriteTasks && (
-                <Button
-                  size="xs"
-                  variant="light"
-                  leftSection={<IconPlus size="0.875rem" />}
-                  onClick={() => setSubtaskModalOpen(true)}
-                >
-                  Add subtask
-                </Button>
-              )}
-            </Group>
-            <div className={classes.subtaskHead}>
-              <Text>Name</Text>
-              <Text>Assignee</Text>
-              <Text>Priority</Text>
-              <Text>Due date</Text>
-            </div>
-            {(task.subtasks || []).map((subtask) => (
-              <UnstyledButton
-                key={subtask.id}
-                className={classes.subtaskRow}
-                data-testid="subtask-row"
-                data-task-id={subtask.id}
-                onClick={() => onOpenSubtask(subtask)}
-              >
-                <Group gap="sm" wrap="nowrap">
-                  <span
-                    className={classes.statusRing}
-                    style={{ borderColor: displayStatus(undefined, subtask.status).color }}
-                  />
-                  <Text fw={700}>{subtask.title}</Text>
-                </Group>
-                <span>
-                  {subtask.assignees?.length ? (
-                    <AvatarStack users={subtask.assignees} size="1.625rem" max={3} />
-                  ) : (
-                    <Text c="dimmed">-</Text>
-                  )}
-                </span>
-                <Tooltip label={`Priority: ${subtask.priority}`}>
-                  <Badge color={priorityColor[subtask.priority]} variant="light">
-                    {subtask.priority}
-                  </Badge>
-                </Tooltip>
-                <Text c={formatDueDate(subtask.dueDate).includes('ago') ? 'red' : 'dimmed'}>
-                  {formatDueDate(subtask.dueDate) || '-'}
-                </Text>
-              </UnstyledButton>
-            ))}
-            {!task.subtasks?.length && (
-              <UnstyledButton className={classes.addTask} onClick={() => setSubtaskModalOpen(true)}>
-                <IconPlus size="1.125rem" />
-                Add Task
-              </UnstyledButton>
-            )}
-          </Paper>
+          <TaskSubtasksTab
+            task={task}
+            statuses={statuses}
+            users={projectUsers}
+            usersLoading={projectUsersLoading}
+            canWriteTasks={canWriteTasks}
+            onSaved={onSaved}
+            onOpenSubtask={onOpenSubtask}
+            onError={onError}
+          />
         </Tabs.Panel>
+
         <Tabs.Panel value="activity" pt="md">
-          <Stack gap="xs">
-            {canWriteTasks && (
-              <Paper
-                component="form"
-                withBorder
-                p="sm"
-                onSubmit={submitComment}
-                data-testid="task-comment-form"
-              >
-                <Textarea
-                  data-testid="task-comment-input"
-                  label="Add OpenProject comment"
-                  minRows={3}
-                  autosize
-                  {...commentForm.getInputProps('comment')}
-                />
-                <Group justify="flex-end" mt="sm">
-                  <Button
-                    data-testid="task-comment-submit"
-                    loading={commentSaving}
-                    disabled={!commentForm.values.comment.trim()}
-                    type="submit"
-                  >
-                    Add comment
-                  </Button>
-                </Group>
-              </Paper>
-            )}
-            {activity.map((item) => (
-              <Paper key={item.id} withBorder p="sm">
-                <Group justify="space-between">
-                  <Text fw={700}>{item.type}</Text>
-                  <Text size="xs" c="dimmed">
-                    {new Date(item.createdAt).toLocaleString()}
-                  </Text>
-                </Group>
-                {item.message && (
-                  <Text size="sm" c="dimmed">
-                    {item.message}
-                  </Text>
-                )}
-                {(item.previousValue || item.nextValue) && (
-                  <Text size="xs" c="dimmed">
-                    {item.previousValue || '-'} → {item.nextValue || '-'}
-                  </Text>
-                )}
-              </Paper>
-            ))}
-            {!activity.length && (
-              <Text c="dimmed">
-                No OpenProject activity yet. Comments and field changes will appear here after the
-                first update.
-              </Text>
-            )}
-          </Stack>
+          <TaskActivityTab
+            taskId={task.id}
+            activity={activity}
+            canWriteTasks={canWriteTasks}
+            onActivityRefresh={refreshActivity}
+            onError={onError}
+          />
         </Tabs.Panel>
+
         <Tabs.Panel value="time" pt="md">
-          <Stack>
-            <Group justify="space-between">
-              <Title order={4}>Time entries</Title>
-              <Tooltip label={`${totalHours.toFixed(2)} hours logged`}>
-                <Badge leftSection={<IconClock size="0.875rem" />}>{totalHours.toFixed(2)}h</Badge>
-              </Tooltip>
-            </Group>
-            {canWriteTasks && (
-              <Paper
-                component="form"
-                withBorder
-                p="sm"
-                onSubmit={submitTimeEntry}
-                data-testid="task-time-form"
-              >
-                <SimpleGrid cols={{ base: 1, sm: 2, lg: 5 }}>
-                  <NumberInput
-                    data-testid="task-time-hours-input"
-                    label="Hours"
-                    min={0.01}
-                    step={0.25}
-                    value={timeForm.values.timeHours}
-                    onChange={(value) => timeForm.setFieldValue('timeHours', value)}
-                  />
-                  <TextInput
-                    data-testid="task-time-date-input"
-                    label="Spent on"
-                    type="date"
-                    value={timeForm.values.timeSpentOn}
-                    onChange={(event) =>
-                      timeForm.setFieldValue('timeSpentOn', event.currentTarget.value)
-                    }
-                  />
-                  <Select
-                    data-testid="task-time-activity-select"
-                    label="Activity"
-                    value={timeForm.values.timeActivityId}
-                    onChange={(value) => timeForm.setFieldValue('timeActivityId', value || '')}
-                    data={timeEntryActivities.map((activity) => ({
-                      value: activity.id,
-                      label: activity.name,
-                    }))}
-                    disabled={!timeEntryActivities.length || Boolean(timeActivitiesError)}
-                    error={timeForm.errors.timeActivityId}
-                    placeholder={
-                      timeActivitiesError
-                        ? 'Could not load activities'
-                        : timeEntryActivities.length === 1
-                          ? timeEntryActivities[0]?.name || 'Activity'
-                          : 'Select activity'
-                    }
-                  />
-                  <TextInput
-                    data-testid="task-time-comment-input"
-                    label="Comment"
-                    {...timeForm.getInputProps('timeComment')}
-                  />
-                  <Stack justify="flex-end">
-                    <Button loading={timeSaving} type="submit" data-testid="task-time-submit">
-                      Log time
-                    </Button>
-                  </Stack>
-                </SimpleGrid>
-                {timeActivitiesError && (
-                  <Alert color="red" variant="light" mt="sm">
-                    {timeActivitiesError}
-                  </Alert>
-                )}
-              </Paper>
-            )}
-            {timeEntries.map((entry) => (
-              <Paper key={entry.id} withBorder p="sm">
-                <Group justify="space-between">
-                  <Text fw={700}>{entry.hours}h</Text>
-                  <Text size="sm" c="dimmed">
-                    {entry.spentOn || '-'} {entry.user ? `• ${entry.user.name}` : ''}
-                  </Text>
-                </Group>
-                {entry.comment && <Text size="sm">{entry.comment}</Text>}
-              </Paper>
-            ))}
-            {!timeEntries.length && (
-              <Text c="dimmed">
-                No OpenProject time entries yet. Logged time will appear here after the first entry
-                is saved.
-              </Text>
-            )}
-          </Stack>
+          <TaskTimeTab
+            taskId={task.id}
+            timeEntries={timeEntries}
+            totalHours={totalHours}
+            timeEntryActivities={timeEntryActivities}
+            timeActivitiesError={timeActivitiesError}
+            defaultActivityId={defaultTimeActivityId}
+            canWriteTasks={canWriteTasks}
+            onTimeRefresh={refreshTimeEntries}
+            onError={onError}
+          />
         </Tabs.Panel>
+
         <Tabs.Panel value="files" pt="md">
-          <Stack>
-            {canWriteTasks && (
-              <Paper
-                component="form"
-                withBorder
-                p="sm"
-                onSubmit={submitAttachment}
-                data-testid="task-attachments-form"
-              >
-                <Group align="end">
-                  <FileInput
-                    data-testid="task-attachment-input"
-                    label="Upload attachment"
-                    value={attachmentForm.values.attachmentFile}
-                    onChange={(value) => attachmentForm.setFieldValue('attachmentFile', value)}
-                    leftSection={<IconPaperclip size="1rem" />}
-                  />
-                  <Button
-                    data-testid="task-attachment-submit"
-                    loading={attachmentSaving}
-                    disabled={!attachmentForm.values.attachmentFile}
-                    type="submit"
-                  >
-                    Upload
-                  </Button>
-                </Group>
-              </Paper>
-            )}
-            {attachments.map((attachment) => (
-              <Paper key={attachment.id} withBorder p="sm">
-                <Group justify="space-between">
-                  <Stack gap={2}>
-                    <Text fw={700}>{attachment.fileName}</Text>
-                    <Text size="sm" c="dimmed">
-                      {attachment.contentType || 'file'}{' '}
-                      {attachment.fileSize ? `• ${Math.round(attachment.fileSize / 1024)} KB` : ''}
-                    </Text>
-                  </Stack>
-                  {attachment.downloadUrl && (
-                    <Button
-                      size="xs"
-                      variant="light"
-                      component="a"
-                      href={attachment.downloadUrl}
-                      target="_blank"
-                    >
-                      Open
-                    </Button>
-                  )}
-                </Group>
-              </Paper>
-            ))}
-            {!attachments.length && (
-              <Text c="dimmed">
-                No OpenProject attachments yet. Uploaded files stay on the work package after
-                refresh.
-              </Text>
-            )}
-          </Stack>
+          <TaskFilesTab
+            taskId={task.id}
+            attachments={attachments}
+            canWriteTasks={canWriteTasks}
+            onAttachmentsRefresh={refreshAttachments}
+            onError={onError}
+          />
         </Tabs.Panel>
+
         {customFields.length > 0 && (
           <Tabs.Panel value="custom-fields" pt="md">
-            <SimpleGrid cols={{ base: 1, sm: 2 }}>
-              {customFields.map((field) => (
-                <Group key={field.key} align="stretch" wrap="nowrap">
-                  {renderCustomFieldInput(field)}
-                </Group>
-              ))}
-            </SimpleGrid>
+            <TaskCustomFieldsTab
+              taskId={task.id}
+              customFields={customFields}
+              canWriteTasks={canWriteTasks}
+              onFieldsChange={setCustomFields}
+              onError={onError}
+            />
           </Tabs.Panel>
         )}
       </Tabs>

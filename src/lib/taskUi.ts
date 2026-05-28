@@ -8,21 +8,18 @@ import type {
   Workspace,
 } from './types.js';
 
-export const statusMeta: Record<string, { label: string; color: string; tone: string }> = {
-  complete: { label: 'Complete', color: '#5cc4a7', tone: 'mint' },
-  shipped: { label: 'Shipped', color: '#5cc4a7', tone: 'mint' },
-  review: { label: 'In Review', color: '#e64980', tone: 'pink' },
-  'in review': { label: 'In Review', color: '#e64980', tone: 'pink' },
-  backlog: { label: 'Backlog', color: '#868e96', tone: 'gray' },
-  todo: { label: 'To do', color: '#868e96', tone: 'gray' },
-  'to do': { label: 'To do', color: '#868e96', tone: 'gray' },
-  in_progress: { label: 'In progress', color: '#4dabf7', tone: 'blue' },
-  'in progress': { label: 'In progress', color: '#4dabf7', tone: 'blue' },
-  'in development': { label: 'In Development', color: '#4dabf7', tone: 'blue' },
-  scoping: { label: 'Scoping', color: '#7048e8', tone: 'blue' },
-  open: { label: 'Open', color: '#868e96', tone: 'gray' },
-  closed: { label: 'Closed', color: '#5cc4a7', tone: 'mint' },
-  done: { label: 'Done', color: '#5cc4a7', tone: 'mint' },
+// Matches exactly the statuses set up in OpenProject via setup-openproject.ts.
+export const statusMeta: Record<
+  string,
+  { label: string; color: string; tone: string; type: string }
+> = {
+  backlog: { label: 'Backlog', color: '#adb5bd', tone: 'gray', type: 'open' }, // gray-5
+  scoping: { label: 'Scoping', color: '#339af0', tone: 'blue', type: 'prep' }, // blue-5
+  'in progress': { label: 'In Progress', color: '#cc5de8', tone: 'grape', type: 'progress' }, // grape-5
+  'in testing': { label: 'In Testing', color: '#22b8cf', tone: 'cyan', type: 'test' }, // cyan-5
+  shipped: { label: 'Shipped', color: '#51cf66', tone: 'green', type: 'done' }, // green-5
+  closed: { label: 'Closed', color: '#adb5bd', tone: 'gray', type: 'closed' }, // gray-5
+  'on hold': { label: 'On Hold', color: '#fcc419', tone: 'yellow', type: 'open' }, // yellow-5
 };
 
 export const priorityColor: Record<TaskPriority, string> = {
@@ -259,6 +256,24 @@ export function reorderBoardTasks(
 
 export function workspaceHasWork(workspace: Workspace) {
   return workspace.spaces.some((space) => Boolean(findFirstTaskFolder(space.folders)));
+}
+
+/** Formats hours as "Xh" or "X.Xh". Returns null for zero/null values. */
+export function formatHours(hours?: number | null): string | null {
+  if (!hours || hours <= 0) return null;
+  return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
+}
+
+/** Strip ClickUp import metadata comments from a work-package description. */
+export function stripClickUpMeta(text: string | null | undefined): string {
+  if (!text) return '';
+  return text
+    .replace(
+      /<!--\s*chainsaw-clickup-import-meta\s*-->[\s\S]*?<!--\s*\/chainsaw-clickup-import-meta\s*-->/gi,
+      ''
+    )
+    .replace(/<!--\s*chainsaw[^>]*-->/gi, '')
+    .trim();
 }
 
 export function formatDueDate(value?: string) {

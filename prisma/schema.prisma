@@ -8,11 +8,9 @@ datasource db {
 }
 
 enum WorkspaceRole {
-  OWNER
   ADMIN
-  LEAD
   MEMBER
-  VIEWER
+  READER
 }
 
 enum TaskPriority {

@@ -8,11 +8,11 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: compact_tracker
     ports:
-      - "5432:5432"
+      - '5432:5432'
     volumes:
       - compact_tracker_pg:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d compact_tracker"]
+      test: ['CMD-SHELL', 'pg_isready -U postgres -d compact_tracker']
       interval: 5s
       timeout: 5s
       retries: 10

@@ -9,31 +9,51 @@ type Permission =
   | 'manageSpaces'
   | 'manageDocs'
   | 'manageTasks'
-  | 'inviteMembers';
+  | 'inviteMembers'
+  | 'manageIntegrations'
+  | 'manageImports'
+  | 'viewReports';
 type SpacePermissionKind = 'view' | 'edit' | 'manage';
+
+// Static role → permission map. Roles come from OpenProject (admin flag → ADMIN, else MEMBER/READER).
+export const ROLE_PERMISSIONS: Record<string, Partial<Record<Permission, boolean>>> = {
+  ADMIN: {
+    manageWorkspace: true,
+    manageSpaces: true,
+    manageDocs: true,
+    manageTasks: true,
+    inviteMembers: true,
+    manageIntegrations: true,
+    manageImports: true,
+    viewReports: true,
+  },
+  MEMBER: {
+    manageTasks: true,
+    manageDocs: true,
+    viewReports: true,
+  },
+  READER: {},
+};
+
+export function rolePermissions(role: string): Partial<Record<Permission, boolean>> {
+  return ROLE_PERMISSIONS[role] ?? {};
+}
 
 export async function can(req: Request, workspaceId: string, permission: Permission) {
   const userId = authCurrentUserId(req);
-
   if (!userId) {
     return false;
   }
 
   const membership = await prisma.membership.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
-    include: { workspace: { include: { permissionSets: true } } },
   });
 
   if (!membership) {
     return false;
   }
 
-  if (membership.role === 'OWNER') {
-    return true;
-  }
-
-  const set = membership.workspace.permissionSets.find((item) => item.role === membership.role);
-  return Boolean(set?.[permission]);
+  return Boolean(rolePermissions(membership.role)[permission]);
 }
 
 export async function requirePermission(req: Request, workspaceId: string, permission: Permission) {
@@ -51,7 +71,6 @@ export async function workspaceMembership(req: Request, workspaceId: string) {
   }
   return prisma.membership.findUnique({
     where: { userId_workspaceId: { userId, workspaceId } },
-    include: { workspace: { include: { permissionSets: true } } },
   });
 }
 
@@ -72,30 +91,30 @@ export async function canAccessSpace(
   if (!membership) {
     return false;
   }
-  if (membership.role === 'OWNER') {
+  if (membership.role === 'ADMIN') {
     return true;
   }
 
   const spaceSet = space.permissions.find((item) => item.role === membership.role);
-  const workspaceSet = membership.workspace.permissionSets.find(
-    (item) => item.role === membership.role
-  );
-  if (!spaceSet && workspaceSet) {
+  const perms = rolePermissions(membership.role);
+
+  if (!spaceSet) {
     if (permission === 'view') {
-      return true;
+      // READER can view by default; MEMBER can view
+      return membership.role !== 'READER' || true; // all roles can view if no override
     }
     if (permission === 'edit') {
-      return workspaceSet.manageTasks || workspaceSet.manageDocs || workspaceSet.manageSpaces;
+      return Boolean(perms.manageTasks || perms.manageDocs || perms.manageSpaces);
     }
-    return workspaceSet.manageSpaces;
+    return Boolean(perms.manageSpaces);
   }
   if (permission === 'view') {
-    return Boolean(spaceSet?.canView);
+    return Boolean(spaceSet.canView);
   }
   if (permission === 'edit') {
-    return Boolean(spaceSet?.canEdit || spaceSet?.canManage);
+    return Boolean(spaceSet.canEdit || spaceSet.canManage);
   }
-  return Boolean(spaceSet?.canManage);
+  return Boolean(spaceSet.canManage);
 }
 
 export async function requireSpacePermission(
@@ -120,7 +139,7 @@ export async function accessibleSpaceIds(req: Request, workspaceId: string) {
     where: { workspaceId },
     include: { permissions: true },
   });
-  if (membership.role === 'OWNER') {
+  if (membership.role === 'ADMIN') {
     return spaces.map((space) => space.id);
   }
 
@@ -130,11 +149,8 @@ export async function accessibleSpaceIds(req: Request, workspaceId: string) {
       if (spaceSet) {
         return spaceSet.canView;
       }
-      return Boolean(
-        membership.workspace.permissionSets.find(
-          (permission) => permission.role === membership.role
-        )
-      );
+      // No space-level override: MEMBER can view, READER cannot
+      return membership.role !== 'READER';
     })
     .map((space) => space.id);
 }
@@ -153,20 +169,13 @@ export async function canEditTask(
   if (!membership) {
     return false;
   }
-  if (membership.role === 'OWNER' || membership.role === 'ADMIN') {
+  if (membership.role === 'ADMIN') {
     return true;
   }
-  if (membership.role === 'LEAD') {
+  if (membership.role === 'MEMBER') {
     return canAccessSpace(req, task.folder.spaceId, 'edit');
   }
-  if (membership.role === 'MEMBER') {
-    const userId = authCurrentUserId(req);
-    return Boolean(
-      userId &&
-      (task.assigneeId === userId || task.createdById === userId) &&
-      (await canAccessSpace(req, task.folder.spaceId, 'view'))
-    );
-  }
+  // READER: read-only
   return false;
 }
 

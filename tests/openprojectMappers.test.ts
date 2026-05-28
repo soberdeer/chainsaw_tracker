@@ -49,13 +49,12 @@ test('maps tracker priority to OpenProject priority names', () => {
   assert.equal(priorityToOpenProjectName('LOW'), 'Low');
 });
 
-test('maps OpenProject workspace permissions to service-token write model', () => {
+test('maps ChainsawLeg workspace permissions to service-token write model', () => {
   const workspace = mapWorkspace([], [], []);
   const permissionByRole = new Map(workspace.permissionSets.map((set) => [set.role, set]));
 
-  assert.equal(permissionByRole.get('OWNER')?.manageTasks, true);
   assert.equal(permissionByRole.get('ADMIN')?.manageTasks, true);
-  assert.equal(permissionByRole.get('LEAD')?.manageTasks, true);
   assert.equal(permissionByRole.get('MEMBER')?.manageTasks, true);
+  assert.equal(permissionByRole.get('READER')?.manageTasks, false);
   assert.equal(workspace.memberships.length, 0);
 });

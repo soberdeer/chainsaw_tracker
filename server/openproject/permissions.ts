@@ -1,6 +1,7 @@
 import type { Request } from 'express';
 import { prisma } from '../db.js';
 import { currentUserId } from '../services/auth.js';
+import { rolePermissions } from '../services/permissions.js';
 import { openProjectRuntimeWorkspaceSlug } from './localPermissions.js';
 
 type RuntimePermission = 'manageTasks' | 'manageSpaces';
@@ -20,13 +21,6 @@ async function runtimeMembership(req: Request) {
       userId: id,
       workspace: { slug: openProjectRuntimeWorkspaceSlug },
     },
-    include: {
-      workspace: {
-        include: {
-          permissionSets: true,
-        },
-      },
-    },
   });
 }
 
@@ -37,13 +31,7 @@ function hasRuntimePermission(
   if (!membership) {
     return false;
   }
-
-  if (membership.role === 'OWNER') {
-    return true;
-  }
-
-  const set = membership.workspace.permissionSets.find((item) => item.role === membership.role);
-  return Boolean(set?.[permission]);
+  return Boolean(rolePermissions(membership.role)[permission]);
 }
 
 export async function requireOpenProjectTaskWrite(req: Request) {

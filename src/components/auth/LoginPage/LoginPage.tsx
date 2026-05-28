@@ -18,7 +18,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
     },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
-      password: (value) => (value.trim().length ? null : 'Password is required'),
+      password: (value) => (value.trim().length ? null : 'API token is required'),
     },
   });
 
@@ -40,7 +40,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
         <Stack gap="md">
           <div>
             <Title order={2}>OpenProject Tracker</Title>
-            <Text c="dimmed">Sign in with your local tracker account.</Text>
+            <Text c="dimmed">Sign in with your OpenProject API token.</Text>
           </div>
           {error && (
             <Alert color="red" title="Could not sign in">
@@ -48,14 +48,14 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
             </Alert>
           )}
           <TextInput label="Email" {...form.getInputProps('email')} />
-          <PasswordInput label="Password" {...form.getInputProps('password')} />
+          <PasswordInput
+            label="OpenProject API token"
+            description="Find it in OpenProject → My account → Access tokens → API"
+            {...form.getInputProps('password')}
+          />
           <Button loading={loading} type="submit">
             Sign in
           </Button>
-          <Text size="xs" c="dimmed">
-            OpenProject access stays on the backend service token. Your login here only controls the
-            local tracker account and permissions.
-          </Text>
         </Stack>
       </Paper>
     </main>

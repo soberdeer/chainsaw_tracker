@@ -1,0 +1,26 @@
+.section {
+  margin-bottom: 1rem;
+}
+
+.checklist {
+  padding: 1rem;
+}
+
+.itemRow {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.completedText {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+
+.newItemRow {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.5rem;
+  align-items: end;
+}

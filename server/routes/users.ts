@@ -1,8 +1,13 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { prisma } from '../db.js';
-import { getMyWorkSummary, getOpenProjectUserMemberships } from '../openproject/service.js';
-import { hashPassword, requireCurrentUser, verifyPassword } from '../services/auth.js';
+import {
+  getMyWorkSummary,
+  getOpenProjectUserMemberships,
+  findOpenProjectUserByEmail,
+} from '../openproject/service.js';
+import { requireCurrentUser } from '../services/auth.js';
+import { ROLE_PERMISSIONS } from '../services/permissions.js';
 
 export const usersRouter = Router();
 
@@ -46,9 +51,6 @@ usersRouter.get('/me', async (req, res) => {
     },
     orderBy: { createdAt: 'asc' },
   });
-  const permissionSets = await prisma.permissionSet.findMany({
-    where: { workspaceId: { in: memberships.map((membership) => membership.workspaceId) } },
-  });
   const openProjectMemberships = current.openProjectUserId
     ? await getOpenProjectUserMemberships(current.openProjectUserId).catch(() => [])
     : [];
@@ -61,10 +63,7 @@ usersRouter.get('/me', async (req, res) => {
       workspaceName: membership.workspace.name,
       workspaceSlug: membership.workspace.slug,
       role: membership.role,
-      permissions:
-        permissionSets.find(
-          (set) => set.workspaceId === membership.workspaceId && set.role === membership.role
-        ) || null,
+      permissions: ROLE_PERMISSIONS[membership.role] ?? null,
     })),
     openProjectMemberships,
   });
@@ -90,40 +89,30 @@ usersRouter.patch('/me', async (req, res) => {
   res.json(serializeUser(updated));
 });
 
-usersRouter.post('/me/change-password', async (req, res) => {
-  const current = await requireCurrentUser(req);
-  const body = z
-    .object({
-      currentPassword: z.string().min(1),
-      newPassword: z.string().min(8),
-      confirmPassword: z.string().min(8),
-    })
-    .parse(req.body);
-
-  if (body.newPassword !== body.confirmPassword) {
-    res.status(400).json({ error: 'New password confirmation does not match' });
-    return;
-  }
-
-  if (!verifyPassword(body.currentPassword, current.passwordHash)) {
-    res.status(400).json({ error: 'Current password is incorrect' });
-    return;
-  }
-
-  await prisma.user.update({
-    where: { id: current.id },
-    data: { passwordHash: hashPassword(body.newPassword) },
-  });
-
-  res.json({ ok: true });
+usersRouter.post('/me/change-password', async (_req, res) => {
+  res.status(400).json({ error: 'Change your password directly in OpenProject.' });
 });
 
 usersRouter.get('/me/my-work', async (req, res) => {
-  const current = await requireCurrentUser(req);
+  let current = await requireCurrentUser(req);
+
+  // Auto-link to OpenProject user by email if not linked yet
   if (!current.openProjectUserId) {
-    res.status(409).json({
-      error: 'This local account is not linked to an OpenProject user yet',
-    });
+    const opUser = await findOpenProjectUserByEmail(current.email).catch(() => null);
+    if (opUser) {
+      current = await prisma.user.update({
+        where: { id: current.id },
+        data: {
+          openProjectUserId: String(opUser.id),
+          openProjectLogin: opUser.login || undefined,
+        },
+      });
+    }
+  }
+
+  if (!current.openProjectUserId) {
+    // User has no matching OpenProject account — return empty summary
+    res.json({ assignedCount: 0, overdueCount: 0, dueThisWeekCount: 0, recentlyUpdated: [] });
     return;
   }
 

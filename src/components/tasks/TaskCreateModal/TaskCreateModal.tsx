@@ -3,7 +3,6 @@ import {
   Button,
   Group,
   Modal,
-  MultiSelect,
   Select,
   Stack,
   Text,
@@ -12,8 +11,8 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconCalendarDue, IconFlag, IconListCheck, IconUsers, IconX } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { IconCalendarDue, IconFlag, IconListCheck, IconX } from '@tabler/icons-react';
+import { useEffect, useRef, useState } from 'react';
 import {
   createTask,
   displayStatus,
@@ -25,6 +24,7 @@ import {
   type TaskStatus,
   type User,
 } from '@/lib';
+import { UserSelect } from '../../common/UserSelect';
 import classes from './TaskCreateModal.module.css';
 
 export interface TaskCreateModalProps {
@@ -32,6 +32,7 @@ export interface TaskCreateModalProps {
   taskList?: TaskList;
   statuses: TaskStatus[];
   users: User[];
+  usersLoading?: boolean;
   initialStatusId?: string;
   onClose: () => void;
   onCreated: (task: Task) => void;
@@ -43,6 +44,7 @@ export function TaskCreateModal({
   taskList,
   statuses,
   users,
+  usersLoading = false,
   initialStatusId,
   onClose,
   onCreated,
@@ -63,12 +65,14 @@ export function TaskCreateModal({
       title: (value) => (value.trim().length ? null : 'Task title is required'),
     },
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     if (!opened) {
       return;
     }
-    form.setValues({
+    formRef.current.setValues({
       title: '',
       description: '',
       statusId: initialStatusId || statuses[0]?.id || '',
@@ -77,8 +81,8 @@ export function TaskCreateModal({
       startDate: '',
       dueDate: '',
     });
-    form.resetDirty();
-  }, [opened, initialStatusId, statuses, form]);
+    formRef.current.resetDirty();
+  }, [opened, initialStatusId, statuses]);
 
   const submit = form.onSubmit(async (values) => {
     if (!taskList?.id || !values.title.trim()) {
@@ -195,16 +199,14 @@ export function TaskCreateModal({
                 }))}
                 className={classes.compactField}
               />
-              <MultiSelect
+              <UserSelect
                 data-testid="task-create-assignee-select"
                 placeholder="Assignee / responsible"
-                leftSection={<IconUsers size="1rem" />}
-                data={users.map((user) => ({ value: user.id, label: user.name }))}
-                searchable
-                clearable
+                users={users}
+                loading={usersLoading}
+                value={form.values.assigneeIds}
+                onChange={(value) => form.setFieldValue('assigneeIds', value)}
                 maxValues={2}
-                className={classes.wideField}
-                {...form.getInputProps('assigneeIds')}
               />
               <TextInput
                 data-testid="task-create-start-date-input"

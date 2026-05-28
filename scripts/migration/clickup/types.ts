@@ -1,11 +1,26 @@
 // Migration-only ClickUp response types for scripts/seed-openproject-from-clickup.ts.
 // Runtime task data comes from OpenProject.
+export type ClickUpTeamMember = {
+  user: ClickUpUser;
+  /** 1 = owner, 2 = admin, 3 = member, 4 = guest */
+  role?: number;
+  invited_by?: unknown;
+};
+
 export type ClickUpTeam = {
   id: string;
   name: string;
   color?: string;
   avatar?: string;
-  members?: Array<{ user: ClickUpUser }>;
+  members?: ClickUpTeamMember[];
+};
+
+export type ClickUpGroup = {
+  id: string;
+  name: string;
+  team_id?: string;
+  /** Members are plain user objects (no role wrapper) */
+  members?: ClickUpUser[];
 };
 
 export type ClickUpUser = {

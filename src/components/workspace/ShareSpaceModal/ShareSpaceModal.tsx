@@ -13,7 +13,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconLock, IconMailPlus } from '@tabler/icons-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   inviteMember,
   getErrorMessage,
@@ -48,13 +48,15 @@ export function ShareSpaceModal({
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
     },
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     if (!opened) {
       return;
     }
-    form.reset();
-  }, [opened, form]);
+    formRef.current.reset();
+  }, [opened]);
 
   const invite = form.onSubmit(async (values) => {
     try {
@@ -98,7 +100,7 @@ export function ShareSpaceModal({
             />
             <Select
               label="Role"
-              data={['ADMIN', 'LEAD', 'MEMBER', 'VIEWER']}
+              data={['ADMIN', 'MEMBER', 'READER']}
               {...form.getInputProps('role')}
             />
             <Button leftSection={<IconMailPlus size="1rem" />} loading={sending} type="submit">

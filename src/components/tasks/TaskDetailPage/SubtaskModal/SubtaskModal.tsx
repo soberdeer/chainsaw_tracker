@@ -2,7 +2,6 @@ import {
   Button,
   Group,
   Modal,
-  MultiSelect,
   Select,
   SimpleGrid,
   Stack,
@@ -21,6 +20,7 @@ import {
   type TaskStatus,
   type User,
 } from '@/lib';
+import { UserSelect } from '../../../common/UserSelect';
 import classes from './SubtaskModal.module.css';
 
 export interface SubtaskModalProps {
@@ -28,6 +28,7 @@ export interface SubtaskModalProps {
   parentTask: Task;
   statuses: TaskStatus[];
   users: User[];
+  usersLoading?: boolean;
   onClose: () => void;
   onCreated: (task: Task) => void;
   onError: (message: string) => void;
@@ -38,6 +39,7 @@ export function SubtaskModal({
   parentTask,
   statuses,
   users,
+  usersLoading = false,
   onClose,
   onCreated,
   onError,
@@ -131,13 +133,13 @@ export function SubtaskModal({
               data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
               {...form.getInputProps('priority')}
             />
-            <MultiSelect
+            <UserSelect
               label="Assignee / responsible"
-              data={users.map((user) => ({ value: user.id, label: user.name }))}
-              searchable
-              clearable
+              users={users}
+              loading={usersLoading}
+              value={form.values.assigneeIds}
+              onChange={(value) => form.setFieldValue('assigneeIds', value)}
               maxValues={2}
-              {...form.getInputProps('assigneeIds')}
             />
             <TextInput label="Start date" type="date" {...form.getInputProps('startDate')} />
             <TextInput label="Due date" type="date" {...form.getInputProps('dueDate')} />

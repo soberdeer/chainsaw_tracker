@@ -38,11 +38,9 @@ spacesRouter.post('/', async (req, res) => {
       ...body,
       permissions: {
         create: [
-          { role: 'OWNER', canView: true, canEdit: true, canManage: true },
           { role: 'ADMIN', canView: true, canEdit: true, canManage: true },
-          { role: 'LEAD', canView: true, canEdit: true },
           { role: 'MEMBER', canView: true, canEdit: true },
-          { role: 'VIEWER', canView: true },
+          { role: 'READER', canView: true },
         ],
       },
     },
@@ -67,7 +65,7 @@ spacesRouter.post('/:spaceId/folders', async (req, res) => {
 });
 
 spacesRouter.post('/:spaceId/permissions/:role', async (req, res) => {
-  const role = z.enum(['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER']).parse(req.params.role);
+  const role = z.enum(['ADMIN', 'MEMBER', 'READER']).parse(req.params.role);
   const body = z
     .object({
       canView: z.boolean(),

@@ -2,9 +2,11 @@ import 'dotenv/config';
 import { PrismaClient } from '@prisma/client';
 import { openProjectRequest } from '../server/openproject/client.js';
 import { seededHierarchyPath, type SeededWorkspace } from '../server/openproject/hierarchyStore.js';
+import { statusThemeColor, statusThemeType } from '../server/openproject/mappers.js';
 import type {
   HalCollection,
   HalLink,
+  OpenProjectGroup,
   OpenProjectMembership,
   OpenProjectPriority,
   OpenProjectProject,
@@ -14,10 +16,11 @@ import type {
   OpenProjectUser,
   OpenProjectWorkPackage,
 } from '../server/openproject/types.js';
-import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
+import type { PermissionSet, TaskStatusType, WorkspaceRole } from '../src/lib/types.js';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
   ClickUpFolder,
+  ClickUpGroup,
   ClickUpList,
   ClickUpSpace,
   ClickUpStatus,
@@ -38,7 +41,6 @@ import {
   type OpenProjectRoleLike,
   type ImportedPermissionLevel,
 } from './migration/openprojectPermissions.js';
-import { randomBytes, scryptSync } from 'node:crypto';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -83,6 +85,8 @@ type OpenProjectUserSyncContext = {
   memberships: OpenProjectMembership[];
   clickUpUserToOpenProjectUser: Map<string, OpenProjectUser>;
   failedClickUpUserKeys: Set<string>;
+  /** Lowercase emails that should receive admin=true in OpenProject */
+  adminEmails: Set<string>;
   summary: Summary;
 };
 
@@ -149,6 +153,9 @@ type Summary = {
   assigneeFallbackStored: number;
   fallbackRecoveredTasks: number;
   fallbackSkippedTasks: number;
+  openProjectGroupsCreated: number;
+  openProjectGroupsReused: number;
+  openProjectGroupErrors: string[];
   errors: string[];
   warnings: string[];
 };
@@ -156,7 +163,6 @@ type Summary = {
 const META_START = '<!-- chainsaw-clickup-import-meta -->';
 const META_END = '<!-- /chainsaw-clickup-import-meta -->';
 
-const importedUserDefaultPassword = process.env.CLICKUP_IMPORTED_USER_PASSWORD || 'clickup!2026';
 const openProjectImportedUserPassword =
   process.env.OPENPROJECT_IMPORTED_USER_PASSWORD || 'Clickup!2026';
 
@@ -166,8 +172,6 @@ const importedAdminEmails = new Set(
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean)
 );
-
-const defaultOwnerPassword = process.env.DEV_ADMIN_PASSWORD || 'admin123';
 
 const permissionSets: PermissionSet[] = [
   {
@@ -230,13 +234,6 @@ function statusSlug(value: string) {
   return slug(value).slice(0, 48);
 }
 
-function hashPassword(password: string) {
-  const salt = randomBytes(16).toString('base64url');
-  const hash = scryptSync(password, salt, 64).toString('base64url');
-
-  return `${salt}:${hash}`;
-}
-
 function normalizeEmail(value?: string | null) {
   const email = value?.trim().toLowerCase();
 
@@ -262,7 +259,7 @@ function clickUpUserName(user: ClickUpUserLike) {
 function splitName(value: string) {
   const parts = value.trim().split(/\s+/).filter(Boolean);
   const firstName = (parts[0] || value || 'ClickUp').slice(0, 30);
-  const lastName = (parts.slice(1).join(' ') || 'User').slice(0, 30);
+  const lastName = (parts.slice(1).join(' ') || 'ㅤ').slice(0, 30);
 
   return { firstName, lastName };
 }
@@ -523,38 +520,114 @@ function priorityHref(priorities: OpenProjectPriority[], priority: ClickUpTask['
     .href;
 }
 
-function mapStatusToOpenProjectId(status: ClickUpStatus, openProjectStatuses: OpenProjectStatus[]) {
+function mapStatusToOpenProjectId(
+  status: ClickUpStatus,
+  openProjectStatuses: OpenProjectStatus[]
+): string {
   const name = status.status.toLowerCase();
+  const find = (n: string) => openProjectStatuses.find((item) => item.name.toLowerCase() === n)?.id;
+
+  // Exact name match first (e.g. "Backlog" → Backlog, "Shipped" → Shipped)
   const exact = openProjectStatuses.find((item) => item.name.toLowerCase() === name);
+  if (exact) return String(exact.id);
 
-  if (exact) {
-    return String(exact.id);
+  // --- Type-first routing ---
+
+  // on hold / blocked / waiting → always On Hold regardless of ClickUp type
+  if (name.includes('hold') || name.includes('block') || name.includes('wait')) {
+    return String(find('on hold') ?? find('backlog') ?? openProjectStatuses[0]?.id);
   }
 
-  if (status.type === 'closed' || status.type === 'done' || name.includes('ship')) {
-    return String(
-      openProjectStatuses.find((item) => item.isClosed)?.id ||
-        openProjectStatuses.find((item) => item.name.toLowerCase() === 'closed')?.id ||
-        openProjectStatuses[0]?.id
-    );
+  // open type → Backlog (to do, open, new, backlog, etc.)
+  if (status.type === 'open') {
+    return String(find('backlog') ?? openProjectStatuses[0]?.id);
   }
 
-  if (name.includes('review') || name.includes('test')) {
-    return String(
-      openProjectStatuses.find((item) => item.name.toLowerCase().includes('testing'))?.id ||
-        openProjectStatuses.find((item) => item.name.toLowerCase().includes('progress'))?.id ||
-        openProjectStatuses[0]?.id
-    );
+  // done type → Shipped (the task was finished and delivered)
+  if (status.type === 'done') {
+    return String(find('shipped') ?? openProjectStatuses[0]?.id);
   }
 
-  if (name.includes('develop') || name.includes('progress')) {
-    return String(
-      openProjectStatuses.find((item) => item.name.toLowerCase().includes('progress'))?.id ||
-        openProjectStatuses[0]?.id
-    );
+  // closed type → Closed (cancelled, archived, rejected, won't fix, etc.)
+  if (status.type === 'closed') {
+    return String(find('closed') ?? openProjectStatuses[0]?.id);
   }
 
-  return String(openProjectStatuses.find((item) => item.name.toLowerCase() === 'new')?.id || 1);
+  // --- Custom type: route by name ---
+
+  // review / testing / qa / verified → In Testing
+  if (
+    name.includes('review') ||
+    name.includes('test') ||
+    name.includes(' qa') ||
+    name === 'qa' ||
+    name.includes('verif')
+  ) {
+    return String(find('in testing') ?? find('in progress') ?? openProjectStatuses[0]?.id);
+  }
+
+  // active development / in progress / in dev
+  if (name.includes('develop') || name.includes('progress') || name.includes(' dev')) {
+    return String(find('in progress') ?? openProjectStatuses[0]?.id);
+  }
+
+  // scoping / design / planning / spec / research / ready
+  if (
+    name.includes('scop') ||
+    name.includes('design') ||
+    name.includes('plan') ||
+    name.includes('spec') ||
+    name.includes('research') ||
+    name.includes('ready')
+  ) {
+    return String(find('scoping') ?? find('backlog') ?? openProjectStatuses[0]?.id);
+  }
+
+  // shipped / released / deployed (custom type)
+  if (name.includes('ship') || name.includes('releas') || name.includes('deploy')) {
+    return String(find('shipped') ?? openProjectStatuses[0]?.id);
+  }
+
+  // default for remaining custom → In Progress
+  return String(find('in progress') ?? find('backlog') ?? openProjectStatuses[0]?.id);
+}
+
+/**
+ * Derive the semantic workflow phase for a ClickUp status.
+ * - ClickUp type open/done/closed maps directly.
+ * - custom type is categorised by name: prep | progress | test.
+ * - "on hold"-like names always stay 'open'.
+ */
+function clickUpStatusType(status: ClickUpStatus): TaskStatusType {
+  const name = status.status.toLowerCase();
+
+  if (name.includes('hold') || name.includes('block') || name.includes('wait')) return 'open';
+
+  if (status.type === 'open') return 'open';
+  if (status.type === 'done') return 'done';
+  if (status.type === 'closed') return 'closed';
+
+  // custom → by name
+  if (
+    name.includes('scop') ||
+    name.includes('design') ||
+    name.includes('plan') ||
+    name.includes('spec') ||
+    name.includes('research') ||
+    name.includes('ready')
+  )
+    return 'prep';
+
+  if (
+    name.includes('review') ||
+    name.includes('test') ||
+    name.includes(' qa') ||
+    name === 'qa' ||
+    name.includes('verif')
+  )
+    return 'test';
+
+  return 'progress';
 }
 
 function clickUpStatuses(
@@ -586,6 +659,8 @@ function seededStatuses(params: {
   return params.statuses
     .map((status, index) => {
       const openProjectStatusId = mapStatusToOpenProjectId(status, params.openProjectStatuses);
+      const opName =
+        params.openProjectStatuses.find((s) => String(s.id) === openProjectStatusId)?.name ?? '';
 
       return {
         id: `op-status:${openProjectStatusId}:clickup-status:${statusSlug(status.status)}`,
@@ -594,9 +669,10 @@ function seededStatuses(params: {
         openProjectStatusId,
         taskListId: params.taskListId,
         name: status.status,
-        color: status.color || '#868e96',
+        color: statusThemeColor(opName),
         position: Number(status.orderindex ?? index),
         isDone: status.type === 'closed' || status.type === 'done',
+        statusType: clickUpStatusType(status),
       };
     })
     .sort((a, b) => a.position - b.position);
@@ -613,13 +689,10 @@ function seededStatusesFromOpenProject(params: {
       openProjectStatusId: String(status.id),
       taskListId: params.taskListId,
       name: status.name,
-      color: status.isClosed
-        ? '#4d9f87'
-        : status.name.toLowerCase().includes('progress')
-          ? '#228be6'
-          : '#868e96',
+      color: statusThemeColor(status.name),
       position: Number(status.position || status.id),
       isDone: Boolean(status.isClosed),
+      statusType: statusThemeType(status.name),
     }))
     .sort((a, b) => a.position - b.position);
 }
@@ -634,25 +707,7 @@ function isInvalidStatusTransitionError(error: unknown) {
 }
 
 async function ensureLocalRuntimeWorkspace() {
-  const owner = await prisma.user.upsert({
-    where: { email: 'owner@local.app' },
-    update: {},
-    create: {
-      id: 'local-user',
-      email: 'owner@local.app',
-      name: 'Workspace Owner',
-      passwordHash: hashPassword(defaultOwnerPassword),
-    },
-  });
-
-  if (!owner.passwordHash) {
-    await prisma.user.update({
-      where: { id: owner.id },
-      data: { passwordHash: hashPassword(defaultOwnerPassword) },
-    });
-  }
-
-  const workspace = await prisma.workspace.upsert({
+  return prisma.workspace.upsert({
     where: { slug: 'chainsaw' },
     update: {},
     create: {
@@ -660,94 +715,6 @@ async function ensureLocalRuntimeWorkspace() {
       slug: 'chainsaw',
     },
   });
-
-  await Promise.all([
-    prisma.permissionSet.upsert({
-      where: { workspaceId_role: { workspaceId: workspace.id, role: 'OWNER' } },
-      create: {
-        workspaceId: workspace.id,
-        role: 'OWNER',
-        manageWorkspace: true,
-        manageSpaces: true,
-        manageDocs: true,
-        manageTasks: true,
-        inviteMembers: true,
-      },
-      update: {
-        manageWorkspace: true,
-        manageSpaces: true,
-        manageDocs: true,
-        manageTasks: true,
-        inviteMembers: true,
-      },
-    }),
-    prisma.permissionSet.upsert({
-      where: { workspaceId_role: { workspaceId: workspace.id, role: 'ADMIN' } },
-      create: {
-        workspaceId: workspace.id,
-        role: 'ADMIN',
-        manageSpaces: true,
-        manageDocs: true,
-        manageTasks: true,
-        inviteMembers: true,
-      },
-      update: {
-        manageSpaces: true,
-        manageDocs: true,
-        manageTasks: true,
-        inviteMembers: true,
-      },
-    }),
-    prisma.permissionSet.upsert({
-      where: { workspaceId_role: { workspaceId: workspace.id, role: 'LEAD' } },
-      create: {
-        workspaceId: workspace.id,
-        role: 'LEAD',
-        manageDocs: true,
-        manageTasks: false,
-      },
-      update: {
-        manageDocs: true,
-        manageTasks: false,
-      },
-    }),
-    prisma.permissionSet.upsert({
-      where: { workspaceId_role: { workspaceId: workspace.id, role: 'MEMBER' } },
-      create: {
-        workspaceId: workspace.id,
-        role: 'MEMBER',
-        manageDocs: true,
-        manageTasks: false,
-      },
-      update: {
-        manageDocs: true,
-        manageTasks: false,
-      },
-    }),
-    prisma.permissionSet.upsert({
-      where: { workspaceId_role: { workspaceId: workspace.id, role: 'VIEWER' } },
-      create: {
-        workspaceId: workspace.id,
-        role: 'VIEWER',
-        manageTasks: false,
-      },
-      update: {
-        manageTasks: false,
-      },
-    }),
-  ]);
-
-  await prisma.membership.upsert({
-    where: { userId_workspaceId: { userId: owner.id, workspaceId: workspace.id } },
-    update: { role: 'OWNER' },
-    create: {
-      userId: owner.id,
-      workspaceId: workspace.id,
-      role: 'OWNER',
-    },
-  });
-
-  return workspace;
 }
 
 async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context: UserSyncContext) {
@@ -774,7 +741,7 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
   let localUser;
 
   if (existing) {
-    const needsUpdate = existing.name !== name || !existing.passwordHash;
+    const needsUpdate = existing.name !== name;
 
     localUser = needsUpdate
       ? await prisma.user.update({
@@ -784,9 +751,6 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
             avatarUrl:
               existing.avatarUrl || user.profilePicture || user.profile_picture || undefined,
             source: existing.source || 'CLICKUP_IMPORTED',
-            ...(existing.passwordHash
-              ? {}
-              : { passwordHash: hashPassword(importedUserDefaultPassword) }),
           },
         })
       : existing;
@@ -803,7 +767,6 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
         name,
         avatarUrl: user.profilePicture || user.profile_picture || undefined,
         source: 'CLICKUP_IMPORTED',
-        passwordHash: hashPassword(importedUserDefaultPassword),
       },
     });
 
@@ -1070,7 +1033,7 @@ async function ensureOpenProjectUserFromClickUp(
         email,
         status: 'active',
         password: openProjectImportedUserPassword,
-        admin: importedAdminEmails.has(email.toLowerCase()),
+        admin: context.adminEmails.has(email.toLowerCase()),
       },
     });
 
@@ -1228,7 +1191,8 @@ async function ensureOpenProjectProjectMembership(
 async function applyOpenProjectMemberships(
   project: OpenProjectProject | null,
   grants: PermissionGrant[],
-  context: OpenProjectUserSyncContext
+  context: OpenProjectUserSyncContext,
+  options: { sharedRoadmap?: boolean } = {}
 ) {
   if (!project) {
     return;
@@ -1240,6 +1204,11 @@ async function applyOpenProjectMemberships(
     const key = clickUpUserKey(grant.user);
 
     if (!key) {
+      continue;
+    }
+
+    // For non-roadmap projects only add admins; everyone else must be added manually
+    if (!options.sharedRoadmap && grant.level !== 'admin') {
       continue;
     }
 
@@ -1264,6 +1233,109 @@ async function applyOpenProjectMemberships(
 async function getClickUpTeams() {
   const payload = await clickUpRequest<{ teams: ClickUpTeam[] }>('/team');
   return payload.teams || [];
+}
+
+async function getClickUpGroups(teamId: string): Promise<ClickUpGroup[]> {
+  const payload = await clickUpRequest<{ groups: ClickUpGroup[] }>('/group', {
+    query: { team_id: teamId },
+  }).catch(() => ({ groups: [] as ClickUpGroup[] }));
+  return payload.groups || [];
+}
+
+/**
+ * Returns a Set of lowercase emails that are admins (role 1 or 2) in the ClickUp team.
+ * Merged with importedAdminEmails so the env-var override always wins.
+ */
+function buildAdminEmailsFromTeam(team: ClickUpTeam): Set<string> {
+  const emails = new Set<string>();
+  for (const member of team.members || []) {
+    if (member.role === 1 || member.role === 2) {
+      const email = normalizeEmail(member.user?.email);
+      if (email) emails.add(email);
+    }
+  }
+  return emails;
+}
+
+async function getOpenProjectGroups(): Promise<OpenProjectGroup[]> {
+  const page = await openProjectRequest<HalCollection<OpenProjectGroup>>('/api/v3/groups', {
+    query: { pageSize: 500 },
+  }).catch(() => ({ _embedded: { elements: [] as OpenProjectGroup[] } }));
+  return page._embedded?.elements || [];
+}
+
+async function upsertOpenProjectGroup(
+  name: string,
+  memberHrefs: string[],
+  existingGroups: OpenProjectGroup[],
+  summary: Summary
+): Promise<OpenProjectGroup | null> {
+  const links = memberHrefs.map((href) => ({ href }));
+  const existing = existingGroups.find((g) => g.name.toLowerCase() === name.toLowerCase());
+
+  if (existing) {
+    await openProjectRequest(`/api/v3/groups/${existing.id}`, {
+      method: 'PATCH',
+      body: { _links: { members: links } },
+    }).catch((err: unknown) => {
+      summary.openProjectGroupErrors.push(`Group "${name}": ${(err as Error).message}`);
+    });
+    summary.openProjectGroupsReused += 1;
+    return existing;
+  }
+
+  const created = await openProjectRequest<OpenProjectGroup>('/api/v3/groups', {
+    method: 'POST',
+    body: { name, _links: { members: links } },
+  }).catch((err: unknown) => {
+    summary.openProjectGroupErrors.push(`Group "${name}": ${(err as Error).message}`);
+    return null;
+  });
+
+  if (created) {
+    existingGroups.push(created);
+    summary.openProjectGroupsCreated += 1;
+  }
+
+  return created;
+}
+
+async function syncGroupsToOpenProject(
+  clickUpGroups: ClickUpGroup[],
+  adminEmails: Set<string>,
+  allOpenProjectUsers: OpenProjectUser[],
+  clickUpUserToOpenProjectUser: Map<string, OpenProjectUser>,
+  summary: Summary
+) {
+  const existingGroups = await getOpenProjectGroups();
+
+  /** Resolve ClickUp user → OP user href, trying click-up key then email fallback */
+  function opHref(user: ClickUpUserLike): string | null {
+    const key = clickUpUserKey(user);
+    const byKey = key ? clickUpUserToOpenProjectUser.get(key) : undefined;
+    if (byKey) return `/api/v3/users/${byKey.id}`;
+    const email = normalizeEmail(user.email);
+    if (!email) return null;
+    const byEmail = allOpenProjectUsers.find((u) => (u.email || '').toLowerCase() === email);
+    return byEmail ? `/api/v3/users/${byEmail.id}` : null;
+  }
+
+  // Sync each ClickUp group
+  for (const group of clickUpGroups) {
+    const hrefs = (group.members || [])
+      .map((m) => opHref(m))
+      .filter((h): h is string => Boolean(h));
+    await upsertOpenProjectGroup(group.name, hrefs, existingGroups, summary);
+  }
+
+  // Always create/update "Leads" group = all admins
+  const leadHrefs = allOpenProjectUsers
+    .filter((u) => adminEmails.has((u.email || '').toLowerCase()))
+    .map((u) => `/api/v3/users/${u.id}`);
+
+  if (leadHrefs.length > 0) {
+    await upsertOpenProjectGroup('Leads', leadHrefs, existingGroups, summary);
+  }
 }
 
 async function getClickUpSpaces(teamId: string) {
@@ -1350,12 +1422,132 @@ async function getOpenProjectProjects() {
   return page._embedded?.elements || [];
 }
 
-async function getOpenProjectStatuses() {
-  const page = await openProjectRequest<HalCollection<OpenProjectStatus>>('/api/v3/statuses', {
+const SEED_DEMO_PROJECT_IDENTIFIERS = new Set([
+  'demo-project',
+  'scrum-project',
+  'demo-scrum-project',
+]);
+const SEED_DEMO_PROJECT_NAMES = [/^demo\s+project$/i, /^scrum\s+project$/i, /^demo[-\s]scrum/i];
+
+async function cleanupDefaultDemoProjects(summary: Summary): Promise<void> {
+  const page = await openProjectRequest<HalCollection<OpenProjectProject>>('/api/v3/projects', {
     query: { pageSize: 500 },
   });
+  const all = page._embedded?.elements || [];
 
-  return page._embedded?.elements || [];
+  const demos = all.filter((p) => {
+    const id = (p as any).identifier as string | undefined;
+    if (id && SEED_DEMO_PROJECT_IDENTIFIERS.has(id)) return true;
+    return SEED_DEMO_PROJECT_NAMES.some((re) => re.test(p.name));
+  });
+
+  if (demos.length === 0) return;
+
+  // Sort deepest children first so their parents can be deleted after
+  const sorted = [...demos].sort((a, b) => {
+    const aChild = Boolean((a._links as any)?.parent?.href);
+    const bChild = Boolean((b._links as any)?.parent?.href);
+    if (aChild && !bChild) return -1;
+    if (!aChild && bChild) return 1;
+    return 0;
+  });
+
+  for (const project of sorted) {
+    await openProjectRequest<void>(`/api/v3/projects/${project.id}`, { method: 'DELETE' }).catch(
+      (err) => {
+        summary.warnings.push(
+          `Could not delete demo project "${project.name}": ${(err as Error).message}`
+        );
+      }
+    );
+  }
+}
+
+const SEED_BOOTSTRAP_PLACEHOLDER_IDENTIFIER = 'seed-status-bootstrap';
+
+/** Returns the id of a newly-created placeholder project, or null if activation of an existing
+ *  project was sufficient (in which case no cleanup is needed). */
+async function activateArchivedProjectForBootstrap(): Promise<number | null> {
+  // OpenProject requires view_work_packages in at least one active project
+  // before the global /api/v3/statuses endpoint is accessible.
+  // Activate all root-level archived projects (subprojects must be activated via their ancestors).
+  const page = await openProjectRequest<HalCollection<OpenProjectProject>>('/api/v3/projects', {
+    query: { pageSize: 500 },
+  });
+  const all = page._embedded?.elements || [];
+  const archived = all.filter((p) => p.active === false);
+  const roots = archived.filter((p) => {
+    const parent = (p._links as any).parent;
+    return !parent?.href;
+  });
+  for (const root of roots) {
+    await openProjectRequest<OpenProjectProject>(`/api/v3/projects/${root.id}`, {
+      method: 'PATCH',
+      body: { active: true },
+    }).catch(() => {});
+    root.active = true;
+    console.info(
+      `Bootstrap: activated project ${root.id} (${root.name}) to unlock /api/v3/statuses`
+    );
+    return null; // activated an existing project — no placeholder created
+  }
+
+  // No projects at all — create a temporary placeholder so the status endpoint is accessible.
+  // It will be deleted immediately after statuses are fetched.
+  console.info(
+    `Bootstrap: no projects found — creating temporary placeholder for /api/v3/statuses`
+  );
+  try {
+    const created = await openProjectRequest<OpenProjectProject>('/api/v3/projects', {
+      method: 'POST',
+      body: {
+        name: '__Seed Status Bootstrap',
+        identifier: SEED_BOOTSTRAP_PLACEHOLDER_IDENTIFIER,
+      },
+    });
+    return created.id;
+  } catch (e: any) {
+    // Already exists from a previous interrupted run — find and return its id
+    const existing = all.find(
+      (p) =>
+        (p as any).identifier === SEED_BOOTSTRAP_PLACEHOLDER_IDENTIFIER ||
+        p.name === '__Seed Status Bootstrap'
+    );
+    if (existing) return existing.id;
+    console.warn(`Bootstrap: could not create placeholder: ${(e?.message || '').slice(0, 200)}`);
+    return null;
+  }
+}
+
+async function deleteSeedBootstrapPlaceholder(projectId: number): Promise<void> {
+  // The API delete is async (just archives the project), but that's fine —
+  // the seed will create real projects right after and the placeholder won't interfere.
+  // We attempt deletion anyway for hygiene; failures are silently ignored.
+  await openProjectRequest(`/api/v3/projects/${projectId}`, {
+    method: 'DELETE',
+  }).catch(() => {});
+}
+
+async function getOpenProjectStatuses() {
+  try {
+    const page = await openProjectRequest<HalCollection<OpenProjectStatus>>('/api/v3/statuses', {
+      query: { pageSize: 500 },
+    });
+    return page._embedded?.elements || [];
+  } catch (error) {
+    if ((error as any).statusCode !== 403) throw error;
+    // 403 means no active project exists yet — bootstrap by activating/creating one
+    const placeholderId = await activateArchivedProjectForBootstrap();
+    const page = await openProjectRequest<HalCollection<OpenProjectStatus>>('/api/v3/statuses', {
+      query: { pageSize: 500 },
+    });
+    const statuses = page._embedded?.elements || [];
+    // Clean up placeholder if we created one (fire-and-forget, don't block seeding)
+    if (placeholderId != null) {
+      void deleteSeedBootstrapPlaceholder(placeholderId);
+    }
+    return statuses;
+  }
 }
 
 async function getOpenProjectPriorities() {
@@ -1406,6 +1598,13 @@ async function ensureOpenProjectProject(
 
   if (existing) {
     summary.openProjectProjectsReused += 1;
+    if (existing.active === false) {
+      await openProjectRequest<OpenProjectProject>(`/api/v3/projects/${existing.id}`, {
+        method: 'PATCH',
+        body: { active: true },
+      }).catch(() => {});
+      existing.active = true;
+    }
     return existing;
   }
 
@@ -1822,6 +2021,7 @@ async function seedFolderedLists(params: {
   summary: Summary;
   userSync: UserSyncContext;
   openProjectUserSync: OpenProjectUserSyncContext;
+  isSharedRoadmap?: boolean;
 }) {
   const folderProject = await ensureOpenProjectProject(
     {
@@ -1857,7 +2057,10 @@ async function seedFolderedLists(params: {
   await applyOpenProjectMemberships(
     folderProject,
     params.inheritedGrants,
-    params.openProjectUserSync
+    params.openProjectUserSync,
+    {
+      sharedRoadmap: params.isSharedRoadmap,
+    }
   );
 
   const seededFolder = createSeededFolder({
@@ -1869,33 +2072,55 @@ async function seedFolderedLists(params: {
     kind: 'TEAM',
   });
 
+  // If folder has exactly one list, skip the extra list-level project and use
+  // the folder project directly — avoids Art Department → Artists Team → Art Task nesting.
+  const flattenIntoFolder = params.lists.length === 1 && folderProject !== null;
+
   for (const list of params.lists) {
-    const project = await ensureOpenProjectProject(
-      {
-        identifier: identifierFor('list', list.id),
-        name: list.name,
-        parentProjectId: folderProject?.id || params.spaceProject?.id,
-      },
-      params.projects,
-      params.summary,
-      'lists'
-    ).catch((error) => {
-      params.summary.errors.push(`list project ${list.name}: ${(error as Error).message}`);
-      return null;
-    });
-
-    if (!project) {
-      continue;
-    }
-
     const listGrants = await getClickUpListMembers(list.id, params.summary);
     const effectiveGrants = [...params.inheritedGrants, ...listGrants];
-    await syncPermissionGrantUsersIntoLocalWorkspace(
-      effectiveGrants,
-      params.userSync,
-      params.openProjectUserSync
-    );
-    await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
+
+    let project: OpenProjectProject | null;
+
+    if (flattenIntoFolder) {
+      // Reuse the folder-level project as the task container
+      project = folderProject;
+      await syncPermissionGrantUsersIntoLocalWorkspace(
+        effectiveGrants,
+        params.userSync,
+        params.openProjectUserSync
+      );
+      await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync, {
+        sharedRoadmap: params.isSharedRoadmap,
+      });
+    } else {
+      project = await ensureOpenProjectProject(
+        {
+          identifier: identifierFor('list', list.id),
+          name: list.name,
+          parentProjectId: folderProject?.id || params.spaceProject?.id,
+        },
+        params.projects,
+        params.summary,
+        'lists'
+      ).catch((error) => {
+        params.summary.errors.push(`list project ${list.name}: ${(error as Error).message}`);
+        return null;
+      });
+
+      if (!project) {
+        continue;
+      }
+
+      await syncPermissionGrantUsersIntoLocalWorkspace(
+        effectiveGrants,
+        params.userSync,
+        params.openProjectUserSync
+      );
+      await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync, {
+        sharedRoadmap: params.isSharedRoadmap,
+      });
+    }
 
     const context: ClickUpTaskContext = {
       space: params.space,
@@ -1949,6 +2174,7 @@ async function seedFolderlessLists(params: {
   summary: Summary;
   userSync: UserSyncContext;
   openProjectUserSync: OpenProjectUserSyncContext;
+  isSharedRoadmap?: boolean;
 }) {
   for (const list of params.lists) {
     const project = await ensureOpenProjectProject(
@@ -1978,7 +2204,9 @@ async function seedFolderlessLists(params: {
       params.userSync,
       params.openProjectUserSync
     );
-    await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync);
+    await applyOpenProjectMemberships(project, effectiveGrants, params.openProjectUserSync, {
+      sharedRoadmap: params.isSharedRoadmap,
+    });
 
     const seededListFolder = createSeededFolder({
       spaceId: params.seededSpace.id,
@@ -2277,6 +2505,9 @@ async function main() {
     assigneeFallbackStored: 0,
     fallbackRecoveredTasks: 0,
     fallbackSkippedTasks: 0,
+    openProjectGroupsCreated: 0,
+    openProjectGroupsReused: 0,
+    openProjectGroupErrors: [],
     errors: [],
     warnings: [],
   };
@@ -2318,12 +2549,17 @@ async function main() {
     seenClickUpUserKeys: new Set<string>(),
     summary,
   };
+  // adminEmails is populated before user sync (once we have the team).
+  // Start with the env-var override list; ClickUp role 1/2 is added after getClickUpTeams().
+  const adminEmails = new Set<string>([...importedAdminEmails]);
+
   const openProjectUserSync: OpenProjectUserSyncContext = {
     users: openProjectUsers,
     roles: openProjectRoles,
     memberships: openProjectMemberships,
     clickUpUserToOpenProjectUser: new Map<string, OpenProjectUser>(),
     failedClickUpUserKeys: new Set<string>(),
+    adminEmails,
     summary,
   };
 
@@ -2392,6 +2628,11 @@ async function main() {
     throw new Error('ClickUp returned no teams/workspaces');
   }
 
+  // Extend adminEmails with users who are owner/admin in ClickUp (role 1 or 2)
+  for (const email of buildAdminEmailsFromTeam(team)) {
+    adminEmails.add(email);
+  }
+
   await syncClickUpTeamUsersIntoLocalWorkspace(team, userSync, openProjectUserSync);
   const workspaceGrants = teamPermissionGrants(team, summary);
 
@@ -2434,8 +2675,12 @@ async function main() {
       );
     }
 
+    const isSharedRoadmap = /roadmap/i.test(space.name);
+
     await syncPermissionGrantUsersIntoLocalWorkspace(spaceGrants, userSync, openProjectUserSync);
-    await applyOpenProjectMemberships(spaceProject, spaceGrants, openProjectUserSync);
+    await applyOpenProjectMemberships(spaceProject, spaceGrants, openProjectUserSync, {
+      sharedRoadmap: isSharedRoadmap,
+    });
 
     const folders = await getClickUpFolders(space.id).catch((error) => {
       summary.errors.push(`space ${space.name}: ${(error as Error).message}`);
@@ -2474,6 +2719,7 @@ async function main() {
         summary,
         userSync,
         openProjectUserSync,
+        isSharedRoadmap,
       });
     }
 
@@ -2489,13 +2735,25 @@ async function main() {
       summary,
       userSync,
       openProjectUserSync,
+      isSharedRoadmap,
     });
 
     workspace.spaces.push(seededSpace);
   }
 
+  // Sync ClickUp user groups → OpenProject groups (+ auto-create "Leads" from admins)
+  const clickUpGroups = await getClickUpGroups(team.id);
+  await syncGroupsToOpenProject(
+    clickUpGroups,
+    adminEmails,
+    openProjectUserSync.users,
+    openProjectUserSync.clickUpUserToOpenProjectUser,
+    summary
+  );
+
   const path = await writeSeededHierarchy(workspace);
   addUnsupportedFeatureWarnings(summary);
+  await cleanupDefaultDemoProjects(summary);
   await prisma.migrationRun.update({
     where: { id: migrationRun.id },
     data: {

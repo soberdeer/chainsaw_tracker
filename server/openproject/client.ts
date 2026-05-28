@@ -14,6 +14,11 @@ function token() {
 }
 
 function authHeader() {
+  const password = process.env.OPENPROJECT_API_PASSWORD;
+  if (password) {
+    const user = process.env.OPENPROJECT_API_USER || 'admin';
+    return `Basic ${Buffer.from(`${user}:${password}`).toString('base64')}`;
+  }
   const value = token();
   if (process.env.OPENPROJECT_AUTH_MODE === 'bearer') return `Bearer ${value}`;
   return `Basic ${Buffer.from(`apikey:${value}`).toString('base64')}`;

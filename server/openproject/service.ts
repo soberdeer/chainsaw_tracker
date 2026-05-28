@@ -1,4 +1,6 @@
+import type { WorkspaceRole } from '../../src/lib/types.js';
 import { prisma } from '../db.js';
+import { ROLE_PERMISSIONS } from '../services/permissions.js';
 import { computeTaskDevelopmentStatus } from '../services/taskDevelopment.js';
 import { openProjectMultipartRequest, openProjectRequest, openProjectWebUrl } from './client.js';
 import {
@@ -101,16 +103,16 @@ function applyRuntimeWorkspaceState(
       role: membership.role,
       user: mapLocalUser(membership.user),
     })),
-    permissionSets: runtimeWorkspace.permissionSets.map((set) => ({
-      role: set.role,
-      manageWorkspace: set.manageWorkspace,
-      manageSpaces: set.manageSpaces,
-      manageDocs: set.manageDocs,
-      manageTasks: set.manageTasks,
-      inviteMembers: set.inviteMembers,
-      manageIntegrations: set.manageIntegrations,
-      manageImports: set.manageImports,
-      viewReports: set.viewReports,
+    permissionSets: Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => ({
+      role: role as WorkspaceRole,
+      manageWorkspace: Boolean(perms.manageWorkspace),
+      manageSpaces: Boolean(perms.manageSpaces),
+      manageDocs: Boolean(perms.manageDocs),
+      manageTasks: Boolean(perms.manageTasks),
+      inviteMembers: Boolean(perms.inviteMembers),
+      manageIntegrations: Boolean(perms.manageIntegrations),
+      manageImports: Boolean(perms.manageImports),
+      viewReports: Boolean(perms.viewReports),
     })),
     openProjectUsers,
   };
@@ -120,6 +122,18 @@ const relationTypes = new Set(['relates', 'blocks', 'blocked', 'precedes', 'foll
 const reverseRelationTypes = new Set(['blockedBy']);
 
 const hiddenRuntimeProjectKeys = new Set(['clickupimport', 'scrumproject', 'demoproject']);
+
+// Tags created by ClickUp import that should not be shown to users
+const clickUpNoisyTagPatterns = [
+  /^cl-[a-z0-9]+-\d+/i, // CL-PROTO-007, CL-ABC-123, etc.
+  /^clickup.?import$/i, // "clickup import", "clickup-import"
+  /^clickup$/i, // just "clickup"
+  /^imported$/i, // bare "imported"
+];
+
+function isClickUpNoisyTag(name: string) {
+  return clickUpNoisyTagPatterns.some((pattern) => pattern.test(name.trim()));
+}
 
 function useSeededHierarchy() {
   return process.env.OPENPROJECT_USE_CLICKUP_HIERARCHY === 'true';
@@ -284,11 +298,7 @@ export function matchesLocalTaskFilters(
     }
   }
 
-  if (query.hasGitHubPr && !(task.githubPullRequests || []).length) {
-    return false;
-  }
-
-  return true;
+  return !(query.hasGitHubPr && !(task.githubPullRequests || []).length);
 }
 
 function usesLocalTaskFiltering(query: PageQuery) {
@@ -383,9 +393,11 @@ async function attachRuntimeMetadata(items: Awaited<ReturnType<typeof mapWorkPac
       serializeGitHubPullRequest
     );
     const githubBranches = (branchesByWorkPackageId.get(item.id) || []).map(serializeGitHubBranch);
-    const tags = (tagsByWorkPackageId.get(item.id) || []).map((workPackageTag) => ({
-      tag: serializeOpenProjectTag(workPackageTag.tag),
-    }));
+    const tags = (tagsByWorkPackageId.get(item.id) || [])
+      .filter((wpt) => !isClickUpNoisyTag(wpt.tag.name))
+      .map((workPackageTag) => ({
+        tag: serializeOpenProjectTag(workPackageTag.tag),
+      }));
     const checklists = checklistsByWorkPackageId.get(item.id) || [];
     const checklistSummary = checklists.length
       ? {
@@ -482,6 +494,18 @@ export async function getUsers() {
     query: { pageSize: 200 },
   });
   return (page._embedded?.elements || []).map(mapUser);
+}
+
+export async function findOpenProjectUserByEmail(email: string) {
+  const page = await openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
+    query: {
+      pageSize: 200,
+      filters: JSON.stringify([{ login: { operator: '~', values: [email] } }]),
+    },
+  });
+  const users = page._embedded?.elements || [];
+  // Exact email match (OP might return partial matches)
+  return users.find((u) => u.email?.toLowerCase() === email.toLowerCase()) || null;
 }
 
 export async function getOpenProjectConnectionStatus() {
@@ -590,7 +614,7 @@ export async function getTaskListOptions() {
   const [projects, statuses] = await Promise.all([getProjects(), getStatuses()]);
   return projects.map((project) => ({
     id: String(project.id),
-    folderId: `${project.id}:work-packages`,
+    folderId: String(project.id),
     name: project.name,
     icon: '✓',
     statuses: statuses.map((status) => ({ ...status, taskListId: String(project.id) })),
@@ -698,7 +722,9 @@ export async function getTaskTags(taskId: string) {
     include: { tag: true },
     orderBy: { tag: { name: 'asc' } },
   });
-  return tags.map((item) => serializeOpenProjectTag(item.tag));
+  return tags
+    .filter((item) => !isClickUpNoisyTag(item.tag.name))
+    .map((item) => serializeOpenProjectTag(item.tag));
 }
 
 export async function setTaskTags(taskId: string, tagIds: string[]) {
@@ -954,6 +980,44 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
   };
 }
 
+/**
+ * Resolves the best seeded-list context for a work package.
+ *
+ * Priority:
+ * 1. Seeded list identified by ClickUp import metadata in the description
+ * 2. Seeded list whose `openProjectProjectId` matches the work-package's project directly
+ * 3. Seeded list for the *parent* OP project (sub-projects are served by their parent's list)
+ */
+async function resolveSeededListForWorkPackage(
+  seeded: Awaited<ReturnType<typeof loadSeededHierarchy>>,
+  projectId: string | undefined,
+  description: string
+): Promise<SeededTaskList | undefined> {
+  const byDesc = findSeededListByImportedDescription(seeded, description);
+  if (byDesc) return byDesc;
+
+  if (!projectId) return undefined;
+
+  const direct = findSeededListByProjectId(seeded, projectId);
+  if (direct) return direct;
+
+  // Walk one level up the OP project hierarchy to handle sub-projects whose tasks
+  // are served under a parent project's list (e.g. project 84 under project 82).
+  try {
+    const project = await openProjectRequest<{ _links: Record<string, { href?: string | null }> }>(
+      `/api/v3/projects/${projectId}`
+    );
+    const parentId = linkTail(project._links.parent?.href);
+    if (parentId) {
+      return findSeededListByProjectId(seeded, parentId);
+    }
+  } catch {
+    // ignore – fall through without parent resolution
+  }
+
+  return undefined;
+}
+
 export async function getTask(taskId: string) {
   const [workPackage, users, seeded, childPage] = await Promise.all([
     openProjectRequest<OpenProjectWorkPackage>(`/api/v3/work_packages/${taskId}`),
@@ -970,9 +1034,11 @@ export async function getTask(taskId: string) {
     }).catch(() => ({ _embedded: { elements: [] } })),
   ]);
   const projectId = workPackage._links.project?.href?.split('/').filter(Boolean).at(-1);
-  const taskList =
-    findSeededListByImportedDescription(seeded, workPackage.description?.raw || '') ||
-    (projectId ? findSeededListByProjectId(seeded, projectId) : undefined);
+  const taskList = await resolveSeededListForWorkPackage(
+    seeded,
+    projectId,
+    workPackage.description?.raw || ''
+  );
   const spaceId = seededListSpaceId(seeded, taskList);
   const mapped = mapWorkPackage(
     workPackage,
@@ -1428,6 +1494,7 @@ export async function getOpenProjectProjectMembers(projectId: string) {
         openProjectName:
           openProjectUser.name || openProjectUser.login || String(openProjectUser.id),
         openProjectEmail: openProjectUser.email || undefined,
+        avatarUrl: openProjectUser.avatar || undefined,
         roles: membershipRoles(membership),
         linkedLocalUser: localByOpenProjectUserId.get(String(openProjectUser.id)),
         source: localByOpenProjectUserId.get(String(openProjectUser.id))?.source,

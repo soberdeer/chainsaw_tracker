@@ -72,7 +72,7 @@ export function CompactTaskRow({
         )}
 
         <Tooltip label={`Status: ${status.label}`}>
-          <StatusIcon statusId={task.status} color={status.color} />
+          <StatusIcon type={status.type} tone={status.tone} />
         </Tooltip>
         <Text
           data-testid="task-row-open"

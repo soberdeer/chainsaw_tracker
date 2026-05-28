@@ -1,12 +1,9 @@
 import type { Request, Response } from 'express';
 import { prisma } from '../db.js';
+import type { OpenProjectUser } from '../openproject/types.js';
 import crypto from 'node:crypto';
 
 const cookieName = 'tracker_session';
-const defaultPassword = process.env.DEV_ADMIN_PASSWORD || 'admin123';
-export const defaultOwnerEmail = 'owner@local.app';
-export const defaultOwnerId = 'local-user';
-export const defaultOwnerName = 'Workspace Owner';
 
 function secret() {
   return process.env.SESSION_SECRET || process.env.OPENPROJECT_API_TOKEN || 'dev-session-secret';
@@ -29,48 +26,18 @@ function parseCookies(header?: string) {
   );
 }
 
-export function hashPassword(password: string) {
-  const salt = crypto.randomBytes(16).toString('base64url');
-  const hash = crypto.scryptSync(password, salt, 64).toString('base64url');
-  return `${salt}:${hash}`;
-}
-
-export function verifyPassword(password: string, stored?: string | null) {
-  if (!stored) return false;
-  const [salt, expected] = stored.split(':');
-  if (!salt || !expected) return false;
-  const hash = crypto.scryptSync(password, salt, 64).toString('base64url');
-  return crypto.timingSafeEqual(Buffer.from(hash), Buffer.from(expected));
-}
-
-export function devDefaultOwnerEnabled() {
-  return process.env.DEV_DEFAULT_OWNER_ENABLED === 'true';
-}
-
-export async function ensureDefaultOwner() {
-  const passwordHash = hashPassword(defaultPassword);
-  const existing = await prisma.user.findUnique({ where: { email: defaultOwnerEmail } });
-  if (existing) {
-    if (!existing.passwordHash) {
-      return prisma.user.update({
-        where: { id: existing.id },
-        data: {
-          passwordHash,
-          source: existing.source || 'OWNER_SEED',
-        },
-      });
-    }
-    return existing;
+export async function verifyViaOpenProject(apiToken: string): Promise<OpenProjectUser | null> {
+  const baseUrl = (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+  const authHeader = `Basic ${Buffer.from(`apikey:${apiToken}`).toString('base64')}`;
+  try {
+    const res = await fetch(`${baseUrl}/api/v3/users/me`, {
+      headers: { Authorization: authHeader, Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as OpenProjectUser;
+  } catch {
+    return null;
   }
-  return prisma.user.create({
-    data: {
-      id: defaultOwnerId,
-      email: defaultOwnerEmail,
-      name: defaultOwnerName,
-      passwordHash,
-      source: 'OWNER_SEED',
-    },
-  });
 }
 
 export function setSessionCookie(res: Response, userId: string) {

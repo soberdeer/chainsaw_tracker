@@ -9,8 +9,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import test from 'node:test';
 
-test('invite role schema accepts LEAD', () => {
-  assert.equal(inviteRoleSchema.parse('LEAD'), 'LEAD');
+test('invite role schema accepts MEMBER', () => {
+  assert.equal(inviteRoleSchema.parse('MEMBER'), 'MEMBER');
 });
 
 test('resolveInviteAcceptancePlan creates a new user when no current or existing user exists', () => {
@@ -61,26 +61,26 @@ test('workspace routes do not fall back to local-user during invite acceptance o
   assert.doesNotMatch(source, /currentUserId\(req\)\s*\|\|\s*'local-user'/);
 });
 
-test('assertWorkspaceOwnerMutationAllowed protects the last owner', () => {
+test('assertWorkspaceOwnerMutationAllowed protects the last admin', () => {
   assert.throws(
     () =>
       assertWorkspaceOwnerMutationAllowed({
-        currentRole: 'OWNER',
-        nextRole: 'ADMIN',
+        currentRole: 'ADMIN',
+        nextRole: 'MEMBER',
         ownerCount: 1,
         operation: 'update',
       }),
-    /last owner/
+    /last admin/
   );
 
   assert.throws(
     () =>
       assertWorkspaceOwnerMutationAllowed({
-        currentRole: 'OWNER',
+        currentRole: 'ADMIN',
         ownerCount: 1,
         operation: 'remove',
       }),
-    /last owner/
+    /last admin/
   );
 });
 

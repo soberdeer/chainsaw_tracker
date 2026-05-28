@@ -27,7 +27,7 @@ import {
 } from '@/lib';
 import classes from './TeamPanel.module.css';
 
-const roles: WorkspaceRole[] = ['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'];
+const roles: WorkspaceRole[] = ['ADMIN', 'MEMBER', 'READER'];
 const permissionKeys: Array<keyof Omit<PermissionSet, 'role'>> = [
   'manageWorkspace',
   'manageSpaces',
@@ -182,7 +182,7 @@ export function TeamPanel({ workspace, onChanged, onError }: TeamPanelProps) {
                     <Table.Td key={key}>
                       <Checkbox
                         checked={set[key]}
-                        disabled={set.role === 'OWNER' || saving}
+                        disabled={saving}
                         onChange={(event) => {
                           void run(() =>
                             updateWorkspacePermissions(workspace.id, set.role, {

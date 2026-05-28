@@ -24,6 +24,7 @@
     "preview": "vite preview --host 0.0.0.0",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "setup:openproject": "tsx scripts/setup-openproject.ts",
     "seed:openproject:clickup": "tsx scripts/seed-openproject-from-clickup.ts",
     "reset:openproject": "tsx scripts/reset-openproject.ts",
     "oxlint": "oxlint .",
@@ -36,7 +37,8 @@
     "e2e:headed": "playwright test --headed",
     "e2e:debug": "playwright test --debug",
     "format": "oxfmt --write \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && prisma format",
-    "format:check": "oxfmt --check \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && tsx scripts/check-prisma-format.ts"
+    "format:check": "oxfmt --check \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && tsx scripts/check-prisma-format.ts",
+    "reset:full": "tsx scripts/full-reset.ts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",

@@ -80,6 +80,13 @@ export function clickUpPermissionFromRaw(value: unknown): ImportedPermissionLeve
     return 'member';
   }
 
+  // ClickUp team member object carries an integer `role` field:
+  //   1 = owner, 2 = admin, 3 = member, 4 = guest
+  const roleInt = (value as Record<string, unknown>).role;
+  if (roleInt === 1 || roleInt === 2) return 'admin';
+  if (roleInt === 4) return 'reader';
+  if (roleInt === 3) return 'member';
+
   const raw = JSON.stringify(value).toLowerCase();
 
   if (raw.includes('owner') || raw.includes('admin') || raw.includes('manage')) {

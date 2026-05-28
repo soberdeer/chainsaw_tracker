@@ -1,6 +1,6 @@
 import { Box, Button, Group, Paper, Stack, Text, Textarea, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { updateDocument, getErrorMessage, type DocumentItem } from '@/lib';
 import classes from './DocumentPage.module.css';
 
@@ -30,14 +30,16 @@ export function DocumentPage({
       title: (value) => (value.trim().length ? null : 'Document title is required'),
     },
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
-    form.setValues({
+    formRef.current.setValues({
       title: document.title,
       markdown: document.markdown || '',
       embedUrl: document.embedUrl || '',
     });
-  }, [document, form]);
+  }, [document]);
 
   const save = form.onSubmit(async (values) => {
     try {

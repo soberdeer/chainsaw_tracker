@@ -5,6 +5,7 @@ import type {
   Space,
   TaskList,
   TaskStatus,
+  TaskStatusType,
   Workspace,
 } from '../../src/lib/types.js';
 import { readFile } from 'node:fs/promises';
@@ -21,6 +22,7 @@ export type SeededStatus = TaskStatus & {
   clickupStatusId?: string;
   clickupStatusName?: string;
   openProjectStatusId: string;
+  statusType?: TaskStatusType;
 };
 
 export type SeededTaskList = Omit<TaskList, 'statuses'> & {

@@ -2,21 +2,21 @@ import {
   Alert,
   Badge,
   Button,
-  Checkbox,
   ColorInput,
   Group,
   Loader,
   Modal,
-  Select,
   Stack,
   Table,
   Tabs,
   Text,
   TextInput,
   Textarea,
+  UnstyledButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useState } from 'react';
+import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   getErrorMessage,
   getWorkspaceImportReports,
@@ -25,21 +25,16 @@ import {
   getWorkspacePermissionSets,
   getWorkspaceSettings,
   inviteWorkspaceMember,
-  removeWorkspaceMember,
   showToast,
   summarizeImportRun,
-  updateWorkspaceMemberRole,
   updateWorkspaceSettings,
   type MigrationRun,
   type OpenProjectConnectionStatus,
   type PermissionSet,
   type WorkspaceMemberItem,
-  type WorkspaceRole,
   type WorkspaceSettings,
+  WorkspaceRole,
 } from '@/lib';
-import { confirmAction } from '@/lib/modals';
-
-const roleOptions: WorkspaceRole[] = ['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'];
 
 export interface WorkspaceSettingsModalProps {
   opened: boolean;
@@ -75,6 +70,40 @@ export function WorkspaceSettingsModal({
   const [success, setSuccess] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [inviteResult, setInviteResult] = useState<string | null>(null);
+  const [sortCol, setSortCol] = useState<'name' | 'email' | 'role' | 'lastLogin'>('name');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+
+  const handleSort = (col: typeof sortCol) => {
+    if (col === sortCol) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'));
+    } else {
+      setSortCol(col);
+      setSortDir('asc');
+    }
+  };
+
+  const sortedMembers = useMemo(() => {
+    const factor = sortDir === 'asc' ? 1 : -1;
+    return [...members].sort((a, b) => {
+      switch (sortCol) {
+        case 'name':
+          return factor * a.user.name.localeCompare(b.user.name);
+        case 'email':
+          return factor * a.user.email.localeCompare(b.user.email);
+        case 'role':
+          // Admins first when asc
+          return factor * ((a.user.opAdmin ? 0 : 1) - (b.user.opAdmin ? 0 : 1));
+        case 'lastLogin': {
+          const la = a.user.lastLoginAt ?? '';
+          const lb = b.user.lastLoginAt ?? '';
+          if (!la && !lb) return 0;
+          if (!la) return factor; // nulls last in asc
+          if (!lb) return -factor;
+          return factor * la.localeCompare(lb);
+        }
+      }
+    });
+  }, [members, sortCol, sortDir]);
   const generalForm = useForm({
     initialValues: {
       name: '',
@@ -88,12 +117,12 @@ export function WorkspaceSettingsModal({
       slug: (value) => (value.trim().length ? null : 'Workspace slug is required'),
     },
   });
+  const generalFormRef = useRef(generalForm);
+  generalFormRef.current = generalForm;
   const inviteForm = useForm({
     initialValues: {
       email: '',
       name: '',
-      role: 'MEMBER' as WorkspaceRole,
-      createOpenProjectUser: true,
     },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
@@ -110,7 +139,7 @@ export function WorkspaceSettingsModal({
     Promise.all([
       getWorkspaceSettings(workspaceId).then((workspaceSettings) => {
         setSettings(workspaceSettings);
-        generalForm.setValues({
+        generalFormRef.current.setValues({
           name: workspaceSettings.name,
           slug: workspaceSettings.slug,
           description: workspaceSettings.description || '',
@@ -125,7 +154,7 @@ export function WorkspaceSettingsModal({
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
-  }, [opened, workspaceId, initialTab, generalForm]);
+  }, [opened, workspaceId, initialTab]);
 
   const saveGeneral = generalForm.onSubmit(async (values) => {
     if (!settings) return;
@@ -176,8 +205,8 @@ export function WorkspaceSettingsModal({
       const result = await inviteWorkspaceMember(workspaceId, {
         email: values.email,
         name: values.name || undefined,
-        role: values.role,
-        createOpenProjectUser: values.createOpenProjectUser,
+        role: 'MEMBER',
+        createOpenProjectUser: true,
       });
       setMembers((current) =>
         [
@@ -255,7 +284,7 @@ export function WorkspaceSettingsModal({
               <Tabs.Tab value="permissions">Roles & Permissions</Tabs.Tab>
               <Tabs.Tab value="openproject">OpenProject</Tabs.Tab>
               <Tabs.Tab value="imports">Imports</Tabs.Tab>
-              {currentRole === 'OWNER' && <Tabs.Tab value="danger">Danger Zone</Tabs.Tab>}
+              {currentRole === 'ADMIN' && <Tabs.Tab value="danger">Danger Zone</Tabs.Tab>}
             </Tabs.List>
 
             <Tabs.Panel value="general" pt="md">
@@ -297,10 +326,6 @@ export function WorkspaceSettingsModal({
 
             <Tabs.Panel value="members" pt="md">
               <Stack>
-                <Alert color="blue" title="Access model">
-                  Local role controls access to the custom tracker UI. OpenProject access is linked
-                  separately through the OpenProject user connection.
-                </Alert>
                 {!members.length && (
                   <Text size="sm" c="dimmed">
                     Only the owner is in this workspace so far.
@@ -308,7 +333,7 @@ export function WorkspaceSettingsModal({
                 )}
                 {canManageWorkspace && (
                   <form onSubmit={submitInvite} data-testid="workspace-invite-form">
-                    <Group align="flex-end" grow>
+                    <Group align="flex-end">
                       <TextInput
                         label="Email"
                         data-testid="workspace-invite-email"
@@ -319,18 +344,6 @@ export function WorkspaceSettingsModal({
                         data-testid="workspace-invite-name"
                         {...inviteForm.getInputProps('name')}
                       />
-                      <Select
-                        label="Role"
-                        data-testid="workspace-invite-role"
-                        data={roleOptions}
-                        {...inviteForm.getInputProps('role')}
-                      />
-                      <Checkbox
-                        label="Create linked OpenProject user"
-                        {...inviteForm.getInputProps('createOpenProjectUser', {
-                          type: 'checkbox',
-                        })}
-                      />
                       <Button type="submit" data-testid="workspace-invite-submit">
                         Invite user
                       </Button>
@@ -340,17 +353,42 @@ export function WorkspaceSettingsModal({
                 <Table striped highlightOnHover withTableBorder>
                   <Table.Thead>
                     <Table.Tr>
-                      <Table.Th>Name</Table.Th>
-                      <Table.Th>Email</Table.Th>
-                      <Table.Th>Local role</Table.Th>
-                      <Table.Th>OpenProject access</Table.Th>
-                      <Table.Th>Source</Table.Th>
-                      <Table.Th>Last login</Table.Th>
-                      {canManageWorkspace && <Table.Th>Actions</Table.Th>}
+                      {(
+                        [
+                          { key: 'name', label: 'Name' },
+                          { key: 'email', label: 'Email' },
+                          { key: 'role', label: 'Role' },
+                          { key: 'lastLogin', label: 'Last login' },
+                        ] as const
+                      ).map(({ key, label }) => {
+                        const active = sortCol === key;
+                        const Icon = active
+                          ? sortDir === 'asc'
+                            ? IconChevronUp
+                            : IconChevronDown
+                          : IconSelector;
+                        return (
+                          <Table.Th key={key} style={{ whiteSpace: 'nowrap' }}>
+                            <UnstyledButton
+                              onClick={() => handleSort(key)}
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: 4,
+                                fontWeight: active ? 700 : undefined,
+                                cursor: 'pointer',
+                              }}
+                            >
+                              {label}
+                              <Icon size={14} style={{ opacity: active ? 1 : 0.4 }} />
+                            </UnstyledButton>
+                          </Table.Th>
+                        );
+                      })}
                     </Table.Tr>
                   </Table.Thead>
                   <Table.Tbody>
-                    {members.map((member) => (
+                    {sortedMembers.map((member) => (
                       <Table.Tr
                         key={member.id}
                         data-testid="workspace-member-row"
@@ -359,103 +397,21 @@ export function WorkspaceSettingsModal({
                         <Table.Td>{member.user.name}</Table.Td>
                         <Table.Td>{member.user.email}</Table.Td>
                         <Table.Td>
-                          {canManageWorkspace ? (
-                            <Select
-                              data-testid={`workspace-member-role-${member.user.id}`}
-                              value={member.role}
-                              onChange={async (value) => {
-                                if (!value) return;
-                                try {
-                                  const updated = await updateWorkspaceMemberRole(
-                                    workspaceId,
-                                    member.user.id,
-                                    value as WorkspaceRole
-                                  );
-                                  setMembers((current) =>
-                                    current.map((item) => (item.id === updated.id ? updated : item))
-                                  );
-                                  setSuccess('Workspace role updated.');
-                                  showToast({
-                                    tone: 'success',
-                                    title: 'Role updated',
-                                    message: `${updated.user.email} is now ${updated.role}.`,
-                                  });
-                                } catch (caughtError) {
-                                  const message = getErrorMessage(caughtError);
-                                  setError(message);
-                                  showToast({
-                                    tone: 'error',
-                                    title: 'Could not update role',
-                                    message,
-                                  });
-                                }
-                              }}
-                              data={roleOptions}
-                            />
-                          ) : (
-                            member.role
-                          )}
+                          <Badge
+                            size="sm"
+                            variant="outline"
+                            color={member.user.opAdmin ? 'red' : 'blue'}
+                          >
+                            {member.user.opAdmin ? 'Administrator' : 'Member'}
+                          </Badge>
                         </Table.Td>
                         <Table.Td>
-                          {member.user.openProjectUserId ? (
-                            <Stack gap={2}>
-                              <Text size="sm">
-                                {member.user.openProjectLogin || member.user.openProjectUserId}
-                              </Text>
-                              <Badge size="xs" variant="light" color="green">
-                                Linked
-                              </Badge>
-                            </Stack>
-                          ) : (
-                            <Badge size="xs" variant="light" color="yellow">
-                              Not linked
-                            </Badge>
-                          )}
+                          <Text size="sm" c="dimmed">
+                            {member.user.lastLoginAt
+                              ? new Date(member.user.lastLoginAt).toLocaleString()
+                              : 'Never'}
+                          </Text>
                         </Table.Td>
-                        <Table.Td>{member.user.source || 'LOCAL'}</Table.Td>
-                        <Table.Td>{member.user.lastLoginAt || 'Never'}</Table.Td>
-                        {canManageWorkspace && (
-                          <Table.Td>
-                            <Button
-                              data-testid={`workspace-member-remove-${member.user.id}`}
-                              color="red"
-                              variant="light"
-                              onClick={async () => {
-                                const confirmed = await confirmAction({
-                                  title: 'Remove workspace member',
-                                  message: `Remove ${member.user.email} from this workspace?`,
-                                  confirmLabel: 'Remove member',
-                                  confirmColor: 'red',
-                                });
-                                if (!confirmed) {
-                                  return;
-                                }
-                                try {
-                                  await removeWorkspaceMember(workspaceId, member.user.id);
-                                  setMembers((current) =>
-                                    current.filter((item) => item.user.id !== member.user.id)
-                                  );
-                                  setSuccess('Workspace member removed.');
-                                  showToast({
-                                    tone: 'success',
-                                    title: 'Member removed',
-                                    message: `${member.user.email} no longer has workspace access.`,
-                                  });
-                                } catch (caughtError) {
-                                  const message = getErrorMessage(caughtError);
-                                  setError(message);
-                                  showToast({
-                                    tone: 'error',
-                                    title: 'Could not remove member',
-                                    message,
-                                  });
-                                }
-                              }}
-                            >
-                              Remove
-                            </Button>
-                          </Table.Td>
-                        )}
                       </Table.Tr>
                     ))}
                   </Table.Tbody>
@@ -592,7 +548,7 @@ export function WorkspaceSettingsModal({
               </Stack>
             </Tabs.Panel>
 
-            {currentRole === 'OWNER' && (
+            {currentRole === 'ADMIN' && (
               <Tabs.Panel value="danger" pt="md">
                 <Stack>
                   <Alert color="red" title="Danger Zone">

@@ -10,7 +10,7 @@ import {
   TextInput,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { createSpace, getErrorMessage, type Space, type Workspace } from '@/lib';
 import classes from './SpaceCreateModal.module.css';
 
@@ -36,12 +36,14 @@ export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: Spac
       name: (value) => (value.trim().length ? null : 'Name is required'),
     },
   });
+  const formRef = useRef(form);
+  formRef.current = form;
 
   useEffect(() => {
     if (!opened) return;
-    form.reset();
+    formRef.current.reset();
     setError(null);
-  }, [opened, form]);
+  }, [opened]);
 
   const projectOptions = useMemo(() => flattenSpaces(workspace.spaces), [workspace.spaces]);
 
@@ -115,10 +117,18 @@ export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: Spac
 }
 
 function flattenSpaces(spaces: Space[]) {
-  return spaces.flatMap((space) => [
+  const items = spaces.flatMap((space) => [
     { value: space.id, label: space.name },
     ...flattenFolders(space.folders || [], space.name),
   ]);
+  // Deduplicate by value — space IDs and task-list IDs share the same
+  // OpenProject project ID namespace and can collide, which Mantine forbids.
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    if (seen.has(item.value)) return false;
+    seen.add(item.value);
+    return true;
+  });
 }
 
 function flattenFolders(

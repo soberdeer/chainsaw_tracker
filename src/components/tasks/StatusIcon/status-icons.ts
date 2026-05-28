@@ -1,31 +1,41 @@
 import {
-  IconBan,
-  IconBlur,
   IconCircle,
   IconCircleCheck,
   IconCircleCheckFilled,
   IconCircleDashed,
   IconCircleDotted,
-  IconClockPause,
   IconNoiseReduction,
-  IconPacman,
-  IconProgress,
 } from '@tabler/icons-react';
 
 export const statusIcons = {
-  backlog: IconCircleDashed,
-  'to do': IconCircleDashed,
-  scoping: IconCircleDotted,
-  'in review': IconNoiseReduction,
-  'in design': IconProgress,
-  'in progress': IconCircle,
-  'in development': IconCircle,
-  testing: IconBlur,
-  waiting: IconClockPause,
-  blocked: IconBan,
-  'ready for development': IconPacman,
-  ready: IconCircleCheckFilled,
-  shipped: IconCircleCheckFilled,
-  complete: IconCircleCheckFilled,
-  cancelled: IconCircleCheck,
+  open: {
+    icon: IconCircleDashed,
+    isDone: false,
+    color: 'gray',
+  },
+  prep: {
+    icon: IconCircleDotted,
+    isDone: false,
+    color: 'blue',
+  },
+  progress: {
+    icon: IconNoiseReduction,
+    isDone: false,
+    color: 'grape',
+  },
+  test: {
+    icon: IconCircle,
+    isDone: false,
+    color: 'cyan',
+  },
+  done: {
+    icon: IconCircleCheckFilled,
+    isDone: true,
+    color: 'green',
+  },
+  closed: {
+    icon: IconCircleCheck,
+    isDone: true,
+    color: 'gray',
+  },
 };

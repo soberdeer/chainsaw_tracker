@@ -10,7 +10,13 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconChecklist, IconGitPullRequest, IconGripVertical, IconPlus } from '@tabler/icons-react';
+import {
+  IconCalendar,
+  IconChecklist,
+  IconGitPullRequest,
+  IconGripVertical,
+  IconPlus,
+} from '@tabler/icons-react';
 import { Fragment, useState } from 'react';
 import type { Task, TaskStatus } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
@@ -27,6 +33,7 @@ export interface TaskBoardProps {
     statusId: string,
     targetTaskId?: string | null
   ) => Promise<void> | void;
+  sortDir?: 'asc' | 'desc';
 }
 
 function formatEstimate(hours?: number | null) {
@@ -36,6 +43,17 @@ function formatEstimate(hours?: number | null) {
   return Number.isInteger(hours) ? `${hours}h` : `${hours.toFixed(1)}h`;
 }
 
+function formatDueDate(dateStr?: string | null): { label: string; overdue: boolean } | null {
+  if (!dateStr) return null;
+  const due = new Date(dateStr);
+  if (isNaN(due.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const overdue = due < today;
+  const label = due.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+  return { label, overdue };
+}
+
 export function TaskBoard({
   tasks,
   statuses,
@@ -43,6 +61,7 @@ export function TaskBoard({
   onOpenTask,
   onAddTask,
   onMoveTask,
+  sortDir = 'asc',
 }: TaskBoardProps) {
   const [draggingTaskId, setDraggingTaskId] = useState<string | null>(null);
   const grouped = new Map(statuses.map((status) => [status.id, [] as Task[]]));
@@ -94,7 +113,34 @@ export function TaskBoard({
     >
       <Group align="stretch" gap="md" wrap="nowrap" className={classes.board}>
         {statuses.map((status) => {
-          const columnTasks = grouped.get(status.id) || [];
+          // ascTasks: position-ascending order (source of truth for reorderBoardTasks)
+          const ascTasks = grouped.get(status.id) || [];
+          // displayTasks: what's actually rendered (reversed in desc mode)
+          const displayTasks = sortDir === 'desc' ? [...ascTasks].reverse() : ascTasks;
+
+          // Convert a visual display-index to the targetTaskId expected by reorderBoardTasks.
+          // reorderBoardTasks inserts *before* targetTaskId in position-asc order.
+          //
+          // asc mode: drop zone before displayTasks[i] → insert before displayTasks[i] in asc → targetTaskId = displayTasks[i].id
+          // desc mode: drop zone before displayTasks[i] → visually "above" it → in asc terms insert *after* displayTasks[i]
+          //            = insert before displayTasks[i-1] (the task with the next-higher position)
+          //            = targetTaskId = displayTasks[i-1]?.id ?? null
+          // End-of-column drop zone:
+          //   asc  → append at end of asc array → targetTaskId = null
+          //   desc → prepend at start of asc array → insert before ascTasks[0] → targetTaskId = ascTasks[0]?.id ?? null
+          const targetForDropBefore = (displayIndex: number): string | null => {
+            if (sortDir === 'desc') {
+              return displayTasks[displayIndex - 1]?.id ?? null;
+            }
+            return displayTasks[displayIndex]?.id ?? null;
+          };
+          const targetForEndZone = (): string | null => {
+            if (sortDir === 'desc') {
+              return ascTasks[0]?.id ?? null;
+            }
+            return null;
+          };
+
           return (
             <section
               key={status.id}
@@ -117,7 +163,7 @@ export function TaskBoard({
                 </Tooltip>
                 <Group gap="xs" wrap="nowrap">
                   <Text size="sm" c="dimmed">
-                    {columnTasks.length}
+                    {ascTasks.length}
                   </Text>
                   {canWriteTasks && (
                     <Tooltip label={`Add task to ${status.name}`}>
@@ -136,15 +182,16 @@ export function TaskBoard({
               </Group>
 
               <Stack gap="sm" className={classes.cards}>
-                {columnTasks.map((task) => {
+                {displayTasks.map((task, displayIndex) => {
                   const estimate = formatEstimate(task.estimatedHours);
+                  const dropTarget = targetForDropBefore(displayIndex);
                   return (
                     <Fragment key={task.id}>
                       {canWriteTasks && (
                         <Divider
                           data-testid="board-dropzone"
                           data-status-id={status.id}
-                          data-target-task-id={task.id}
+                          data-target-task-id={dropTarget ?? ''}
                           className={classes.dropZone}
                           onDragOver={(event) => {
                             event.preventDefault();
@@ -153,7 +200,7 @@ export function TaskBoard({
                             event.preventDefault();
                             event.stopPropagation();
                             if (!draggingTaskId) return;
-                            await onMoveTask(draggingTaskId, status.id, task.id);
+                            await onMoveTask(draggingTaskId, status.id, dropTarget);
                             setDraggingTaskId(null);
                           }}
                         />
@@ -174,7 +221,7 @@ export function TaskBoard({
                           event.preventDefault();
                           event.stopPropagation();
                           if (!canWriteTasks || !draggingTaskId) return;
-                          await onMoveTask(draggingTaskId, status.id, task.id);
+                          await onMoveTask(draggingTaskId, status.id, dropTarget);
                           setDraggingTaskId(null);
                         }}
                         onClick={() => onOpenTask(task)}
@@ -194,36 +241,63 @@ export function TaskBoard({
                             <Text size="sm" fw={700} lineClamp={3}>
                               {task.title}
                             </Text>
-                            <Group gap="xs" mt="xs">
-                              <Tooltip label={`Priority: ${task.priority}`}>
-                                <Badge variant="light">{task.priority}</Badge>
-                              </Tooltip>
-                              {estimate && (
-                                <Tooltip label={`Estimate: ${estimate}`}>
-                                  <Badge color="cyan" variant="light">
-                                    {estimate}
-                                  </Badge>
+                            {(() => {
+                              const due = formatDueDate(task.dueDate);
+                              return due ? (
+                                <Tooltip label={`Due: ${task.dueDate}`}>
+                                  <Group gap={4} mt={4}>
+                                    <IconCalendar
+                                      size="0.75rem"
+                                      color={
+                                        due.overdue
+                                          ? 'var(--mantine-color-red-6)'
+                                          : 'var(--mantine-color-dimmed)'
+                                      }
+                                    />
+                                    <Text
+                                      size="xs"
+                                      c={due.overdue ? 'red' : 'dimmed'}
+                                      fw={due.overdue ? 700 : 400}
+                                    >
+                                      {due.label}
+                                    </Text>
+                                  </Group>
                                 </Tooltip>
-                              )}
-                              {task.checklistSummary?.total ? (
-                                <Tooltip
-                                  label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
-                                >
-                                  <Badge
-                                    color="lime"
-                                    variant="light"
-                                    leftSection={<IconChecklist size="0.75rem" />}
+                              ) : null;
+                            })()}
+                            <Group gap="xs" mt="xs" justify="space-between" wrap="nowrap">
+                              <Group gap="xs" style={{ flex: 1, flexWrap: 'wrap' }}>
+                                <Tooltip label={`Priority: ${task.priority}`}>
+                                  <Badge variant="light">{task.priority}</Badge>
+                                </Tooltip>
+                                {estimate && (
+                                  <Tooltip label={`Estimate: ${estimate}`}>
+                                    <Badge color="cyan" variant="light">
+                                      {estimate}
+                                    </Badge>
+                                  </Tooltip>
+                                )}
+                                {task.checklistSummary?.total ? (
+                                  <Tooltip
+                                    label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
                                   >
-                                    {task.checklistSummary.completed}/{task.checklistSummary.total}
-                                  </Badge>
-                                </Tooltip>
-                              ) : null}
-                              {task.tags.slice(0, 2).map(({ tag }) => (
-                                <Tooltip key={tag.id} label={tag.name}>
-                                  <Badge variant="outline">{tag.name}</Badge>
-                                </Tooltip>
-                              ))}
-                              {pullRequestBadge(task)}
+                                    <Badge
+                                      color="lime"
+                                      variant="light"
+                                      leftSection={<IconChecklist size="0.75rem" />}
+                                    >
+                                      {task.checklistSummary.completed}/
+                                      {task.checklistSummary.total}
+                                    </Badge>
+                                  </Tooltip>
+                                ) : null}
+                                {task.tags.slice(0, 2).map(({ tag }) => (
+                                  <Tooltip key={tag.id} label={tag.name}>
+                                    <Badge variant="outline">{tag.name}</Badge>
+                                  </Tooltip>
+                                ))}
+                                {pullRequestBadge(task)}
+                              </Group>
                               {task.assignees?.length ? (
                                 <AvatarStack users={task.assignees} size="1.5rem" max={3} />
                               ) : null}
@@ -234,11 +308,11 @@ export function TaskBoard({
                     </Fragment>
                   );
                 })}
-                {canWriteTasks && columnTasks.length > 0 && (
+                {canWriteTasks && ascTasks.length > 0 && (
                   <Divider
                     data-testid="board-dropzone"
                     data-status-id={status.id}
-                    data-target-task-id=""
+                    data-target-task-id={targetForEndZone() ?? ''}
                     className={classes.dropZone}
                     onDragOver={(event) => {
                       event.preventDefault();
@@ -247,12 +321,12 @@ export function TaskBoard({
                       event.preventDefault();
                       event.stopPropagation();
                       if (!draggingTaskId) return;
-                      await onMoveTask(draggingTaskId, status.id, null);
+                      await onMoveTask(draggingTaskId, status.id, targetForEndZone());
                       setDraggingTaskId(null);
                     }}
                   />
                 )}
-                {!columnTasks.length && (
+                {!ascTasks.length && (
                   <Text size="sm" c="dimmed" className={classes.emptyColumn}>
                     No tasks
                   </Text>

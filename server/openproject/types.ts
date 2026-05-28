@@ -26,6 +26,7 @@ export type OpenProjectProject = {
   identifier: string;
   name: string;
   public?: boolean;
+  active?: boolean;
   _links: Record<string, HalLink | HalLink[]>;
 };
 
@@ -33,6 +34,8 @@ export type OpenProjectStatus = {
   id: number;
   name: string;
   isClosed?: boolean;
+  isDefault?: boolean;
+  color?: string;
   position?: number;
   _links: Record<string, HalLink>;
 };
@@ -58,6 +61,7 @@ export type OpenProjectUser = {
   email?: string;
   avatar?: string;
   status?: string;
+  admin?: boolean;
   _links: Record<string, HalLink>;
 };
 
@@ -125,6 +129,12 @@ export type OpenProjectTimeEntryActivity = {
   id: number;
   name: string;
   _links: Record<string, HalLink>;
+};
+
+export type OpenProjectGroup = {
+  id: number;
+  name: string;
+  _links: Record<string, HalLink | HalLink[]>;
 };
 
 export type OpenProjectAttachment = {
