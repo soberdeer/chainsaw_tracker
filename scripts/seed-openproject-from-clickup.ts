@@ -37,11 +37,7 @@ import type {
   ClickUpTask,
   ClickUpTeam,
 } from './migration/clickup/types.js';
-import {
-  appendAdditionalAssigneesMeta,
-  splitClickUpAssignees,
-  type ClickUpAssigneeLike,
-} from './migration/clickupAssignees.js';
+import { splitClickUpAssignees, type ClickUpAssigneeLike } from './migration/clickupAssignees.js';
 import {
   clickUpPermissionFromRaw,
   extractFolderPermissionGrants,
@@ -156,11 +152,8 @@ type Summary = {
   clickUpCommentsSeen: number;
   clickUpTimeEntriesSeen: number;
   assigneesMapped: number;
-  responsibleMapped: number;
-  additionalAssigneesStored: number;
   assigneeMappingErrors: string[];
   assigneeRejectedByOpenProject: number;
-  assigneeFallbackStored: number;
   fallbackRecoveredTasks: number;
   fallbackSkippedTasks: number;
   openProjectGroupsCreated: number;
@@ -341,42 +334,19 @@ async function clickUpAssigneeLinks(
   task: ClickUpTask,
   openProjectUserSync: OpenProjectUserSyncContext
 ) {
-  const mapped = splitClickUpAssignees(
+  const { assignee } = splitClickUpAssignees(
     ((task as unknown as { assignees?: ClickUpAssigneeLike[] }).assignees ||
       []) as ClickUpAssigneeLike[]
   );
 
-  const [assigneeUser, responsibleUser] = await Promise.all([
-    mapped.assignee
-      ? openProjectUserForClickUpUser(mapped.assignee, openProjectUserSync)
-      : Promise.resolve(null),
-    mapped.responsible
-      ? openProjectUserForClickUpUser(mapped.responsible, openProjectUserSync)
-      : Promise.resolve(null),
-  ]);
+  const assigneeUser = assignee
+    ? await openProjectUserForClickUpUser(assignee, openProjectUserSync)
+    : null;
 
   return {
-    assignee: mapped.assignee,
-    responsible: mapped.responsible,
+    assignee,
     assigneeHref: openProjectUserHref(assigneeUser),
-    responsibleHref:
-      responsibleUser && responsibleUser.id !== assigneeUser?.id
-        ? openProjectUserHref(responsibleUser)
-        : undefined,
-    additionalAssignees: mapped.additional,
   };
-}
-
-function assigneeFallbackUsers(input: {
-  assignee?: ClickUpAssigneeLike;
-  responsible?: ClickUpAssigneeLike;
-  additionalAssignees: ClickUpAssigneeLike[];
-}) {
-  return [
-    ...(input.assignee ? [input.assignee] : []),
-    ...(input.responsible ? [input.responsible] : []),
-    ...input.additionalAssignees,
-  ];
 }
 
 function originalClickUpPath(context: ClickUpTaskContext) {
@@ -1955,8 +1925,6 @@ export function buildTaskBody(params: {
   priorities: OpenProjectPriority[];
   includeStatus?: boolean;
   assigneeHref?: string;
-  responsibleHref?: string;
-  additionalAssignees?: ClickUpAssigneeLike[];
   categoryHref?: string;
 }) {
   const links: Record<string, { href: string | undefined }> = {
@@ -1982,19 +1950,12 @@ export function buildTaskBody(params: {
     links.assignee = { href: params.assigneeHref };
   }
 
-  if (params.responsibleHref) {
-    links.responsible = { href: params.responsibleHref };
-  }
-
   if (params.categoryHref) {
     links.category = { href: params.categoryHref };
   }
 
   const meta = metaFromContext(params.task, params.context);
-  const description = appendAdditionalAssigneesMeta(
-    clickUpTaskDescription(params.task),
-    params.additionalAssignees || []
-  );
+  const description = clickUpTaskDescription(params.task);
 
   const body: Record<string, unknown> = {
     subject: params.task.name,
@@ -2025,7 +1986,6 @@ function isAssigneeMappingError(error: unknown) {
 
 function indexExistingWorkPackages(workPackages: OpenProjectWorkPackage[]) {
   const byClickUpTaskId = new Map<string, OpenProjectWorkPackage>();
-  const bySubject = new Map<string, OpenProjectWorkPackage>();
 
   for (const workPackage of workPackages) {
     const meta = importedMeta(workPackage.description?.raw || '');
@@ -2033,13 +1993,9 @@ function indexExistingWorkPackages(workPackages: OpenProjectWorkPackage[]) {
     if (meta?.clickUpTaskId) {
       byClickUpTaskId.set(meta.clickUpTaskId, workPackage);
     }
-
-    if (!bySubject.has(workPackage.subject)) {
-      bySubject.set(workPackage.subject, workPackage);
-    }
   }
 
-  return { byClickUpTaskId, bySubject };
+  return { byClickUpTaskId };
 }
 
 async function createOpenProjectWorkPackage(params: {
@@ -2053,14 +2009,9 @@ async function createOpenProjectWorkPackage(params: {
   openProjectUserSync: OpenProjectUserSyncContext;
   categoryHref?: string;
 }) {
-  const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
+  const { assigneeHref } = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
   let includeStatus = true;
-  let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
-  const rejectedAssignmentFallback = assigneeFallbackUsers({
-    assignee: assigneeMapping.assignee,
-    responsible: assigneeMapping.responsible,
-    additionalAssignees: assigneeMapping.additionalAssignees,
-  });
+  let includeAssignee = Boolean(assigneeHref);
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -2075,25 +2026,14 @@ async function createOpenProjectWorkPackage(params: {
             openProjectStatuses: params.openProjectStatuses,
             priorities: params.priorities,
             includeStatus,
-            assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
-            responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
-            additionalAssignees: includeAssignments
-              ? assigneeMapping.additionalAssignees
-              : rejectedAssignmentFallback,
+            assigneeHref: includeAssignee ? assigneeHref : undefined,
             categoryHref: params.categoryHref,
           }),
         }
       );
 
-      if (includeAssignments && assigneeMapping.assigneeHref) {
+      if (includeAssignee && assigneeHref) {
         params.summary.assigneesMapped += 1;
-      }
-      if (includeAssignments && assigneeMapping.responsibleHref) {
-        params.summary.responsibleMapped += 1;
-      }
-      if (assigneeMapping.additionalAssignees.length) {
-        params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
-        params.summary.assigneeFallbackStored += assigneeMapping.additionalAssignees.length;
       }
 
       return created;
@@ -2107,17 +2047,14 @@ async function createOpenProjectWorkPackage(params: {
         continue;
       }
 
-      if (includeAssignments && isAssigneeMappingError(error)) {
-        includeAssignments = false;
+      if (includeAssignee && isAssigneeMappingError(error)) {
+        includeAssignee = false;
         params.summary.assigneeRejectedByOpenProject += 1;
         params.summary.assigneeMappingErrors.push(
-          `task ${params.task.id}: OpenProject rejected assignee/responsible mapping: ${openProjectErrorMessage(
-            error
-          )}`
+          `task ${params.task.id}: OpenProject rejected assignee mapping: ${openProjectErrorMessage(error)}`
         );
-        params.summary.assigneeFallbackStored += rejectedAssignmentFallback.length;
         params.summary.warnings.push(
-          `task ${params.task.name} (${params.task.id}): created without assignee/responsible because OpenProject rejected the imported assignee mapping; assignees were preserved in metadata fallback`
+          `task ${params.task.name} (${params.task.id}): created without assignee because OpenProject rejected it`
         );
         continue;
       }
@@ -2140,14 +2077,9 @@ async function updateOpenProjectWorkPackage(params: {
   openProjectUserSync: OpenProjectUserSyncContext;
   categoryHref?: string;
 }) {
-  const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
-  let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
+  const { assigneeHref } = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
+  let includeAssignee = Boolean(assigneeHref);
   let includeStatus = Boolean(params.task.status);
-  const rejectedAssignmentFallback = assigneeFallbackUsers({
-    assignee: assigneeMapping.assignee,
-    responsible: assigneeMapping.responsible,
-    additionalAssignees: assigneeMapping.additionalAssignees,
-  });
 
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -2164,26 +2096,15 @@ async function updateOpenProjectWorkPackage(params: {
               openProjectStatuses: params.openProjectStatuses,
               priorities: params.priorities,
               includeStatus,
-              assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
-              responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
-              additionalAssignees: includeAssignments
-                ? assigneeMapping.additionalAssignees
-                : rejectedAssignmentFallback,
+              assigneeHref: includeAssignee ? assigneeHref : undefined,
               categoryHref: params.categoryHref,
             }),
           },
         }
       );
 
-      if (includeAssignments && assigneeMapping.assigneeHref) {
+      if (includeAssignee && assigneeHref) {
         params.summary.assigneesMapped += 1;
-      }
-      if (includeAssignments && assigneeMapping.responsibleHref) {
-        params.summary.responsibleMapped += 1;
-      }
-      if (assigneeMapping.additionalAssignees.length) {
-        params.summary.additionalAssigneesStored += assigneeMapping.additionalAssignees.length;
-        params.summary.assigneeFallbackStored += assigneeMapping.additionalAssignees.length;
       }
 
       return updated;
@@ -2197,17 +2118,14 @@ async function updateOpenProjectWorkPackage(params: {
         continue;
       }
 
-      if (includeAssignments && isAssigneeMappingError(error)) {
-        includeAssignments = false;
+      if (includeAssignee && isAssigneeMappingError(error)) {
+        includeAssignee = false;
         params.summary.assigneeRejectedByOpenProject += 1;
         params.summary.assigneeMappingErrors.push(
-          `task ${params.task.id}: OpenProject rejected assignee/responsible update: ${openProjectErrorMessage(
-            error
-          )}`
+          `task ${params.task.id}: OpenProject rejected assignee update: ${openProjectErrorMessage(error)}`
         );
-        params.summary.assigneeFallbackStored += rejectedAssignmentFallback.length;
         params.summary.warnings.push(
-          `task ${params.task.name} (${params.task.id}): assignee/responsible update was skipped because OpenProject rejected the mapping; assignees were preserved in metadata fallback`
+          `task ${params.task.name} (${params.task.id}): assignee update skipped because OpenProject rejected it`
         );
         continue;
       }
@@ -2323,7 +2241,7 @@ async function syncClickUpTasksIntoProject(params: {
     initializeProjectCategoryCache(params.project.id, params.categoryCache),
   ]);
 
-  const { byClickUpTaskId, bySubject } = indexExistingWorkPackages(existingWorkPackages);
+  const { byClickUpTaskId } = indexExistingWorkPackages(existingWorkPackages);
 
   for (const task of clickUpTasks) {
     recordUnsupportedClickUpTaskData(task, params.summary);
@@ -2335,9 +2253,7 @@ async function syncClickUpTasksIntoProject(params: {
     );
     await applyOpenProjectMemberships(params.project, assigneeGrants, params.openProjectUserSync);
 
-    const existingById = byClickUpTaskId.get(task.id);
-    const existingBySubject = bySubject.get(task.name);
-    const existing = existingById || existingBySubject;
+    const existing = byClickUpTaskId.get(task.id);
 
     try {
       const categoryHref = task.tags?.length
@@ -2387,7 +2303,6 @@ async function syncClickUpTasksIntoProject(params: {
         });
 
         byClickUpTaskId.set(task.id, created);
-        bySubject.set(task.name, created);
         params.summary.tasksCreated += 1;
       }
     } catch (error) {
@@ -2979,11 +2894,8 @@ async function main() {
     clickUpCommentsSeen: 0,
     clickUpTimeEntriesSeen: 0,
     assigneesMapped: 0,
-    responsibleMapped: 0,
-    additionalAssigneesStored: 0,
     assigneeMappingErrors: [],
     assigneeRejectedByOpenProject: 0,
-    assigneeFallbackStored: 0,
     fallbackRecoveredTasks: 0,
     fallbackSkippedTasks: 0,
     openProjectGroupsCreated: 0,
@@ -3007,7 +2919,12 @@ async function main() {
   const rawOpenProjectStatuses = await getOpenProjectStatuses();
   const openProjectStatuses = await ensureRequiredStatuses(rawOpenProjectStatuses);
   await ensureOpenProjectWorkflowTransitions(openProjectStatuses, summary);
-  const openProjectPriorities = await getOpenProjectPriorities();
+  const openProjectPriorities = await getOpenProjectPriorities().catch((error) => {
+    summary.warnings.push(
+      `cannot read OpenProject priorities (priorities will not be mapped): ${(error as Error).message}`
+    );
+    return [] as OpenProjectPriority[];
+  });
   const projects = await getOpenProjectProjects();
   const [openProjectUsers, openProjectRoles, openProjectMemberships] = await Promise.all([
     getOpenProjectUsers().catch((error) => {

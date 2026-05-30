@@ -69,7 +69,7 @@ export function SubtaskModal({
         description: '',
         statusId: parentTask.statusId || statuses[0]?.id || '',
         priority: parentTask.priority || 'NORMAL',
-        assigneeIds: parentTask.assignees?.map((user) => user.id) || [],
+        assigneeIds: parentTask.assignee ? [parentTask.assignee.id] : [],
         startDate: '',
         dueDate: '',
       });
@@ -80,7 +80,7 @@ export function SubtaskModal({
     parentTask.id,
     parentTask.priority,
     parentTask.statusId,
-    parentTask.assignees,
+    parentTask.assignee,
     statuses,
   ]);
 

@@ -37,6 +37,11 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
   }
 
   const response = await fetch(url, { ...options, headers, credentials: 'include' });
+  if (response.status === 401 && !url.includes('/api/auth/')) {
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
+    (globalThis as Record<string, any>).location.href = '/';
+    return new Promise(() => {});
+  }
   if (!response.ok) {
     const payload = (await response.json().catch(() => ({ error: response.statusText }))) as {
       error?: string;

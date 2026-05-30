@@ -96,7 +96,7 @@ export function TaskDetailPage({
       description: stripClickUpMeta(task.description),
       statusId: task.statusId || '',
       priority: task.priority,
-      assigneeIds: (task.assignees || (task.assignee ? [task.assignee] : [])).map((u) => u.id),
+      assigneeIds: task.assignee ? [task.assignee.id] : [],
       startDate: toDateInput(task.startDate),
       dueDate: toDateInput(task.dueDate),
       estimatedHours: task.estimatedHours ?? '',

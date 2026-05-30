@@ -1,6 +1,5 @@
 import { ActionIcon, Badge, Checkbox, Text, Tooltip } from '@mantine/core';
 import {
-  IconCalendarDue,
   IconChevronRight,
   IconFlag,
   IconGitPullRequest,
@@ -154,14 +153,14 @@ export function CompactTaskRow({
         )}
       </div>
       <Text className={isLate ? `${classes.dueCell} ${classes.lateDue}` : classes.dueCell}>
-        {due || (
-          <Tooltip label="No due date">
-            <IconCalendarDue size="1.125rem" />
-          </Tooltip>
-        )}
+        {due || <Tooltip label="No due date">-</Tooltip>}
       </Text>
       <div className={classes.priorityCell}>
-        {task.priority === 'LOW' ? (
+        {!task.priority ? (
+          <Tooltip label="No priority">
+            <IconFlag size="1.1875rem" className={classes.mutedIcon} />
+          </Tooltip>
+        ) : task.priority === 'LOW' ? (
           <Tooltip label="Priority: LOW">
             <IconFlag size="1.1875rem" className={classes.mutedIcon} />
           </Tooltip>

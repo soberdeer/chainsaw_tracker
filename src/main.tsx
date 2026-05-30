@@ -1,5 +1,6 @@
 import '@mantine/core/styles.css';
 import '@mantine/dropzone/styles.css';
+import '@mantine/dates/styles.css';
 import '@mantine/notifications/styles.css';
 import './styles.css';
 import { MantineProvider } from '@mantine/core';
@@ -12,7 +13,7 @@ import App from './App';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
-    <MantineProvider defaultColorScheme="light">
+    <MantineProvider defaultColorScheme="auto">
       <Notifications position="top-right" />
       <ModalsProvider>
         <BrowserRouter>

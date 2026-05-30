@@ -12,9 +12,9 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 
 async function notifyAssignedUsers(task: {
   id: string;
   title: string;
-  assignees?: Array<{ email?: string; id?: string }>;
+  assignee?: { email?: string; id?: string };
 }) {
-  const emails = (task.assignees || []).map((user) => user.email).filter(Boolean) as string[];
+  const emails = task.assignee?.email ? [task.assignee.email] : [];
   if (!emails.length) return;
   const users = await prisma.user.findMany({ where: { email: { in: emails } } });
   await prisma.notification.createMany({
@@ -31,8 +31,8 @@ async function notifyAssignedUsers(task: {
 
 async function notifyCommentOnAssignedTask(taskId: string, comment: string) {
   const task = await service.getTask(taskId).catch(() => null);
-  if (!task?.assignees?.length) return;
-  const emails = task.assignees.map((user) => user.email).filter(Boolean);
+  if (!task?.assignee?.email) return;
+  const emails = [task.assignee.email];
   const users = await prisma.user.findMany({ where: { email: { in: emails } } });
   await prisma.notification.createMany({
     data: users.map((user) => ({

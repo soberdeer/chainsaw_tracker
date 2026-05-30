@@ -22,12 +22,17 @@ export const statusMeta: Record<
   'on hold': { label: 'On Hold', color: '#fcc419', tone: 'yellow', type: 'open' }, // yellow-5
 };
 
-export const priorityColor: Record<TaskPriority, string> = {
+export const priorityColorMap: Record<TaskPriority, string> = {
   LOW: 'gray',
   NORMAL: 'blue',
   HIGH: 'orange',
   URGENT: 'red',
 };
+
+export function priorityColor(priority?: TaskPriority | null): string | undefined {
+  if (!priority) return undefined;
+  return priorityColorMap[priority];
+}
 
 export function firstTaskFolder(space?: Space) {
   return findFirstTaskFolder(space?.folders || []) || space?.folders[0];

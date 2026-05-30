@@ -41,7 +41,7 @@ type MockTask = {
   title: string;
   description: string;
   statusId: string;
-  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+  priority: 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT' | null;
   assigneeIds: string[];
   typeId: string;
   startDate?: string | null;

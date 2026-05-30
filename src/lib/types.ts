@@ -23,6 +23,7 @@ export type TaskDevelopmentStatus =
   | 'MERGED'
   | 'CLOSED';
 export type TaskPriority = 'LOW' | 'NORMAL' | 'HIGH' | 'URGENT';
+export type TaskPriorityOrNone = TaskPriority | null | undefined;
 export type DocumentKind = 'MARKDOWN' | 'IMAGE' | 'SPREADSHEET' | 'EMBED';
 
 export type User = {
@@ -63,7 +64,7 @@ export type Task = {
   title: string;
   description?: string;
   status: string;
-  priority: TaskPriority;
+  priority?: TaskPriority | null;
   startDate?: string;
   dueDate?: string;
   typeId?: string;
@@ -89,7 +90,6 @@ export type Task = {
   taskList?: TaskList;
   statusRef?: TaskStatus;
   assignee?: User;
-  responsible?: User;
   assignees: User[];
   tags: { tag: Tag }[];
   subtasks?: Task[];
@@ -363,8 +363,6 @@ export type OpenProjectProjectMember = {
   openProjectEmail?: string;
   avatarUrl?: string;
   roles: string[];
-  linkedLocalUser?: User;
-  source?: string;
 };
 
 export type OpenProjectConnectionStatus = {

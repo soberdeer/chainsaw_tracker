@@ -84,7 +84,7 @@ test('assertWorkspaceOwnerMutationAllowed protects the last admin', () => {
   );
 });
 
-test('buildTaskBody stores assignee and responsible links in the OpenProject payload', () => {
+test('buildTaskBody stores single assignee link in the OpenProject payload', () => {
   const body = buildTaskBody({
     task: {
       id: 'cu-1',
@@ -111,27 +111,18 @@ test('buildTaskBody stores assignee and responsible links in the OpenProject pay
       },
     ],
     assigneeHref: '/api/v3/users/101',
-    responsibleHref: '/api/v3/users/202',
-    additionalAssignees: [{ id: 303, username: 'Extra Person', email: 'extra@example.com' }],
   });
 
   assert.deepEqual((body._links as Record<string, { href?: string }>).assignee, {
     href: '/api/v3/users/101',
   });
-  assert.deepEqual((body._links as Record<string, { href?: string }>).responsible, {
-    href: '/api/v3/users/202',
-  });
-  assert.match(
-    (body.description as { raw: string }).raw,
-    /Additional assignees:\n- Extra Person <extra@example\.com> \[ClickUp ID: 303\]/
-  );
 });
 
-test('buildTaskBody can preserve the full assignee list in metadata fallback', () => {
+test('buildTaskBody omits assignee link when no assigneeHref provided', () => {
   const body = buildTaskBody({
     task: {
       id: 'cu-2',
-      name: 'Fallback Task',
+      name: 'No Assignee Task',
       description: '',
     } as never,
     context: {
@@ -146,15 +137,8 @@ test('buildTaskBody can preserve the full assignee list in metadata fallback', (
     },
     openProjectStatuses: [],
     priorities: [],
-    additionalAssignees: [
-      { id: 101, username: 'Primary Person', email: 'primary@example.com' },
-      { id: 202, username: 'Responsible Person', email: 'responsible@example.com' },
-      { id: 303, username: 'Extra Person', email: 'extra@example.com' },
-    ],
   });
 
-  const raw = (body.description as { raw: string }).raw;
-  assert.match(raw, /Primary Person <primary@example\.com> \[ClickUp ID: 101\]/);
-  assert.match(raw, /Responsible Person <responsible@example\.com> \[ClickUp ID: 202\]/);
-  assert.match(raw, /Extra Person <extra@example\.com> \[ClickUp ID: 303\]/);
+  const links = body._links as Record<string, { href?: string } | undefined>;
+  assert.ok(!links.assignee?.href);
 });

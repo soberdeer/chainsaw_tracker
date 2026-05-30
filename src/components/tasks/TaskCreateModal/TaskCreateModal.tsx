@@ -174,7 +174,7 @@ export function TaskCreateModal({
 
             <TextInput
               data-testid="task-create-title-input"
-              placeholder="Task Name or type '/' for commands"
+              placeholder="Task Name"
               classNames={{ input: classes.titleInput }}
               autoFocus
               {...form.getInputProps('title')}

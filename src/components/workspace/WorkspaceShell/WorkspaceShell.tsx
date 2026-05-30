@@ -453,9 +453,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       users.set(membership.user.id, membership.user);
     });
     tasks.forEach((task) => {
-      (task.assignees || (task.assignee ? [task.assignee] : [])).forEach((user) =>
-        users.set(user.id, user)
-      );
+      if (task.assignee) users.set(task.assignee.id, task.assignee);
     });
     return [...users.values()].sort((a, b) => a.name.localeCompare(b.name));
   }, [workspace, tasks]);

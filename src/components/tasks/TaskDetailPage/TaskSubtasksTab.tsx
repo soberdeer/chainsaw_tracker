@@ -97,9 +97,9 @@ export function TaskSubtasksTab({
               <Text c="dimmed">-</Text>
             )}
           </span>
-          <Tooltip label={`Priority: ${subtask.priority}`}>
-            <Badge color={priorityColor[subtask.priority]} variant="light">
-              {subtask.priority}
+          <Tooltip label={subtask.priority ? `Priority: ${subtask.priority}` : 'No priority'}>
+            <Badge color={priorityColor(subtask.priority)} variant="light">
+              {subtask.priority ?? '–'}
             </Badge>
           </Tooltip>
           <Text c={formatDueDate(subtask.dueDate).includes('ago') ? 'red' : 'dimmed'}>

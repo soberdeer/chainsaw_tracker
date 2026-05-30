@@ -31,7 +31,7 @@ import classes from './TaskDetailPage.module.css';
 
 interface DetailsFormValues {
   statusId: string;
-  priority: TaskPriority;
+  priority: TaskPriority | null;
   assigneeIds: string[];
   startDate: string;
   dueDate: string;
@@ -128,15 +128,16 @@ export function TaskDetailsGrid({
       {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
       <UserSelect
         data-testid="task-assignee-select"
-        label="Assignee / responsible"
+        label="Assignee"
         users={projectUsers}
         loading={projectUsersLoading}
         value={form.values.assigneeIds}
         onChange={(value) => {
-          form.setFieldValue('assigneeIds', value);
-          void onUpdateAndRefresh({ assigneeIds: value });
+          const single = value.slice(0, 1);
+          form.setFieldValue('assigneeIds', single);
+          void onUpdateAndRefresh({ assigneeIds: single });
         }}
-        maxValues={2}
+        maxValues={1}
         disabled={!canWriteTasks}
       />
       <Stack gap="xs">
@@ -197,11 +198,12 @@ export function TaskDetailsGrid({
         data-testid="task-priority-select"
         label="Priority"
         leftSection={<IconFlag size="1rem" />}
-        value={form.values.priority}
+        value={form.values.priority ?? null}
+        clearable
         onChange={(value) => {
-          const next = (value || 'NORMAL') as TaskPriority;
+          const next = (value as TaskPriority | null) ?? null;
           form.setFieldValue('priority', next);
-          void onUpdateAndRefresh({ priority: next });
+          void onUpdateAndRefresh({ priority: next ?? undefined });
         }}
         data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
         disabled={!canWriteTasks}

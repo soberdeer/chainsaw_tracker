@@ -1447,7 +1447,7 @@ function membershipRoles(membership: { _links: Record<string, unknown> }) {
 }
 
 export async function getOpenProjectProjectMembers(projectId: string) {
-  const [membershipsPage, usersPage, localUsers, projects] = await Promise.all([
+  const [membershipsPage, usersPage, projects] = await Promise.all([
     openProjectRequest<HalCollection<{ id: number; _links: Record<string, unknown> }>>(
       '/api/v3/memberships',
       {
@@ -1460,7 +1460,6 @@ export async function getOpenProjectProjectMembers(projectId: string) {
     openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
       query: { pageSize: 1000 },
     }),
-    prisma.user.findMany(),
     getProjects(),
   ]);
 
@@ -1469,11 +1468,6 @@ export async function getOpenProjectProjectMembers(projectId: string) {
       user._links.self.href || `/api/v3/users/${user.id}`,
       user,
     ])
-  );
-  const localByOpenProjectUserId = new Map(
-    localUsers
-      .filter((user) => user.openProjectUserId)
-      .map((user) => [user.openProjectUserId as string, mapLocalUser(user)])
   );
   const project = projects.find((item) => String(item.id) === String(projectId));
 
@@ -1496,8 +1490,6 @@ export async function getOpenProjectProjectMembers(projectId: string) {
         openProjectEmail: openProjectUser.email || undefined,
         avatarUrl: openProjectUser.avatar || undefined,
         roles: membershipRoles(membership),
-        linkedLocalUser: localByOpenProjectUserId.get(String(openProjectUser.id)),
-        source: localByOpenProjectUserId.get(String(openProjectUser.id))?.source,
       },
     ];
   });
@@ -1592,7 +1584,7 @@ export async function createTask(
     title: string;
     description?: string;
     statusId?: string;
-    priority?: string;
+    priority?: string | null;
     assigneeIds?: string[];
     parentId?: string;
     startDate?: string;
@@ -1616,9 +1608,6 @@ export async function createTask(
         ? { priority: { href: priorityHref(priorityItems, input.priority) } }
         : {}),
       ...(input.assigneeIds?.[0] ? { assignee: { href: toUserHref(input.assigneeIds[0]) } } : {}),
-      ...(input.assigneeIds?.[1]
-        ? { responsible: { href: toUserHref(input.assigneeIds[1]) } }
-        : {}),
       ...(input.parentId ? { parent: { href: `/api/v3/work_packages/${input.parentId}` } } : {}),
     },
   };
@@ -1647,7 +1636,7 @@ export async function updateTask(
     title?: string;
     description?: string | null;
     statusId?: string;
-    priority?: string;
+    priority?: string | null;
     assigneeIds?: string[];
     startDate?: string | null;
     dueDate?: string | null;
@@ -1660,11 +1649,12 @@ export async function updateTask(
   ]);
   const links: Record<string, { href: string | null | undefined }> = {};
   if (input.statusId !== undefined) links.status = { href: toStatusHref(input.statusId) };
-  const priority = priorityHref(priorityItems, input.priority);
-  if (input.priority !== undefined) links.priority = { href: priority };
+  // undefined → don't touch; null → clear (no href); string → set
+  if (input.priority !== undefined) {
+    links.priority = { href: input.priority ? priorityHref(priorityItems, input.priority) : null };
+  }
   if (input.assigneeIds !== undefined) {
     links.assignee = { href: toUserHref(input.assigneeIds[0]) || null };
-    links.responsible = { href: toUserHref(input.assigneeIds[1]) || null };
   }
   const body: Record<string, unknown> = {
     lockVersion: existing.lockVersion,
@@ -1725,7 +1715,7 @@ export async function duplicateTask(taskId: string) {
     description: task.description,
     statusId: task.statusId,
     priority: task.priority,
-    assigneeIds: task.assignees.map((assignee) => assignee.id),
+    assigneeIds: task.assignee ? [task.assignee.id] : [],
     startDate: task.startDate,
     dueDate: task.dueDate,
   });

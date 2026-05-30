@@ -63,6 +63,10 @@
   gap: var(--mantine-spacing-xs);
 }
 
+.dateInputWrapper {
+  width: 100%;
+}
+
 .dueCell {
   color: #69db8d;
 }

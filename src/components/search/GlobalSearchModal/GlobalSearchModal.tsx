@@ -1,7 +1,6 @@
 import {
   ActionIcon,
   Group,
-  Loader,
   Modal,
   ScrollArea,
   Stack,
@@ -164,7 +163,7 @@ export function GlobalSearchModal({
           <TextInput
             value={query}
             onChange={(event) => setQuery(event.currentTarget.value)}
-            placeholder="Search, run a command..."
+            placeholder="Search"
             variant="unstyled"
             autoFocus
             className={classes.searchInput}
@@ -174,12 +173,6 @@ export function GlobalSearchModal({
               <IconX size="1rem" />
             </ActionIcon>
           </Tooltip>
-        </Group>
-        <Group className={classes.tabs} gap="xs">
-          <Text size="sm" c="dimmed">
-            OpenProject task search
-          </Text>
-          {loading && <Loader size="xs" />}
         </Group>
         <ScrollArea h="32.5rem">
           <Stack gap={4} p="md">
@@ -207,11 +200,6 @@ export function GlobalSearchModal({
             {!results.length && !loading && <Text c="dimmed">Nothing found</Text>}
           </Stack>
         </ScrollArea>
-        <Group className={classes.modalFooter}>
-          <Text size="sm" c="dimmed">
-            Press / to open search, Enter to open a result
-          </Text>
-        </Group>
       </Stack>
     </Modal>
   );

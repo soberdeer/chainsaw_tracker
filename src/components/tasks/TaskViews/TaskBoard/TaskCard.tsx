@@ -144,9 +144,11 @@ export function TaskCard({
           )}
           <Group gap="xs" mt="xs" justify="space-between" wrap="nowrap">
             <Group gap="xs" style={{ flex: 1, flexWrap: 'wrap' }}>
-              <Tooltip label={`Priority: ${task.priority}`}>
-                <Badge variant="light">{task.priority}</Badge>
-              </Tooltip>
+              {task.priority && (
+                <Tooltip label={`Priority: ${task.priority}`}>
+                  <Badge variant="light">{task.priority}</Badge>
+                </Tooltip>
+              )}
               {estimate && (
                 <Tooltip label={`Estimate: ${estimate}`}>
                   <Badge color="cyan" variant="light">

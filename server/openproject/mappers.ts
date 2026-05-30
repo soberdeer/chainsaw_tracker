@@ -33,12 +33,14 @@ function link(project: OpenProjectProject, key: string) {
   return Array.isArray(value) ? value[0] : value;
 }
 
-function priorityFromOpenProject(name?: string | null): TaskPriority {
-  const value = (name || '').toLowerCase();
+function priorityFromOpenProject(name?: string | null): TaskPriority | undefined {
+  if (!name) return undefined;
+  const value = name.toLowerCase();
   if (value.includes('immediate')) return 'URGENT';
   if (value.includes('high')) return 'HIGH';
   if (value.includes('low')) return 'LOW';
-  return 'NORMAL';
+  if (value.includes('normal')) return 'NORMAL';
+  return undefined;
 }
 
 export function parseDuration(iso: string | null | undefined): number | null {
@@ -54,11 +56,12 @@ export function parseDuration(iso: string | null | undefined): number | null {
   return hours + minutes / 60;
 }
 
-export function priorityToOpenProjectName(priority?: string) {
+export function priorityToOpenProjectName(priority?: string | null): string | undefined {
   if (priority === 'URGENT') return 'Immediate';
   if (priority === 'HIGH') return 'High';
+  if (priority === 'NORMAL') return 'Normal';
   if (priority === 'LOW') return 'Low';
-  return 'Normal';
+  return undefined;
 }
 
 export function mapUser(user: OpenProjectUser): User {
@@ -254,11 +257,8 @@ export function mapWorkPackage(
   const statusId = statusIdForOpenProjectStatus(fallback?.taskList, rawStatusId);
   const typeId = linkId(workPackage._links.type?.href) || undefined;
   const assigneeHref = workPackage._links.assignee?.href || undefined;
-  const responsibleHref = workPackage._links.responsible?.href || undefined;
-  const assignees = [assigneeHref, responsibleHref]
-    .filter((href): href is string => Boolean(href))
-    .map((href) => usersByHref.get(href))
-    .filter((user): user is User => Boolean(user));
+  const assigneeUser = assigneeHref ? usersByHref.get(assigneeHref) : undefined;
+  const assignees = assigneeUser ? [assigneeUser] : [];
   const description = workPackage.description?.raw || '';
   return {
     id: String(workPackage.id),
@@ -317,7 +317,6 @@ export function mapWorkPackage(
         }
       : undefined,
     assignee: assignees[0],
-    responsible: assignees[1],
     assignees,
     tags: [],
     subtasks: [],
@@ -346,8 +345,9 @@ export function mapActivity(workPackageId: string, activity: OpenProjectActivity
   };
 }
 
-export function priorityHref(priorities: OpenProjectPriority[], priority?: string) {
+export function priorityHref(priorities: OpenProjectPriority[], priority?: string | null) {
   const name = priorityToOpenProjectName(priority);
+  if (!name) return undefined;
   return priorities.find((item) => item.name.toLowerCase() === name.toLowerCase())?._links.self
     .href;
 }

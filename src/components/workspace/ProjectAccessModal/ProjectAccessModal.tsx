@@ -93,13 +93,14 @@ export function ProjectAccessModal({
                     </Table.Td>
                     <Table.Td>{member.roles.join(', ')}</Table.Td>
                     <Table.Td>
-                      {member.linkedLocalUser?.email || (
+                      {member.openProjectEmail ? (
+                        <Text size="sm">{member.openProjectEmail}</Text>
+                      ) : (
                         <Text size="sm" c="dimmed">
-                          Not linked to a local tracker user
+                          –
                         </Text>
                       )}
                     </Table.Td>
-                    <Table.Td>{member.source || 'manual OpenProject membership'}</Table.Td>
                   </Table.Tr>
                 ))}
               </Table.Tbody>

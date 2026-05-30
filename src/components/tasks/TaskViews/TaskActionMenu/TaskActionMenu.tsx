@@ -78,7 +78,7 @@ export function TaskActionsMenu({ task, onChanged, onError, canWriteTasks }: Tas
                       parentId: task.id,
                       title: `${task.title}.01`,
                       statusId: task.statusId,
-                      priority: task.priority,
+                      priority: task.priority ?? undefined,
                     })
                   )
                 }
