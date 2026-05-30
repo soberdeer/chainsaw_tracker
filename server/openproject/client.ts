@@ -94,7 +94,7 @@ export async function openProjectRequest<T>(
   }
 
   const duration = Date.now() - start;
-  console.info(`OpenProject API ${method} ${url.pathname} ${response.status} ${duration}ms`);
+  console.info(`${method} ${url.pathname} ${response.status} ${duration}ms`);
 
   if (!response.ok) {
     const message =

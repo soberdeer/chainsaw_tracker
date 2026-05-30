@@ -78,3 +78,15 @@
 .mutedIcon {
   color: var(--app-muted);
 }
+
+.dragHandle {
+  opacity: 0;
+  cursor: grab;
+  color: var(--mantine-color-dimmed);
+  flex-shrink: 0;
+  transition: opacity 0.15s;
+}
+
+.taskRow:hover .dragHandle {
+  opacity: 1;
+}

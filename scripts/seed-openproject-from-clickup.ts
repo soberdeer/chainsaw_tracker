@@ -16,6 +16,15 @@ import type {
   OpenProjectUser,
   OpenProjectWorkPackage,
 } from '../server/openproject/types.js';
+
+type OpenProjectCategory = {
+  id: number;
+  name: string;
+  _links: { self: { href: string } };
+};
+
+// `${projectId}:${normalizedTagName}` → category href
+type CategoryCache = Map<string, string>;
 import type { PermissionSet, TaskStatusType, WorkspaceRole } from '../src/lib/types.js';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
@@ -24,6 +33,7 @@ import type {
   ClickUpList,
   ClickUpSpace,
   ClickUpStatus,
+  ClickUpTag,
   ClickUpTask,
   ClickUpTeam,
 } from './migration/clickup/types.js';
@@ -156,6 +166,8 @@ type Summary = {
   openProjectGroupsCreated: number;
   openProjectGroupsReused: number;
   openProjectGroupErrors: string[];
+  categoriesCreated: number;
+  categoriesReused: number;
   errors: string[];
   warnings: string[];
 };
@@ -175,39 +187,24 @@ const importedAdminEmails = new Set(
 
 const permissionSets: PermissionSet[] = [
   {
-    role: 'OWNER',
+    role: 'ADMIN',
     manageWorkspace: true,
     manageSpaces: true,
     manageDocs: true,
     manageTasks: true,
     inviteMembers: true,
   },
-  {
-    role: 'ADMIN',
-    manageWorkspace: false,
-    manageSpaces: true,
-    manageDocs: true,
-    manageTasks: true,
-    inviteMembers: true,
-  },
-  {
-    role: 'LEAD',
-    manageWorkspace: false,
-    manageSpaces: false,
-    manageDocs: true,
-    manageTasks: false,
-    inviteMembers: false,
-  },
+
   {
     role: 'MEMBER',
     manageWorkspace: false,
     manageSpaces: false,
     manageDocs: true,
-    manageTasks: false,
+    manageTasks: true,
     inviteMembers: false,
   },
   {
-    role: 'VIEWER',
+    role: 'READER',
     manageWorkspace: false,
     manageSpaces: false,
     manageDocs: false,
@@ -697,13 +694,67 @@ function seededStatusesFromOpenProject(params: {
     .sort((a, b) => a.position - b.position);
 }
 
+function containsStatusTransitionText(text: string) {
+  const lower = text.toLowerCase();
+  // English OP locale
+  if (lower.includes('status is invalid') && lower.includes('no valid transition')) return true;
+  // Russian OP locale: "Статус недопустимо, так как … нет правильного перехода …"
+  return lower.includes('статус') && lower.includes('перехода');
+}
+
+/**
+ * Returns true if an error object's OP payload indicates a status-attribute
+ * constraint violation (locale-independent check via _embedded.details.attribute).
+ */
+function isStatusAttributePayload(p: Record<string, unknown>): boolean {
+  const embedded = p._embedded;
+  if (!embedded || typeof embedded !== 'object') return false;
+  const details = (embedded as Record<string, unknown>).details;
+  if (details && typeof details === 'object') {
+    if ((details as Record<string, unknown>).attribute === 'status') return true;
+  }
+  return false;
+}
+
 function isInvalidStatusTransitionError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error);
 
-  return (
-    message.toLowerCase().includes('status is invalid') &&
-    message.toLowerCase().includes('no valid transition')
-  );
+  if (containsStatusTransitionText(message)) return true;
+
+  // OpenProject sometimes wraps multiple constraint violations under a top-level
+  // "Multiple field constraints have been violated." message. In that case the
+  // individual errors live in payload._embedded.errors[].message.
+  // Additionally, OP error payloads carry _embedded.details.attribute = "status"
+  // regardless of locale — check that as the authoritative locale-independent signal.
+  const payload =
+    error instanceof Error && 'payload' in error
+      ? (error as { payload?: unknown }).payload
+      : undefined;
+  if (payload && typeof payload === 'object') {
+    const p = payload as Record<string, unknown>;
+
+    // Single-error payload: check details.attribute === 'status'
+    if (isStatusAttributePayload(p)) return true;
+
+    const embedded = p._embedded;
+    if (embedded && typeof embedded === 'object') {
+      const errors = (embedded as Record<string, unknown>).errors;
+      if (Array.isArray(errors)) {
+        return errors.some((e) => {
+          if (typeof e !== 'object' || e === null) return false;
+          const rec = e as Record<string, unknown>;
+          // locale-independent: check details.attribute
+          if (isStatusAttributePayload(rec)) return true;
+          // fallback: check message text (covers all locales we know)
+          return (
+            typeof rec.message === 'string' && containsStatusTransitionText(rec.message as string)
+          );
+        });
+      }
+    }
+  }
+
+  return false;
 }
 
 async function ensureLocalRuntimeWorkspace() {
@@ -939,7 +990,6 @@ function recordUnsupportedClickUpTaskData(task: ClickUpTask, summary: Summary) {
   summary.clickUpCustomFieldsSeen += countArrayField(taskData.custom_fields);
   summary.clickUpDependenciesSeen +=
     countArrayField(task.dependencies) + countArrayField(task.linked_tasks);
-  summary.clickUpTagsSeen += countArrayField(task.tags);
   summary.clickUpAttachmentsSeen += countArrayField(taskData.attachments);
   summary.clickUpCommentsSeen += countArrayField(taskData.comments);
   summary.clickUpTimeEntriesSeen +=
@@ -1372,12 +1422,39 @@ async function getClickUpFolderDetails(folderId: string, summary: Summary) {
   });
 }
 
+/**
+ * Fetch the full details for a single ClickUp list.
+ * The collection endpoints (/folder/{id}/list, /space/{id}/list) return list
+ * objects WITHOUT the `statuses` array populated.  Only GET /list/{id} returns
+ * the complete list payload including custom statuses.
+ */
+async function getClickUpListDetails(listId: string): Promise<ClickUpList> {
+  return clickUpRequest<ClickUpList>(`/list/${listId}`);
+}
+
+/**
+ * Enrich a set of lists by fetching each list's full details so that
+ * `list.statuses` is populated.  Failures for individual lists are logged
+ * and the original shallow object is kept as a fallback.
+ */
+async function enrichListsWithStatuses(lists: ClickUpList[]): Promise<ClickUpList[]> {
+  return Promise.all(
+    lists.map((list) =>
+      getClickUpListDetails(list.id).catch((err: Error) => {
+        console.warn(`Could not fetch details for list ${list.id} (${list.name}): ${err.message}`);
+        return list;
+      })
+    )
+  );
+}
+
 async function getClickUpFolderlessLists(spaceId: string) {
   const payload = await clickUpRequest<{ lists: ClickUpList[] }>(`/space/${spaceId}/list`, {
     query: { archived: false },
   });
 
-  return payload.lists || [];
+  const lists = payload.lists || [];
+  return enrichListsWithStatuses(lists);
 }
 
 async function getClickUpLists(folderId: string) {
@@ -1385,7 +1462,8 @@ async function getClickUpLists(folderId: string) {
     query: { archived: false },
   });
 
-  return payload.lists || [];
+  const lists = payload.lists || [];
+  return enrichListsWithStatuses(lists);
 }
 
 async function getClickUpTasks(listId: string) {
@@ -1550,12 +1628,253 @@ async function getOpenProjectStatuses() {
   }
 }
 
+/**
+ * Required workflow statuses that must exist in OpenProject before the import.
+ * Ordered by workflow position (Backlog → … → Closed).
+ */
+const REQUIRED_OP_STATUSES: Array<{
+  name: string;
+  color: string;
+  isClosed: boolean;
+  position: number;
+}> = [
+  { name: 'Backlog', color: '#adb5bd', isClosed: false, position: 1 },
+  { name: 'Scoping', color: '#339af0', isClosed: false, position: 2 },
+  { name: 'In Progress', color: '#cc5de8', isClosed: false, position: 3 },
+  { name: 'In Testing', color: '#22b8cf', isClosed: false, position: 4 },
+  { name: 'Shipped', color: '#51cf66', isClosed: true, position: 5 },
+  { name: 'On Hold', color: '#fcc419', isClosed: false, position: 6 },
+  { name: 'Closed', color: '#868e96', isClosed: true, position: 7 },
+];
+
+/**
+ * Ensures every status in REQUIRED_OP_STATUSES exists in OpenProject.
+ * Creates any that are missing and returns the full updated list of statuses.
+ */
+async function ensureRequiredStatuses(existing: OpenProjectStatus[]): Promise<OpenProjectStatus[]> {
+  const existingNames = new Set(existing.map((s) => s.name.toLowerCase()));
+  const missing = REQUIRED_OP_STATUSES.filter((s) => !existingNames.has(s.name.toLowerCase()));
+
+  if (missing.length === 0) return existing;
+
+  console.info(
+    `Creating ${missing.length} missing OpenProject status(es): ${missing.map((s) => s.name).join(', ')}`
+  );
+
+  const created: OpenProjectStatus[] = [];
+  for (const status of missing) {
+    try {
+      const result = await openProjectRequest<OpenProjectStatus>('/api/v3/statuses', {
+        method: 'POST',
+        body: {
+          name: status.name,
+          color: status.color,
+          isClosed: status.isClosed,
+          position: status.position,
+        },
+      });
+      created.push(result);
+      console.info(`  ✓ Created status "${status.name}" (id=${result.id})`);
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      // 422 likely means it already exists under a slightly different case — re-fetch to reconcile
+      if ((error as any).statusCode === 422 || msg.toLowerCase().includes('already')) {
+        console.info(`  ~ Status "${status.name}" already exists (skipped)`);
+      } else {
+        console.warn(`  ✗ Could not create status "${status.name}": ${msg}`);
+      }
+    }
+  }
+
+  if (created.length === 0) return existing;
+
+  // Re-fetch so IDs are accurate
+  const page = await openProjectRequest<HalCollection<OpenProjectStatus>>('/api/v3/statuses', {
+    query: { pageSize: 500 },
+  });
+  return page._embedded?.elements || [...existing, ...created];
+}
+
 async function getOpenProjectPriorities() {
   const page = await openProjectRequest<HalCollection<OpenProjectPriority>>('/api/v3/priorities', {
     query: { pageSize: 100 },
   });
 
   return page._embedded?.elements || [];
+}
+
+/**
+ * Returns true if the given CSRF HTML matches the OP authenticity_token pattern.
+ */
+function extractCsrfToken(html: string): string {
+  const m =
+    html.match(/name=["']authenticity_token["'][^>]*value=["']([^"']+)["']/i) ??
+    html.match(/value=["']([^"']+)["'][^>]*name=["']authenticity_token["']/i);
+  return m?.[1] ?? '';
+}
+
+/**
+ * Configures OpenProject to allow all status transitions for every
+ * type × role combination.  This is required after adding new statuses via
+ * `ensureRequiredStatuses` because OP never adds newly-created statuses to
+ * any workflow automatically, causing work-package creation with those
+ * statuses to fail with a "no valid transition" 422.
+ *
+ * Uses the OP admin HTML controller (session-based auth) which is the only
+ * OP interface for workflow management.  Requires OPENPROJECT_API_PASSWORD;
+ * falls back to a warning if the env var is absent or the endpoint fails.
+ */
+async function ensureOpenProjectWorkflowTransitions(
+  statuses: OpenProjectStatus[],
+  summary: Summary
+): Promise<void> {
+  if (process.env.OPENPROJECT_SKIP_WORKFLOW_CONFIG === 'true') return;
+
+  const baseUrl = (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
+
+  // Build Basic auth header using the API token (same credential the REST client uses).
+  // OP accepts "apikey:{token}" as Basic auth for admin HTML pages for admin users.
+  const rawToken = process.env.OPENPROJECT_API_TOKEN;
+  const rawPassword = process.env.OPENPROJECT_API_PASSWORD;
+  const rawUser = process.env.OPENPROJECT_API_USER || 'admin';
+
+  let adminAuthHeader: string;
+  if (rawPassword) {
+    adminAuthHeader = `Basic ${Buffer.from(`${rawUser}:${rawPassword}`).toString('base64')}`;
+  } else if (rawToken) {
+    adminAuthHeader = `Basic ${Buffer.from(`apikey:${rawToken}`).toString('base64')}`;
+  } else {
+    summary.warnings.push(
+      `Workflow auto-configuration skipped (no OPENPROJECT_API_TOKEN/PASSWORD). ` +
+        `Visit ${baseUrl}/workflows and enable all transitions for every type and role.`
+    );
+    return;
+  }
+
+  // --- 1. Fetch all types and roles via the REST API ---
+  let allTypes: OpenProjectType[] = [];
+  let allRoles: OpenProjectRole[] = [];
+  try {
+    const [typesRes, rolesRes] = await Promise.all([
+      openProjectRequest<HalCollection<OpenProjectType>>('/api/v3/types', {
+        query: { pageSize: 200 },
+      }),
+      openProjectRequest<HalCollection<OpenProjectRole>>('/api/v3/roles', {
+        query: { pageSize: 200 },
+      }),
+    ]);
+    allTypes = typesRes._embedded?.elements ?? [];
+    allRoles = rolesRes._embedded?.elements ?? [];
+  } catch {
+    summary.warnings.push(`Workflow auto-configuration: could not fetch OP types/roles — skipped`);
+    return;
+  }
+
+  if (allTypes.length === 0 || allRoles.length === 0) {
+    summary.warnings.push(`Workflow auto-configuration: no types or roles found in OP — skipped`);
+    return;
+  }
+
+  const statusIds = statuses.map((s) => s.id);
+
+  // --- 2. For each type × role: POST all-transitions workflow via admin HTML endpoint ---
+  // OP's /workflows controller accepts API-token Basic auth for admin users and
+  // skips CSRF verification when the Authorization header is present (Rails API mode).
+  // If that doesn't work we fall back gracefully.
+  let configured = 0;
+  let skippedCount = 0;
+  let csrfToken = '';
+  let sessionCookie = '';
+
+  // Attempt to get a CSRF token from the admin edit page using our auth.
+  try {
+    const firstType = allTypes[0];
+    const firstRole = allRoles[0];
+    const editRes = await fetch(
+      `${baseUrl}/workflows/edit?type_id=${firstType.id}&role_id=${firstRole.id}`,
+      { headers: { Authorization: adminAuthHeader } }
+    );
+    if (editRes.ok) {
+      const html = await editRes.text();
+      csrfToken = extractCsrfToken(html);
+      sessionCookie = (editRes.headers.get('set-cookie') ?? '').split(';')[0];
+    }
+  } catch {
+    // proceed without CSRF token — OP may skip it for API-key auth
+  }
+
+  for (const type of allTypes) {
+    // Refresh CSRF token per type when we have a session cookie.
+    if (sessionCookie) {
+      try {
+        const editRes = await fetch(
+          `${baseUrl}/workflows/edit?type_id=${type.id}&role_id=${allRoles[0].id}`,
+          { headers: { Authorization: adminAuthHeader, Cookie: sessionCookie } }
+        );
+        if (editRes.ok) {
+          const html = await editRes.text();
+          const fresh = extractCsrfToken(html);
+          if (fresh) csrfToken = fresh;
+          const c = (editRes.headers.get('set-cookie') ?? '').split(';')[0];
+          if (c) sessionCookie = c;
+        }
+      } catch {
+        // keep existing token
+      }
+    }
+
+    for (const role of allRoles) {
+      const body = new URLSearchParams();
+      if (csrfToken) body.append('authenticity_token', csrfToken);
+      body.append('type_id', String(type.id));
+      body.append('role_id', String(role.id));
+      body.append('_method', 'put');
+
+      // old_status_id=0 → "create" workflow (initial status on new WP).
+      for (const fromId of [0, ...statusIds]) {
+        for (const toId of statusIds) {
+          body.append(`workflows[${fromId}][${toId}]`, '1');
+        }
+      }
+
+      try {
+        const headers: Record<string, string> = {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          Authorization: adminAuthHeader,
+          Accept: 'text/html,application/xhtml+xml',
+        };
+        if (sessionCookie) headers['Cookie'] = sessionCookie;
+
+        const res = await fetch(`${baseUrl}/workflows`, {
+          method: 'POST',
+          headers,
+          body: body.toString(),
+          redirect: 'manual',
+        });
+
+        if (res.ok || res.status === 302 || res.status === 301) {
+          configured += 1;
+        } else {
+          skippedCount += 1;
+        }
+      } catch {
+        skippedCount += 1;
+      }
+    }
+  }
+
+  if (configured > 0) {
+    console.info(
+      `  ✓ Workflow transitions configured: ${configured} type×role pair(s) ` +
+        `(${allTypes.length} types × ${allRoles.length} roles)`
+    );
+  }
+  if (skippedCount > 0) {
+    summary.warnings.push(
+      `Workflow auto-configuration: ${skippedCount} type×role pair(s) could not be updated — ` +
+        `visit ${baseUrl}/workflows to configure manually if status import still fails`
+    );
+  }
 }
 
 async function firstTaskType(projectId: number) {
@@ -1638,6 +1957,7 @@ export function buildTaskBody(params: {
   assigneeHref?: string;
   responsibleHref?: string;
   additionalAssignees?: ClickUpAssigneeLike[];
+  categoryHref?: string;
 }) {
   const links: Record<string, { href: string | undefined }> = {
     type: { href: params.type?._links.self.href || undefined },
@@ -1664,6 +1984,10 @@ export function buildTaskBody(params: {
 
   if (params.responsibleHref) {
     links.responsible = { href: params.responsibleHref };
+  }
+
+  if (params.categoryHref) {
+    links.category = { href: params.categoryHref };
   }
 
   const meta = metaFromContext(params.task, params.context);
@@ -1727,6 +2051,7 @@ async function createOpenProjectWorkPackage(params: {
   priorities: OpenProjectPriority[];
   summary: Summary;
   openProjectUserSync: OpenProjectUserSyncContext;
+  categoryHref?: string;
 }) {
   const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
   let includeStatus = true;
@@ -1755,6 +2080,7 @@ async function createOpenProjectWorkPackage(params: {
             additionalAssignees: includeAssignments
               ? assigneeMapping.additionalAssignees
               : rejectedAssignmentFallback,
+            categoryHref: params.categoryHref,
           }),
         }
       );
@@ -1812,19 +2138,18 @@ async function updateOpenProjectWorkPackage(params: {
   priorities: OpenProjectPriority[];
   summary: Summary;
   openProjectUserSync: OpenProjectUserSyncContext;
+  categoryHref?: string;
 }) {
-  if (params.task.status) {
-    params.summary.statusTransitionsSkipped += 1;
-  }
   const assigneeMapping = await clickUpAssigneeLinks(params.task, params.openProjectUserSync);
   let includeAssignments = Boolean(assigneeMapping.assigneeHref || assigneeMapping.responsibleHref);
+  let includeStatus = Boolean(params.task.status);
   const rejectedAssignmentFallback = assigneeFallbackUsers({
     assignee: assigneeMapping.assignee,
     responsible: assigneeMapping.responsible,
     additionalAssignees: assigneeMapping.additionalAssignees,
   });
 
-  for (let attempt = 0; attempt < 2; attempt += 1) {
+  for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       const updated = await openProjectRequest<OpenProjectWorkPackage>(
         `/api/v3/work_packages/${params.existing.id}`,
@@ -1838,12 +2163,13 @@ async function updateOpenProjectWorkPackage(params: {
               type: params.type,
               openProjectStatuses: params.openProjectStatuses,
               priorities: params.priorities,
-              includeStatus: false,
+              includeStatus,
               assigneeHref: includeAssignments ? assigneeMapping.assigneeHref : undefined,
               responsibleHref: includeAssignments ? assigneeMapping.responsibleHref : undefined,
               additionalAssignees: includeAssignments
                 ? assigneeMapping.additionalAssignees
                 : rejectedAssignmentFallback,
+              categoryHref: params.categoryHref,
             }),
           },
         }
@@ -1862,6 +2188,15 @@ async function updateOpenProjectWorkPackage(params: {
 
       return updated;
     } catch (error) {
+      if (includeStatus && isInvalidStatusTransitionError(error)) {
+        includeStatus = false;
+        params.summary.statusTransitionsSkipped += 1;
+        params.summary.warnings.push(
+          `status skipped while updating ${params.task.name} (${params.task.id}) because OpenProject rejected the imported ClickUp status`
+        );
+        continue;
+      }
+
       if (includeAssignments && isAssigneeMappingError(error)) {
         includeAssignments = false;
         params.summary.assigneeRejectedByOpenProject += 1;
@@ -1883,6 +2218,93 @@ async function updateOpenProjectWorkPackage(params: {
   throw new Error(`Could not update work package for ClickUp task ${params.task.id}`);
 }
 
+const clickUpNoisyTagPatterns = [
+  /^cl-[a-z0-9]+-\d+/i,
+  /^clickup.?import$/i,
+  /^clickup$/i,
+  /^imported$/i,
+];
+
+async function getProjectCategories(projectId: number): Promise<OpenProjectCategory[]> {
+  const page = await openProjectRequest<HalCollection<OpenProjectCategory>>(
+    `/api/v3/projects/${projectId}/categories`,
+    { query: { pageSize: 200 } }
+  ).catch(() => ({ _embedded: { elements: [] as OpenProjectCategory[] } }));
+  return page._embedded?.elements || [];
+}
+
+async function ensureOpenProjectCategory(
+  projectId: number,
+  tagName: string,
+  cache: CategoryCache,
+  summary: Summary
+): Promise<string | undefined> {
+  const name = tagName.trim().replace(/\s+/g, ' ');
+  const normalizedName = name.toLowerCase();
+  const cacheKey = `${projectId}:${normalizedName}`;
+
+  if (cache.has(cacheKey)) {
+    summary.categoriesReused += 1;
+    return cache.get(cacheKey);
+  }
+
+  try {
+    const created = await openProjectRequest<OpenProjectCategory>(
+      `/api/v3/projects/${projectId}/categories`,
+      { method: 'POST', body: { name } }
+    );
+    const href = created._links.self.href;
+    cache.set(cacheKey, href);
+    summary.categoriesCreated += 1;
+    return href;
+  } catch (error) {
+    // 422 likely means the category already exists; re-fetch to reconcile
+    const existing = await getProjectCategories(projectId).catch(() => []);
+    const found = existing.find((c) => c.name.toLowerCase() === normalizedName);
+    if (found) {
+      const href = found._links.self.href;
+      cache.set(cacheKey, href);
+      summary.categoriesReused += 1;
+      return href;
+    }
+    summary.warnings.push(
+      `Could not create category "${name}" in project ${projectId}: ${(error as Error).message}`
+    );
+    return undefined;
+  }
+}
+
+async function initializeProjectCategoryCache(
+  projectId: number,
+  cache: CategoryCache
+): Promise<void> {
+  const categories = await getProjectCategories(projectId);
+  for (const cat of categories) {
+    const key = `${projectId}:${cat.name.toLowerCase()}`;
+    if (!cache.has(key)) {
+      cache.set(key, cat._links.self.href);
+    }
+  }
+}
+
+async function resolveTagCategoryHref(
+  projectId: number,
+  tags: ClickUpTag[],
+  cache: CategoryCache,
+  summary: Summary
+): Promise<string | undefined> {
+  const meaningful = tags.filter(
+    (t) => t.name && !clickUpNoisyTagPatterns.some((p) => p.test(t.name.trim()))
+  );
+  if (!meaningful.length) return undefined;
+
+  // Ensure all tag categories exist in the project; return the first href for WP assignment
+  const hrefs = await Promise.all(
+    meaningful.map((t) => ensureOpenProjectCategory(projectId, t.name, cache, summary))
+  );
+  return hrefs.find(Boolean);
+}
+
 async function syncClickUpTasksIntoProject(params: {
   context: ClickUpTaskContext;
   project: OpenProjectProject;
@@ -1891,11 +2313,14 @@ async function syncClickUpTasksIntoProject(params: {
   summary: Summary;
   userSync: UserSyncContext;
   openProjectUserSync: OpenProjectUserSyncContext;
+  workspaceId: string;
+  categoryCache: CategoryCache;
 }) {
   const [existingWorkPackages, type, clickUpTasks] = await Promise.all([
     getProjectWorkPackages(params.project.id).catch(() => []),
     firstTaskType(params.project.id),
     getClickUpTasks(params.context.list.id),
+    initializeProjectCategoryCache(params.project.id, params.categoryCache),
   ]);
 
   const { byClickUpTaskId, bySubject } = indexExistingWorkPackages(existingWorkPackages);
@@ -1915,6 +2340,24 @@ async function syncClickUpTasksIntoProject(params: {
     const existing = existingById || existingBySubject;
 
     try {
+      const categoryHref = task.tags?.length
+        ? await resolveTagCategoryHref(
+            params.project.id,
+            task.tags,
+            params.categoryCache,
+            params.summary
+          ).catch((error) => {
+            params.summary.warnings.push(
+              `tags skipped for ${task.name} (${task.id}): ${(error as Error).message}`
+            );
+            return undefined;
+          })
+        : undefined;
+
+      if (task.tags?.length) {
+        params.summary.clickUpTagsSeen += task.tags.length;
+      }
+
       if (existing) {
         const updated = await updateOpenProjectWorkPackage({
           existing,
@@ -1925,6 +2368,7 @@ async function syncClickUpTasksIntoProject(params: {
           priorities: params.priorities,
           summary: params.summary,
           openProjectUserSync: params.openProjectUserSync,
+          categoryHref,
         });
 
         byClickUpTaskId.set(task.id, updated);
@@ -1939,6 +2383,7 @@ async function syncClickUpTasksIntoProject(params: {
           priorities: params.priorities,
           summary: params.summary,
           openProjectUserSync: params.openProjectUserSync,
+          categoryHref,
         });
 
         byClickUpTaskId.set(task.id, created);
@@ -1950,6 +2395,35 @@ async function syncClickUpTasksIntoProject(params: {
         `task ${task.name} (${task.id}) in ${originalClickUpPath(params.context)}: ${
           (error as Error).message
         }`
+      );
+    }
+  }
+
+  // Second pass: set parent work-package links for ClickUp subtasks
+  for (const task of clickUpTasks) {
+    if (!task.parent) continue;
+    const childWp = byClickUpTaskId.get(task.id);
+    const parentWp = byClickUpTaskId.get(task.parent);
+    if (!childWp || !parentWp) continue;
+    const currentParentId = String((childWp as any)._links?.parent?.href ?? '')
+      .split('/')
+      .at(-1);
+    if (currentParentId === String(parentWp.id)) continue;
+    try {
+      // Re-fetch to get fresh lockVersion
+      const fresh = await openProjectRequest<OpenProjectWorkPackage>(
+        `/api/v3/work_packages/${childWp.id}`
+      );
+      await openProjectRequest(`/api/v3/work_packages/${childWp.id}`, {
+        method: 'PATCH',
+        body: {
+          lockVersion: fresh.lockVersion,
+          _links: { parent: { href: `/api/v3/work_packages/${parentWp.id}` } },
+        },
+      });
+    } catch (error) {
+      params.summary.warnings.push(
+        `parent link skipped for ${task.name} (${task.id}): ${(error as Error).message}`
       );
     }
   }
@@ -2022,6 +2496,8 @@ async function seedFolderedLists(params: {
   userSync: UserSyncContext;
   openProjectUserSync: OpenProjectUserSyncContext;
   isSharedRoadmap?: boolean;
+  workspaceId: string;
+  categoryCache: CategoryCache;
 }) {
   const folderProject = await ensureOpenProjectProject(
     {
@@ -2136,6 +2612,8 @@ async function seedFolderedLists(params: {
       summary: params.summary,
       userSync: params.userSync,
       openProjectUserSync: params.openProjectUserSync,
+      workspaceId: params.workspaceId,
+      categoryCache: params.categoryCache,
     });
 
     const taskListId = `op-project:${project.id}:clickup-list:${list.id}`;
@@ -2175,6 +2653,8 @@ async function seedFolderlessLists(params: {
   userSync: UserSyncContext;
   openProjectUserSync: OpenProjectUserSyncContext;
   isSharedRoadmap?: boolean;
+  workspaceId: string;
+  categoryCache: CategoryCache;
 }) {
   for (const list of params.lists) {
     const project = await ensureOpenProjectProject(
@@ -2231,6 +2711,8 @@ async function seedFolderlessLists(params: {
       summary: params.summary,
       userSync: params.userSync,
       openProjectUserSync: params.openProjectUserSync,
+      workspaceId: params.workspaceId,
+      categoryCache: params.categoryCache,
     });
 
     const taskListId = `op-project:${project.id}:clickup-list:${list.id}`;
@@ -2436,7 +2918,6 @@ function addUnsupportedFeatureWarnings(summary: Summary) {
   const unsupported = [
     ['ClickUp custom fields', summary.clickUpCustomFieldsSeen],
     ['ClickUp dependencies/linked tasks', summary.clickUpDependenciesSeen],
-    ['ClickUp tags', summary.clickUpTagsSeen],
     ['ClickUp attachments', summary.clickUpAttachmentsSeen],
     ['ClickUp comments', summary.clickUpCommentsSeen],
     ['ClickUp time entries/estimates', summary.clickUpTimeEntriesSeen],
@@ -2508,9 +2989,13 @@ async function main() {
     openProjectGroupsCreated: 0,
     openProjectGroupsReused: 0,
     openProjectGroupErrors: [],
+    categoriesCreated: 0,
+    categoriesReused: 0,
     errors: [],
     warnings: [],
   };
+
+  const categoryCache: CategoryCache = new Map();
 
   const migrationRun = await prisma.migrationRun.create({
     data: {
@@ -2519,7 +3004,9 @@ async function main() {
     },
   });
 
-  const openProjectStatuses = await getOpenProjectStatuses();
+  const rawOpenProjectStatuses = await getOpenProjectStatuses();
+  const openProjectStatuses = await ensureRequiredStatuses(rawOpenProjectStatuses);
+  await ensureOpenProjectWorkflowTransitions(openProjectStatuses, summary);
   const openProjectPriorities = await getOpenProjectPriorities();
   const projects = await getOpenProjectProjects();
   const [openProjectUsers, openProjectRoles, openProjectMemberships] = await Promise.all([
@@ -2720,6 +3207,8 @@ async function main() {
         userSync,
         openProjectUserSync,
         isSharedRoadmap,
+        workspaceId: localWorkspace.id,
+        categoryCache,
       });
     }
 
@@ -2736,6 +3225,8 @@ async function main() {
       userSync,
       openProjectUserSync,
       isSharedRoadmap,
+      workspaceId: localWorkspace.id,
+      categoryCache,
     });
 
     workspace.spaces.push(seededSpace);

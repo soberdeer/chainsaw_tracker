@@ -87,3 +87,33 @@
 .mutedIcon {
   color: var(--app-muted);
 }
+
+/* ── Status drag handle ───────────────────────────────────────────────── */
+.statusGrip {
+  cursor: grab;
+  color: var(--mantine-color-dimmed);
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+/* Fade the section being dragged */
+.statusDragging {
+  opacity: 0.4;
+}
+
+/* ── Status drop indicator: top/bottom border on the target section ───── */
+[data-status-wrapper][data-status-drop='before'] .statusSection {
+  border-top: 2px solid light-dark(var(--mantine-color-blue-5), var(--mantine-color-blue-6));
+}
+[data-status-wrapper][data-status-drop='after'] .statusSection {
+  border-bottom: 2px solid light-dark(var(--mantine-color-blue-5), var(--mantine-color-blue-6));
+}
+
+/* ── Task drop indicator: horizontal line on the target row wrapper ───── */
+[data-task-row][data-drop-before] {
+  box-shadow: 0 -2px 0 0 light-dark(var(--mantine-color-blue-5), var(--mantine-color-blue-6));
+}
+[data-task-row][data-drop-after] {
+  box-shadow: 0 2px 0 0 light-dark(var(--mantine-color-blue-5), var(--mantine-color-blue-6));
+}

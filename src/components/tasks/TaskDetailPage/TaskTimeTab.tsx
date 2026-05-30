@@ -15,7 +15,7 @@ import {
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconClock } from '@tabler/icons-react';
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import {
   addTaskTimeEntry,
   getErrorMessage,
@@ -62,10 +62,13 @@ export function TaskTimeTab({
     },
   });
 
+  const formRef = useRef(form);
+  formRef.current = form;
+
   // When the activity list loads (or when a single activity is available), pre-select it.
   useEffect(() => {
-    if (defaultActivityId && !form.values.timeActivityId) {
-      form.setFieldValue('timeActivityId', defaultActivityId);
+    if (defaultActivityId && !formRef.current.values.timeActivityId) {
+      formRef.current.setFieldValue('timeActivityId', defaultActivityId);
     }
   }, [defaultActivityId]);
 

@@ -33,14 +33,14 @@ function permissionSet(role: WorkspaceRole, overrides: Partial<PermissionSet> = 
     id: `${role}-set`,
     workspaceId: 'runtime-workspace',
     role,
-    manageWorkspace: role === 'OWNER' || role === 'ADMIN',
-    manageSpaces: role === 'OWNER' || role === 'ADMIN',
-    manageDocs: false,
-    manageTasks: role !== 'VIEWER',
-    inviteMembers: role === 'OWNER' || role === 'ADMIN',
-    manageIntegrations: role === 'OWNER' || role === 'ADMIN',
-    manageImports: role === 'OWNER' || role === 'ADMIN',
-    viewReports: role !== 'VIEWER',
+    manageWorkspace: role === 'ADMIN',
+    manageSpaces: role === 'ADMIN',
+    manageDocs: role !== 'READER',
+    manageTasks: role !== 'READER',
+    inviteMembers: role === 'ADMIN',
+    manageIntegrations: role === 'ADMIN',
+    manageImports: role === 'ADMIN',
+    viewReports: role !== 'READER',
     ...overrides,
   };
 }
@@ -57,11 +57,9 @@ function runtimeMembership(role: WorkspaceRole) {
       id: 'runtime-workspace',
       slug: 'openproject-runtime',
       permissionSets: [
-        permissionSet('OWNER'),
         permissionSet('ADMIN'),
-        permissionSet('LEAD'),
         permissionSet('MEMBER'),
-        permissionSet('VIEWER', { manageTasks: false, viewReports: false }),
+        permissionSet('READER', { manageTasks: false, viewReports: false }),
       ],
     },
   };
@@ -73,11 +71,11 @@ test('OpenProject task writes allow roles with manageTasks in runtime workspace'
   await assert.doesNotReject(() => requireOpenProjectTaskWrite(req('member')));
 });
 
-test('OpenProject task writes reject viewer roles without manageTasks', async () => {
+test('OpenProject task writes reject reader roles without manageTasks', async () => {
   prisma.membership.findFirst = (async () =>
-    runtimeMembership('VIEWER')) as unknown as typeof prisma.membership.findFirst;
+    runtimeMembership('READER')) as unknown as typeof prisma.membership.findFirst;
   await assert.rejects(
-    () => requireOpenProjectTaskWrite(req('viewer')),
+    () => requireOpenProjectTaskWrite(req('reader')),
     (error: unknown) =>
       error instanceof Error && (error as { statusCode?: number }).statusCode === 403
   );
@@ -94,7 +92,7 @@ test('OpenProject task writes reject users without an allowed membership', async
 
 test('OpenProject project writes require admin-level roles', async () => {
   prisma.membership.findFirst = (async () =>
-    runtimeMembership('LEAD')) as unknown as typeof prisma.membership.findFirst;
+    runtimeMembership('MEMBER')) as unknown as typeof prisma.membership.findFirst;
   await assert.rejects(
     () => requireOpenProjectProjectWrite(req()),
     (error: unknown) => error instanceof Error && error.message.includes('OpenProject projects')

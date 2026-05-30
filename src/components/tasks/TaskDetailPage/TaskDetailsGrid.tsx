@@ -1,0 +1,249 @@
+import {
+  Badge,
+  Button,
+  Group,
+  MultiSelect,
+  NumberInput,
+  Select,
+  SimpleGrid,
+  Stack,
+  Text,
+  TextInput,
+  Tooltip,
+} from '@mantine/core';
+import type { UseFormReturnType } from '@mantine/form';
+import { IconCalendarDue, IconFlag } from '@tabler/icons-react';
+import { useState } from 'react';
+import {
+  createOpenProjectTag,
+  displayStatus,
+  formatDueDate,
+  formatHours,
+  type Tag,
+  type Task,
+  type TaskPriority,
+  type TaskStatus,
+  type User,
+  type Workspace,
+} from '@/lib';
+import { UserSelect } from '../../common/UserSelect';
+import classes from './TaskDetailPage.module.css';
+
+interface DetailsFormValues {
+  statusId: string;
+  priority: TaskPriority;
+  assigneeIds: string[];
+  startDate: string;
+  dueDate: string;
+  estimatedHours: number | string;
+}
+
+interface TaskDetailsGridProps {
+  task: Task;
+  workspace: Workspace;
+  form: UseFormReturnType<DetailsFormValues>;
+  workspaceTags: Tag[];
+  setWorkspaceTags: React.Dispatch<React.SetStateAction<Tag[]>>;
+  taskTagIds: string[];
+  tagSaving: boolean;
+  statuses: TaskStatus[];
+  projectUsers: User[];
+  projectUsersLoading: boolean;
+  canWriteTasks: boolean;
+  onUpdateAndRefresh: (input: Partial<Task> & Record<string, unknown>) => Promise<void>;
+  onSyncTags: (ids: string[]) => Promise<void>;
+}
+
+export function TaskDetailsGrid({
+  task,
+  workspace,
+  form,
+  workspaceTags,
+  setWorkspaceTags,
+  taskTagIds,
+  tagSaving,
+  statuses,
+  projectUsers,
+  projectUsersLoading,
+  canWriteTasks,
+  onUpdateAndRefresh,
+  onSyncTags,
+}: TaskDetailsGridProps) {
+  const [tagCreating, setTagCreating] = useState(false);
+  const [tagSearch, setTagSearch] = useState('');
+
+  const tagOptions = workspaceTags.map((t) => ({ value: t.id, label: t.name }));
+
+  const handleTagChange = async (values: string[]) => {
+    const createValue = values.find((v) => v.startsWith('__create__:'));
+    if (createValue) {
+      const name = createValue.slice('__create__:'.length);
+      setTagCreating(true);
+      try {
+        const created = await createOpenProjectTag({ workspaceId: workspace.id, name });
+        setWorkspaceTags((prev) =>
+          [...prev.filter((t) => t.id !== created.id), created].sort((a, b) =>
+            a.name.localeCompare(b.name)
+          )
+        );
+        const next = values.filter((v) => !v.startsWith('__create__:')).concat(created.id);
+        await onSyncTags(next);
+      } finally {
+        setTagCreating(false);
+        setTagSearch('');
+      }
+    } else {
+      await onSyncTags(values);
+    }
+  };
+
+  const tagData = [
+    ...tagOptions,
+    ...(tagSearch.trim() &&
+    !tagOptions.some((t) => t.label.toLowerCase() === tagSearch.trim().toLowerCase())
+      ? [{ value: `__create__:${tagSearch.trim()}`, label: `+ Create "${tagSearch.trim()}"` }]
+      : []),
+  ];
+
+  const due = formatDueDate(task.dueDate);
+  const start = formatDueDate(task.startDate);
+  const status = displayStatus(undefined, task.status);
+
+  return (
+    <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
+      <Select
+        data-testid="task-status-select"
+        label="Status"
+        leftSection={<span className={classes.statusDot} style={{ background: status.color }} />}
+        value={form.values.statusId}
+        onChange={(value) => {
+          form.setFieldValue('statusId', value || '');
+          void onUpdateAndRefresh({ statusId: value || undefined });
+        }}
+        data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
+        placeholder={status.label}
+        searchable
+        disabled={!canWriteTasks}
+      />
+      {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
+      <UserSelect
+        data-testid="task-assignee-select"
+        label="Assignee / responsible"
+        users={projectUsers}
+        loading={projectUsersLoading}
+        value={form.values.assigneeIds}
+        onChange={(value) => {
+          form.setFieldValue('assigneeIds', value);
+          void onUpdateAndRefresh({ assigneeIds: value });
+        }}
+        maxValues={2}
+        disabled={!canWriteTasks}
+      />
+      <Stack gap="xs">
+        <NumberInput
+          label="Estimate"
+          value={form.values.estimatedHours}
+          onChange={(value) => form.setFieldValue('estimatedHours', value)}
+          min={0}
+          step={0.5}
+          decimalScale={2}
+          suffix="h"
+          disabled={!canWriteTasks}
+          onBlur={() =>
+            void onUpdateAndRefresh({
+              estimatedHours:
+                form.values.estimatedHours === '' ? null : Number(form.values.estimatedHours),
+            })
+          }
+        />
+        <Group gap="xs">
+          {formatHours(task.remainingHours) && (
+            <Tooltip label="OpenProject remaining time">
+              <Badge color="orange" variant="light">
+                Remaining {formatHours(task.remainingHours)}
+              </Badge>
+            </Tooltip>
+          )}
+          {formatHours(task.spentHours) && (
+            <Tooltip label="OpenProject spent time">
+              <Badge color="teal" variant="light">
+                Spent {formatHours(task.spentHours)}
+              </Badge>
+            </Tooltip>
+          )}
+        </Group>
+      </Stack>
+      <TextInput
+        label="Start date"
+        leftSection={<IconCalendarDue size="1rem" />}
+        type="date"
+        value={form.values.startDate}
+        onChange={(event) => form.setFieldValue('startDate', event.currentTarget.value)}
+        onBlur={() => void onUpdateAndRefresh({ startDate: form.values.startDate || undefined })}
+        placeholder={start || 'No start'}
+        readOnly={!canWriteTasks}
+      />
+      <TextInput
+        label="Due date"
+        leftSection={<IconCalendarDue size="1rem" />}
+        type="date"
+        value={form.values.dueDate}
+        onChange={(event) => form.setFieldValue('dueDate', event.currentTarget.value)}
+        onBlur={() => void onUpdateAndRefresh({ dueDate: form.values.dueDate || undefined })}
+        placeholder={due || 'No due'}
+        readOnly={!canWriteTasks}
+      />
+      <Select
+        data-testid="task-priority-select"
+        label="Priority"
+        leftSection={<IconFlag size="1rem" />}
+        value={form.values.priority}
+        onChange={(value) => {
+          const next = (value || 'NORMAL') as TaskPriority;
+          form.setFieldValue('priority', next);
+          void onUpdateAndRefresh({ priority: next });
+        }}
+        data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
+        disabled={!canWriteTasks}
+      />
+      <MultiSelect
+        data-testid="task-tag-picker"
+        label="Tags"
+        description="Stored locally for this OpenProject work package. Tags do not create a duplicate local task."
+        data={tagData}
+        value={taskTagIds}
+        onChange={(value) => void handleTagChange(value)}
+        searchable
+        clearable
+        searchValue={tagSearch}
+        onSearchChange={setTagSearch}
+        disabled={!canWriteTasks || tagSaving || tagCreating}
+        placeholder="Search or create a tag…"
+      />
+      <Stack gap="xs">
+        <Text fw={700}>Source</Text>
+        <Group gap="xs">
+          <Tooltip label={`Source: ${task.externalSource || 'LOCAL'}`}>
+            <Badge>{task.externalSource || 'LOCAL'}</Badge>
+          </Tooltip>
+          {task.externalUrl && (
+            <Button
+              size="xs"
+              variant="subtle"
+              component="a"
+              href={task.externalUrl}
+              target="_blank"
+            >
+              Open OpenProject
+            </Button>
+          )}
+          {task.syncedAt && (
+            <Text size="xs" c="dimmed">
+              Synced {new Date(task.syncedAt).toLocaleString()}
+            </Text>
+          )}
+        </Group>
+      </Stack>
+    </SimpleGrid>
+  );
+}

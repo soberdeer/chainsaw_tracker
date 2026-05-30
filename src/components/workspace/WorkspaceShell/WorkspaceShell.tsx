@@ -1,37 +1,19 @@
 import {
-  ActionIcon,
   Alert,
   AppShell,
-  Badge,
-  Breadcrumbs,
   Box,
+  Breadcrumbs,
   Button,
-  Checkbox,
   Drawer,
   Group,
   Loader,
-  Modal,
-  MultiSelect,
-  Popover,
-  SimpleGrid,
-  Select,
   Stack,
   Tabs,
   Text,
-  TextInput,
   Title,
-  Tooltip,
   useMantineColorScheme,
 } from '@mantine/core';
-import {
-  IconFilter,
-  IconLayoutKanban,
-  IconList,
-  IconPlus,
-  IconSearch,
-  IconSortAscending,
-  IconSortDescending,
-} from '@tabler/icons-react';
+import { IconLayoutKanban, IconList, IconSearch } from '@tabler/icons-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { listToOpProjectId, useProjectUsers } from '@/hooks/useProjectUsers';
@@ -63,7 +45,6 @@ import {
   buildWorkspaceBreadcrumbs,
   describeTaskCollectionState,
   showToast,
-  summarizeImportRun,
   taskPath,
   workspaceHasWork,
   type Task,
@@ -81,15 +62,16 @@ import { ProfileModal } from '../../auth/ProfileModal/ProfileModal';
 import { DocumentPage } from '../../docs/DocumentPage/DocumentPage';
 import { DocumentsPanel } from '../../docs/DocumentsPanel/DocumentsPanel';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
-import { GroupedTaskList } from '../../tasks/StatusIcon';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
-import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
 import { ProjectAccessModal } from '../ProjectAccessModal/ProjectAccessModal';
 import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
 import { WorkspaceSettingsModal } from '../WorkspaceSettingsModal/WorkspaceSettingsModal';
+import { BoardPanel } from './BoardPanel';
+import { ImportReportModal } from './ImportReportModal';
 import { ImportReportsMenu } from './ImportReportsMenu';
 import { NotificationMenu } from './NotificationMenu';
+import { TaskListPanel } from './TaskListPanel';
 import { WorkspaceSidebar } from './WorkspaceSidebar';
 import classes from './WorkspaceShell.module.css';
 
@@ -597,7 +579,9 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
 
   useEffect(() => {
     loadTasks(cursorQuery, false);
-  }, [cursorQuery, loadTasks]);
+    // refreshKey is intentionally listed to force a re-fetch when reload() is called
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cursorQuery, loadTasks, refreshKey]);
 
   const handleLoadMoreTasks = useCallback(() => {
     if (!nextCursor) {
@@ -908,7 +892,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
       </Box>
     );
   }
-  console.log(workspace.spaces);
   return (
     <>
       <AppShell navbar={{ width: '21.75rem', breakpoint: 'sm' }} padding={0}>
@@ -1153,371 +1136,80 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               </Tabs.List>
 
               <Tabs.Panel value="tasks">
-                <Stack gap={0}>
-                  <Group
-                    className={classes.taskToolbar}
-                    justify="space-between"
-                    data-testid="filter-bar"
-                  >
-                    <Group gap="xs">
-                      <TextInput
-                        data-testid="filter-search"
-                        value={taskSearch}
-                        onChange={(event) => setTaskSearch(event.currentTarget.value)}
-                        placeholder="Search tasks…"
-                        leftSection={<IconSearch size="1rem" />}
-                        w="14rem"
-                      />
-                      <Popover
-                        opened={filterMenuOpen}
-                        onChange={setFilterMenuOpen}
-                        position="bottom-start"
-                        width={340}
-                        withArrow
-                        shadow="md"
-                        trapFocus
-                      >
-                        <Popover.Target>
-                          <Button
-                            variant={filtersActive ? 'filled' : 'light'}
-                            leftSection={<IconFilter size="1rem" />}
-                            rightSection={
-                              activeFilterChips.length > 0 ? (
-                                <Badge size="xs" color="red" circle>
-                                  {activeFilterChips.length}
-                                </Badge>
-                              ) : undefined
-                            }
-                            onClick={() => setFilterMenuOpen((o) => !o)}
-                            data-testid="filters-dropdown-button"
-                          >
-                            Filters
-                          </Button>
-                        </Popover.Target>
-                        <Popover.Dropdown>
-                          <Stack gap="sm">
-                            <Select
-                              data-testid="filter-status"
-                              label="Status"
-                              value={statusFilter}
-                              onChange={setStatusFilter}
-                              clearable
-                              placeholder="Any status"
-                              data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-                            />
-                            <Select
-                              data-testid="filter-priority"
-                              label="Priority"
-                              value={priorityFilter}
-                              onChange={setPriorityFilter}
-                              clearable
-                              placeholder="Any priority"
-                              data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-                            />
-                            <MultiSelect
-                              data-testid="filter-assignees"
-                              label="Assignees"
-                              value={assigneeFilter}
-                              onChange={setAssigneeFilter}
-                              clearable
-                              placeholder="Anyone"
-                              data={availableAssignees.map((user) => ({
-                                value: user.id,
-                                label: user.name,
-                              }))}
-                              searchable
-                            />
-                            <Tooltip
-                              label={
-                                currentOpenProjectUser
-                                  ? 'Filter tasks assigned to you'
-                                  : 'Your account is not linked to an OpenProject user'
-                              }
-                            >
-                              <Button
-                                data-testid="filter-assigned-to-me"
-                                variant={assignedToMeActive ? 'filled' : 'light'}
-                                size="xs"
-                                disabled={!currentOpenProjectUser}
-                                onClick={() => {
-                                  if (!currentOpenProjectUser) return;
-                                  setAssigneeFilter(
-                                    assignedToMeActive ? [] : [currentOpenProjectUser.id]
-                                  );
-                                }}
-                              >
-                                Assigned to me
-                              </Button>
-                            </Tooltip>
-                            <MultiSelect
-                              data-testid="filter-responsible"
-                              label="Responsible"
-                              value={responsibleFilter}
-                              onChange={setResponsibleFilter}
-                              clearable
-                              placeholder="Anyone"
-                              data={availableAssignees.map((user) => ({
-                                value: user.id,
-                                label: user.name,
-                              }))}
-                              searchable
-                              maxValues={1}
-                            />
-                            <MultiSelect
-                              data-testid="filter-type"
-                              label="Type"
-                              value={typeFilter}
-                              onChange={setTypeFilter}
-                              clearable
-                              placeholder="Any type"
-                              data={taskTypes.map((type) => ({
-                                value: type.id,
-                                label: type.name,
-                              }))}
-                              searchable
-                            />
-                            <MultiSelect
-                              data-testid="filter-tags"
-                              label="Tags"
-                              value={tagFilter}
-                              onChange={setTagFilter}
-                              clearable
-                              placeholder="Any tag"
-                              data={openProjectTags.map((tag) => ({
-                                value: tag.id,
-                                label: tag.name,
-                              }))}
-                              searchable
-                            />
-                            <TextInput
-                              data-testid="filter-due-before"
-                              label="Due before"
-                              type="date"
-                              value={dueBeforeFilter}
-                              onChange={(event) => setDueBeforeFilter(event.currentTarget.value)}
-                            />
-                            <TextInput
-                              data-testid="filter-updated-since"
-                              label="Updated since"
-                              type="date"
-                              value={updatedSinceFilter}
-                              onChange={(event) => setUpdatedSinceFilter(event.currentTarget.value)}
-                            />
-                            <Group gap="lg">
-                              <Checkbox
-                                data-testid="filter-overdue"
-                                label="Overdue only"
-                                checked={overdueFilter}
-                                onChange={(event) => setOverdueFilter(event.currentTarget.checked)}
-                              />
-                              <Checkbox
-                                data-testid="filter-has-pr"
-                                label="Has GitHub PR"
-                                checked={hasGitHubPrFilter}
-                                onChange={(event) =>
-                                  setHasGitHubPrFilter(event.currentTarget.checked)
-                                }
-                              />
-                            </Group>
-                            {filtersActive && (
-                              <Button
-                                variant="subtle"
-                                color="red"
-                                size="xs"
-                                onClick={() => {
-                                  clearFilters();
-                                  setFilterMenuOpen(false);
-                                }}
-                                data-testid="clear-filters-button"
-                              >
-                                Clear all filters
-                              </Button>
-                            )}
-                          </Stack>
-                        </Popover.Dropdown>
-                      </Popover>
-                    </Group>
-                    <Group gap="xs">
-                      <Tooltip
-                        label={
-                          sortDir === 'asc'
-                            ? 'Sort: oldest first (click for newest first)'
-                            : 'Sort: newest first (click for oldest first)'
-                        }
-                      >
-                        <ActionIcon
-                          variant="light"
-                          aria-label="Toggle sort direction"
-                          data-testid="sort-direction-toggle"
-                          onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                        >
-                          {sortDir === 'asc' ? (
-                            <IconSortAscending size="1rem" />
-                          ) : (
-                            <IconSortDescending size="1rem" />
-                          )}
-                        </ActionIcon>
-                      </Tooltip>
-                      {canWriteTasks && !isWorkspaceWide && activeTaskList && (
-                        <Button
-                          color="teal"
-                          leftSection={<IconPlus size="1rem" />}
-                          onClick={() => statuses[0] && addTask(statuses[0].id)}
-                          data-testid="add-task-button"
-                        >
-                          Add Task
-                        </Button>
-                      )}
-                    </Group>
-                  </Group>
-                  {activeFilterChips.length > 0 && (
-                    <Group gap="xs">
-                      {activeFilterChips.map((chip) => (
-                        <Badge key={chip.key} variant="light">
-                          {chip.label}
-                        </Badge>
-                      ))}
-                    </Group>
-                  )}
-                  {tasksError && (
-                    <Alert color="red" title="Could not load tasks">
-                      {tasksError}
-                    </Alert>
-                  )}
-                  {selectedTaskIds.size > 0 && canWriteTasks && (
-                    <Alert color="blue" title={`${selectedTaskIds.size} selected`}>
-                      <Group gap="xs">
-                        <Select
-                          data-testid="bulk-status-select"
-                          placeholder="Bulk status"
-                          data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-                          onChange={(value) => value && void runBulkUpdate({ statusId: value })}
-                          w="12rem"
-                        />
-                        <Select
-                          data-testid="bulk-priority-select"
-                          placeholder="Bulk priority"
-                          data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-                          onChange={(value) => value && void runBulkUpdate({ priority: value })}
-                          w="12rem"
-                        />
-                        <MultiSelect
-                          data-testid="bulk-assignee-select"
-                          placeholder="Bulk assignee/responsible"
-                          data={availableAssignees.map((user) => ({
-                            value: user.id,
-                            label: user.name,
-                          }))}
-                          maxValues={2}
-                          onChange={(value) => void runBulkUpdate({ assigneeIds: value })}
-                          w="16rem"
-                        />
-                        <Button variant="subtle" onClick={() => setSelectedTaskIds(new Set())}>
-                          Clear selection
-                        </Button>
-                      </Group>
-                    </Alert>
-                  )}
-                  {tasksLoading && !tasks.length ? (
-                    <Box className={classes.center} p="xl">
-                      <Loader />
-                    </Box>
-                  ) : tasks.length === 0 ? (
-                    <Box p="xl">
-                      <Stack gap="sm">
-                        <Text fw={700}>{emptyState.title}</Text>
-                        <Text c="dimmed">{emptyState.message}</Text>
-                        {emptyState.actionLabel && (
-                          <Button variant="light" onClick={clearFilters}>
-                            {emptyState.actionLabel}
-                          </Button>
-                        )}
-                      </Stack>
-                    </Box>
-                  ) : (
-                    <GroupedTaskList
-                      tasks={tasks}
-                      statuses={statuses}
-                      onAddTask={addTask}
-                      onOpenTask={openTask}
-                      onMoveTask={moveTask}
-                      onChanged={reload}
-                      onError={setActionError}
-                      canWriteTasks={canWriteTasks}
-                      selectedTaskIds={selectedTaskIds}
-                      onSelectedTaskChange={toggleSelectedTask}
-                      sortDir={sortDir}
-                    />
-                  )}
-                  {nextCursor && (
-                    <Button
-                      data-testid="load-more-tasks"
-                      data-next-cursor={nextCursor}
-                      type="button"
-                      variant="subtle"
-                      loading={tasksLoading}
-                      onClick={handleLoadMoreTasks}
-                    >
-                      Load more
-                    </Button>
-                  )}
-                </Stack>
+                <TaskListPanel
+                  tasks={tasks}
+                  tasksLoading={tasksLoading}
+                  tasksError={tasksError}
+                  nextCursor={nextCursor}
+                  emptyState={emptyState}
+                  taskSearch={taskSearch}
+                  statusFilter={statusFilter}
+                  priorityFilter={priorityFilter}
+                  assigneeFilter={assigneeFilter}
+                  responsibleFilter={responsibleFilter}
+                  typeFilter={typeFilter}
+                  tagFilter={tagFilter}
+                  dueBeforeFilter={dueBeforeFilter}
+                  updatedSinceFilter={updatedSinceFilter}
+                  overdueFilter={overdueFilter}
+                  hasGitHubPrFilter={hasGitHubPrFilter}
+                  filtersActive={filtersActive}
+                  filterMenuOpen={filterMenuOpen}
+                  activeFilterChips={activeFilterChips}
+                  sortDir={sortDir}
+                  onSearchChange={setTaskSearch}
+                  onStatusChange={setStatusFilter}
+                  onPriorityChange={setPriorityFilter}
+                  onAssigneesChange={setAssigneeFilter}
+                  onResponsibleChange={setResponsibleFilter}
+                  onTypeChange={setTypeFilter}
+                  onTagsChange={setTagFilter}
+                  onDueBeforeChange={setDueBeforeFilter}
+                  onUpdatedSinceChange={setUpdatedSinceFilter}
+                  onOverdueChange={setOverdueFilter}
+                  onHasGitHubPrChange={setHasGitHubPrFilter}
+                  onFilterMenuOpenChange={setFilterMenuOpen}
+                  onClearFilters={clearFilters}
+                  onToggleSortDir={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  statuses={statuses}
+                  availableAssignees={availableAssignees}
+                  taskTypes={taskTypes}
+                  openProjectTags={openProjectTags}
+                  currentOpenProjectUser={currentOpenProjectUser}
+                  assignedToMeActive={assignedToMeActive}
+                  canWriteTasks={canWriteTasks}
+                  isWorkspaceWide={isWorkspaceWide}
+                  activeTaskListId={activeTaskList?.id}
+                  selectedTaskIds={selectedTaskIds}
+                  onAddTask={addTask}
+                  onOpenTask={openTask}
+                  onMoveTask={moveTask}
+                  onTaskChanged={reload}
+                  onError={setActionError}
+                  onSelectedTaskChange={toggleSelectedTask}
+                  onBulkStatus={(statusId) => void runBulkUpdate({ statusId })}
+                  onBulkPriority={(priority) => void runBulkUpdate({ priority })}
+                  onBulkAssignees={(assigneeIds) => void runBulkUpdate({ assigneeIds })}
+                  onClearSelection={() => setSelectedTaskIds(new Set())}
+                  onLoadMore={handleLoadMoreTasks}
+                />
               </Tabs.Panel>
 
               <Tabs.Panel value="board">
-                <Stack gap={0}>
-                  <Group className={classes.taskToolbar} justify="flex-end">
-                    <Tooltip
-                      label={
-                        sortDir === 'asc'
-                          ? 'Sort: oldest first (click for newest first)'
-                          : 'Sort: newest first (click for oldest first)'
-                      }
-                    >
-                      <ActionIcon
-                        variant="light"
-                        aria-label="Toggle sort direction"
-                        onClick={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
-                      >
-                        {sortDir === 'asc' ? (
-                          <IconSortAscending size="1rem" />
-                        ) : (
-                          <IconSortDescending size="1rem" />
-                        )}
-                      </ActionIcon>
-                    </Tooltip>
-                    {canWriteTasks && !isWorkspaceWide && activeTaskList && (
-                      <Button
-                        color="teal"
-                        leftSection={<IconPlus size="1rem" />}
-                        onClick={() => statuses[0] && addTask(statuses[0].id)}
-                        data-testid="board-add-task-button"
-                      >
-                        Add Task
-                      </Button>
-                    )}
-                  </Group>
-                  {tasksError && (
-                    <Alert color="red" title="Could not load tasks">
-                      {tasksError}
-                    </Alert>
-                  )}
-                  {tasksLoading && !tasks.length ? (
-                    <Box className={classes.center} p="xl">
-                      <Loader />
-                    </Box>
-                  ) : (
-                    <TaskBoard
-                      tasks={tasks}
-                      statuses={statuses}
-                      onAddTask={addTask}
-                      onOpenTask={openTask}
-                      onMoveTask={moveTask}
-                      canWriteTasks={canManageBoardOrder}
-                      sortDir={sortDir}
-                    />
-                  )}
-                </Stack>
+                <BoardPanel
+                  tasks={tasks}
+                  tasksLoading={tasksLoading}
+                  tasksError={tasksError}
+                  statuses={statuses}
+                  canWriteTasks={canManageBoardOrder}
+                  isWorkspaceWide={isWorkspaceWide}
+                  activeTaskListId={activeTaskList?.id}
+                  sortDir={sortDir}
+                  onToggleSortDir={() => setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))}
+                  onAddTask={addTask}
+                  onOpenTask={openTask}
+                  onMoveTask={moveTask}
+                />
               </Tabs.Panel>
 
               {docsAvailable && (
@@ -1594,100 +1286,11 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
           />
         )}
       </Drawer>
-      <Modal
-        opened={Boolean(activeImportReport)}
+      <ImportReportModal
+        report={activeImportReport}
         onClose={() => setActiveImportReport(null)}
-        title="Import report"
-        size="lg"
-      >
-        {activeImportReport && (
-          <Stack gap="md">
-            <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }}>
-              {(() => {
-                const summary = summarizeImportRun(activeImportReport);
-                return (
-                  <>
-                    <Alert variant="light" color="blue" title="Tasks imported">
-                      {summary.tasksImported}
-                    </Alert>
-                    <Alert variant="light" color="teal" title="Users imported">
-                      {summary.usersImported}
-                    </Alert>
-                    <Alert variant="light" color="grape" title="Assignees mapped">
-                      {summary.assigneesMapped}
-                    </Alert>
-                    <Alert
-                      variant="light"
-                      color={summary.errorsCount > 0 ? 'red' : 'yellow'}
-                      title="Warnings / errors"
-                    >
-                      {summary.warningsCount} / {summary.errorsCount}
-                    </Alert>
-                    <Alert variant="light" color="indigo" title="Responsible mapped">
-                      {summary.responsibleMapped}
-                    </Alert>
-                    <Alert variant="light" color="cyan" title="Additional assignees stored">
-                      {summary.additionalAssigneesStored}
-                    </Alert>
-                  </>
-                );
-              })()}
-            </SimpleGrid>
-            <Group justify="space-between" align="flex-start">
-              <Stack gap={2}>
-                <Text fw={700}>
-                  {activeImportReport.source} • {activeImportReport.status}
-                </Text>
-                <Text size="sm" c="dimmed">
-                  Started {new Date(activeImportReport.startedAt).toLocaleString()}
-                </Text>
-                {activeImportReport.finishedAt && (
-                  <Text size="sm" c="dimmed">
-                    Finished {new Date(activeImportReport.finishedAt).toLocaleString()}
-                  </Text>
-                )}
-              </Stack>
-              <Button
-                component="a"
-                href={`/api/import-reports/${activeImportReport.id}/json`}
-                target="_blank"
-                variant="light"
-              >
-                Download JSON
-              </Button>
-            </Group>
-            <Group>
-              <Button
-                variant="subtle"
-                onClick={() => {
-                  navigator.clipboard?.writeText(JSON.stringify(activeImportReport, null, 2));
-                  setActionNotice('Import report JSON copied.');
-                }}
-              >
-                Copy JSON
-              </Button>
-            </Group>
-            <Text size="sm" fw={700}>
-              Summary
-            </Text>
-            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify(activeImportReport.summary || {}, null, 2)}
-            </Text>
-            <Text size="sm" fw={700}>
-              Warnings
-            </Text>
-            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify(activeImportReport.warnings || [], null, 2)}
-            </Text>
-            <Text size="sm" fw={700}>
-              Errors
-            </Text>
-            <Text component="pre" size="xs" style={{ whiteSpace: 'pre-wrap' }}>
-              {JSON.stringify(activeImportReport.errors || [], null, 2)}
-            </Text>
-          </Stack>
-        )}
-      </Modal>
+        onCopied={setActionNotice}
+      />
     </>
   );
 }

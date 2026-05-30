@@ -1,47 +1,26 @@
-import {
-  Badge,
-  Button,
-  Group,
-  MultiSelect,
-  NumberInput,
-  Paper,
-  Select,
-  SimpleGrid,
-  Stack,
-  Tabs,
-  Text,
-  Textarea,
-  TextInput,
-  Tooltip,
-} from '@mantine/core';
+import { Button, Group, Paper, Stack, Tabs, Text, TextInput, Tooltip, Badge } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconCalendarDue, IconFlag } from '@tabler/icons-react';
 import { useEffect, useRef, useState } from 'react';
 import { listToOpProjectId, useProjectUsers } from '@/hooks/useProjectUsers';
 import { useTaskDetailData } from '@/hooks/useTaskDetailData';
 import {
-  createOpenProjectTag,
-  displayStatus,
-  formatDueDate,
-  formatHours,
   getErrorMessage,
   getTask,
-  priorityColor,
   setTaskTags,
   showToast,
   stripClickUpMeta,
   toDateInput,
   updateTask,
   type Task,
-  type TaskPriority,
   type TaskStatus,
   type Workspace,
 } from '@/lib';
-import { UserSelect } from '../../common/UserSelect';
 import { TaskChecklists } from '../TaskChecklists/TaskChecklists';
 import { TaskRelations } from '../TaskRelations/TaskRelations';
 import { TaskActivityTab } from './TaskActivityTab';
 import { TaskCustomFieldsTab } from './TaskCustomFieldsTab';
+import { TaskDescription } from './TaskDescription/TaskDescription';
+import { TaskDetailsGrid } from './TaskDetailsGrid';
 import { TaskFilesTab } from './TaskFilesTab';
 import { TaskGitHubTab } from './TaskGitHubTab';
 import { TaskSubtasksTab } from './TaskSubtasksTab';
@@ -69,9 +48,6 @@ export function TaskDetailPage({
   onError,
   canWriteTasks,
 }: TaskDetailPageProps) {
-  const due = formatDueDate(task.dueDate);
-  const start = formatDueDate(task.startDate);
-  const status = displayStatus(undefined, task.status);
   const [saving, setSaving] = useState(false);
   const [tagSaving, setTagSaving] = useState(false);
 
@@ -111,13 +87,6 @@ export function TaskDetailPage({
     },
   });
 
-  const tagForm = useForm({
-    initialValues: { newTagName: '' },
-    validate: {
-      newTagName: (value) => (value.trim().length ? null : 'Tag name is required'),
-    },
-  });
-
   const detailsFormRef = useRef(detailsForm);
   detailsFormRef.current = detailsForm;
 
@@ -139,8 +108,6 @@ export function TaskDetailPage({
     workspace.id,
     opProjectId
   );
-
-  const tagOptions = workspaceTags.map((item) => ({ value: item.id, label: item.name }));
 
   const updateAndRefresh = async (input: Parameters<typeof updateTask>[1]) => {
     if (!canWriteTasks) return;
@@ -210,38 +177,6 @@ export function TaskDetailPage({
     }
   };
 
-  const createAndAssignTag = tagForm.onSubmit(async (values) => {
-    if (!canWriteTasks) return;
-    try {
-      setTagSaving(true);
-      const created = await createOpenProjectTag({
-        workspaceId: workspace.id,
-        name: values.newTagName.trim(),
-      });
-      setWorkspaceTags((current) =>
-        [...current.filter((item) => item.id !== created.id), created].sort((a, b) =>
-          a.name.localeCompare(b.name)
-        )
-      );
-      tagForm.reset();
-      const nextTagIds = [...new Set([...taskTagIds, created.id])];
-      const page = await setTaskTags(task.id, nextTagIds);
-      setTaskTagIds(page.items.map((item) => item.id));
-      onSaved(await getTask(task.id));
-      showToast({
-        tone: 'success',
-        title: 'Tag created',
-        message: `Added ${created.name} to this work package.`,
-      });
-    } catch (error) {
-      const message = getErrorMessage(error);
-      onError(message);
-      showToast({ tone: 'error', title: 'Could not create tag', message });
-    } finally {
-      setTagSaving(false);
-    }
-  });
-
   const showGitHubTab = Boolean(
     (task.githubPullRequests?.length || 0) > 0 ||
     (task.githubBranches?.length || 0) > 0 ||
@@ -270,197 +205,29 @@ export function TaskDetailPage({
         </Group>
       </Group>
 
-      <SimpleGrid cols={{ base: 1, sm: 2 }} mb="xl">
-        <Select
-          data-testid="task-status-select"
-          label="Status"
-          leftSection={<span className={classes.statusDot} style={{ background: status.color }} />}
-          value={detailsForm.values.statusId}
-          onChange={(value) => {
-            detailsForm.setFieldValue('statusId', value || '');
-            void updateAndRefresh({ statusId: value || undefined });
-          }}
-          data={statuses.map((item) => ({ value: item.id, label: displayStatus(item).label }))}
-          placeholder={status.label}
-          searchable
-          disabled={!canWriteTasks}
-        />
-        {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
-        <TextInput label="List" value={task.taskList?.name || task.taskListId || ''} readOnly />
-        <UserSelect
-          data-testid="task-assignee-select"
-          label="Assignee / responsible"
-          users={projectUsers}
-          loading={projectUsersLoading}
-          value={detailsForm.values.assigneeIds}
-          onChange={(value) => {
-            detailsForm.setFieldValue('assigneeIds', value);
-            void updateAndRefresh({ assigneeIds: value });
-          }}
-          maxValues={2}
-          disabled={!canWriteTasks}
-        />
-        <Stack gap="xs">
-          <NumberInput
-            label="Estimate"
-            value={detailsForm.values.estimatedHours}
-            onChange={(value) => detailsForm.setFieldValue('estimatedHours', value)}
-            min={0}
-            step={0.5}
-            decimalScale={2}
-            suffix="h"
-            disabled={!canWriteTasks}
-            onBlur={() =>
-              void updateAndRefresh({
-                estimatedHours:
-                  detailsForm.values.estimatedHours === ''
-                    ? null
-                    : Number(detailsForm.values.estimatedHours),
-              })
-            }
-          />
-          <Group gap="xs">
-            {formatHours(task.remainingHours) && (
-              <Tooltip label="OpenProject remaining time">
-                <Badge color="orange" variant="light">
-                  Remaining {formatHours(task.remainingHours)}
-                </Badge>
-              </Tooltip>
-            )}
-            {formatHours(task.spentHours) && (
-              <Tooltip label="OpenProject spent time">
-                <Badge color="teal" variant="light">
-                  Spent {formatHours(task.spentHours)}
-                </Badge>
-              </Tooltip>
-            )}
-          </Group>
-        </Stack>
-        <TextInput
-          label="Start date"
-          leftSection={<IconCalendarDue size="1rem" />}
-          type="date"
-          value={detailsForm.values.startDate}
-          onChange={(event) => detailsForm.setFieldValue('startDate', event.currentTarget.value)}
-          onBlur={() => void updateAndRefresh({ startDate: detailsForm.values.startDate || null })}
-          placeholder={start || 'No start'}
-          readOnly={!canWriteTasks}
-        />
-        <TextInput
-          label="Due date"
-          leftSection={<IconCalendarDue size="1rem" />}
-          type="date"
-          value={detailsForm.values.dueDate}
-          onChange={(event) => detailsForm.setFieldValue('dueDate', event.currentTarget.value)}
-          onBlur={() => void updateAndRefresh({ dueDate: detailsForm.values.dueDate || null })}
-          placeholder={due || 'No due'}
-          readOnly={!canWriteTasks}
-        />
-        <Select
-          data-testid="task-priority-select"
-          label="Priority"
-          leftSection={<IconFlag size="1rem" />}
-          value={detailsForm.values.priority}
-          onChange={(value) => {
-            const next = (value || 'NORMAL') as TaskPriority;
-            detailsForm.setFieldValue('priority', next);
-            void updateAndRefresh({ priority: next });
-          }}
-          data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-          disabled={!canWriteTasks}
-        />
-        <Stack gap="xs">
-          <MultiSelect
-            data-testid="task-tag-picker"
-            label="Tags"
-            data={tagOptions}
-            value={taskTagIds}
-            onChange={(value) => void syncTaskTags(value)}
-            searchable
-            clearable
-            disabled={!canWriteTasks || tagSaving}
-            description="Stored locally for this OpenProject work package. Tags do not create a duplicate local task."
-          />
-          {canWriteTasks && (
-            <form onSubmit={createAndAssignTag}>
-              <Group align="flex-end">
-                <TextInput
-                  label="Create tag"
-                  placeholder="polish"
-                  {...tagForm.getInputProps('newTagName')}
-                />
-                <Button type="submit" variant="light" loading={tagSaving}>
-                  Create and add
-                </Button>
-              </Group>
-            </form>
-          )}
-        </Stack>
-        <Stack gap="xs">
-          <Text fw={700}>Source</Text>
-          <Group gap="xs">
-            <Tooltip label={`Source: ${task.externalSource || 'LOCAL'}`}>
-              <Badge>{task.externalSource || 'LOCAL'}</Badge>
-            </Tooltip>
-            {task.externalUrl && (
-              <Button
-                size="xs"
-                variant="subtle"
-                component="a"
-                href={task.externalUrl}
-                target="_blank"
-              >
-                Open OpenProject
-              </Button>
-            )}
-            {task.syncedAt && (
-              <Text size="xs" c="dimmed">
-                Synced {new Date(task.syncedAt).toLocaleString()}
-              </Text>
-            )}
-          </Group>
-        </Stack>
-        <Stack gap="xs">
-          <Text fw={700}>Location</Text>
-          <Text size="sm" c="dimmed">
-            {task.folder?.space?.name || workspace.name} / {task.folder?.name || task.folderId}
-            {task.taskList?.name ? ` / ${task.taskList.name}` : ''}
-          </Text>
-        </Stack>
-        <Stack gap="xs">
-          <Text fw={700}>OpenProject URL</Text>
-          {task.externalUrl ? (
-            <Button size="xs" variant="light" component="a" href={task.externalUrl} target="_blank">
-              Open in OpenProject
-            </Button>
-          ) : (
-            <Text size="sm" c="dimmed">
-              No OpenProject URL
-            </Text>
-          )}
-        </Stack>
-        <Stack gap="xs">
-          <Text fw={700}>Priority badge</Text>
-          <Tooltip label={`Priority: ${task.priority}`}>
-            <Badge
-              color={priorityColor[task.priority]}
-              variant="light"
-              style={{ alignSelf: 'flex-start' }}
-            >
-              {task.priority}
-            </Badge>
-          </Tooltip>
-        </Stack>
-      </SimpleGrid>
+      <TaskDetailsGrid
+        task={task}
+        workspace={workspace}
+        form={detailsForm as Parameters<typeof TaskDetailsGrid>[0]['form']}
+        workspaceTags={workspaceTags}
+        setWorkspaceTags={setWorkspaceTags}
+        taskTagIds={taskTagIds}
+        tagSaving={tagSaving}
+        statuses={statuses}
+        projectUsers={projectUsers}
+        projectUsersLoading={projectUsersLoading}
+        canWriteTasks={canWriteTasks}
+        onUpdateAndRefresh={updateAndRefresh}
+        onSyncTags={syncTaskTags}
+      />
 
-      <Textarea
-        data-testid="task-description-input"
-        label="Description"
-        minRows={8}
-        autosize
-        mb="lg"
-        readOnly={!canWriteTasks}
-        {...detailsForm.getInputProps('description')}
+      <TaskDescription
+        value={detailsForm.values.description}
+        canWriteTasks={canWriteTasks}
+        onSave={async (description) => {
+          await updateAndRefresh({ description });
+          detailsForm.setFieldValue('description', description);
+        }}
       />
 
       <TaskChecklists

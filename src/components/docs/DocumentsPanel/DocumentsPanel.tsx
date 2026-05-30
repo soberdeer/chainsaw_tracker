@@ -1,33 +1,25 @@
 import {
-  ActionIcon,
-  Badge,
   Box,
   Button,
   FileButton,
   Group,
-  Menu,
   SimpleGrid,
   Stack,
   Text,
   TextInput,
-  ThemeIcon,
   Title,
-  Tooltip,
-  UnstyledButton,
 } from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { IconDots, IconFileText, IconPaperclip, IconPhoto, IconPlus } from '@tabler/icons-react';
+import { IconPaperclip, IconPlus } from '@tabler/icons-react';
 import {
   createEmbedDoc,
   createMarkdownDoc,
-  deleteDocument,
-  duplicateDocument,
   uploadDocument,
   getErrorMessage,
-  updateDocument,
   type DocumentItem,
 } from '@/lib';
-import { confirmAction, promptForText } from '@/lib/modals';
+import { promptForText } from '@/lib/modals';
+import { DocCard } from './DocCard';
 import classes from './DocumentsPanel.module.css';
 
 export interface DocumentsPanelProps {
@@ -74,9 +66,7 @@ export function DocumentsPanel({
       placeholder: 'Release notes',
       confirmLabel: 'Create doc',
     });
-    if (!title) {
-      return;
-    }
+    if (!title) return;
     await run(() => createMarkdownDoc({ spaceId, title, markdown: `# ${title}\n` }));
   };
 
@@ -88,10 +78,7 @@ export function DocumentsPanel({
         embedUrl: values.embedUrl.trim(),
       })
     );
-    embedForm.setValues({
-      title: 'Embedded document',
-      embedUrl: '',
-    });
+    embedForm.setValues({ title: 'Embedded document', embedUrl: '' });
   });
 
   return (
@@ -125,131 +112,14 @@ export function DocumentsPanel({
       </Group>
       <SimpleGrid cols={{ base: 1, md: 2, xl: 3 }}>
         {documents.map((doc) => (
-          <UnstyledButton key={doc.id} className={classes.docCard} onClick={() => onOpen(doc)}>
-            <Group justify="space-between" mb="xs">
-              <Group gap="xs">
-                <Tooltip label={`Document type: ${doc.kind}`}>
-                  <ThemeIcon
-                    variant="light"
-                    color={doc.kind === 'IMAGE' ? 'pink' : doc.kind === 'EMBED' ? 'violet' : 'blue'}
-                  >
-                    {doc.kind === 'IMAGE' ? (
-                      <IconPhoto size="1.125rem" />
-                    ) : (
-                      <IconFileText size="1.125rem" />
-                    )}
-                  </ThemeIcon>
-                </Tooltip>
-                <Text fw={700}>{doc.title}</Text>
-              </Group>
-              <Group gap="xs">
-                <Tooltip label={`Document type: ${doc.kind}`}>
-                  <Badge variant="outline">{doc.kind}</Badge>
-                </Tooltip>
-                <Menu width="18rem" position="bottom-end">
-                  <Menu.Target>
-                    <Tooltip label={canEdit ? 'Document settings' : 'Read-only document'}>
-                      <ActionIcon
-                        component="div"
-                        variant="subtle"
-                        aria-label="Doc settings"
-                        onClick={(event) => event.stopPropagation()}
-                      >
-                        <IconDots size="1rem" />
-                      </ActionIcon>
-                    </Tooltip>
-                  </Menu.Target>
-                  <Menu.Dropdown
-                    className={classes.menuDropdown}
-                    onClick={(event) => event.stopPropagation()}
-                  >
-                    <Menu.Label>Doc settings</Menu.Label>
-                    {canEdit ? (
-                      <>
-                        <Menu.Item
-                          onClick={() => {
-                            void (async () => {
-                              const title = await promptForText({
-                                title: 'Rename doc',
-                                label: 'Doc name',
-                                initialValue: doc.title,
-                                confirmLabel: 'Rename',
-                              });
-                              if (!title) {
-                                return;
-                              }
-                              await run(() => updateDocument(doc.id, { title }));
-                            })();
-                          }}
-                        >
-                          Rename
-                        </Menu.Item>
-                        <Menu.Item
-                          onClick={() =>
-                            navigator.clipboard?.writeText(
-                              `${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`
-                            )
-                          }
-                        >
-                          Copy link
-                        </Menu.Item>
-                        <Menu.Item onClick={() => void run(() => duplicateDocument(doc.id))}>
-                          Duplicate
-                        </Menu.Item>
-                        <Menu.Item
-                          color="red"
-                          onClick={() => {
-                            void (async () => {
-                              const confirmed = await confirmAction({
-                                title: 'Delete doc',
-                                message: `Delete "${doc.title}"? This removes the local tracker document.`,
-                                confirmLabel: 'Delete doc',
-                                confirmColor: 'red',
-                              });
-                              if (!confirmed) {
-                                return;
-                              }
-                              await run(() => deleteDocument(doc.id));
-                            })();
-                          }}
-                        >
-                          Delete
-                        </Menu.Item>
-                        <Menu.Divider />
-                        <Menu.Item disabled>
-                          Managed through workspace members and project access
-                        </Menu.Item>
-                      </>
-                    ) : (
-                      <>
-                        <Menu.Item
-                          onClick={() =>
-                            navigator.clipboard?.writeText(
-                              `${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`
-                            )
-                          }
-                        >
-                          Copy link
-                        </Menu.Item>
-                        <Menu.Item disabled>Your current role can view local docs only.</Menu.Item>
-                      </>
-                    )}
-                  </Menu.Dropdown>
-                </Menu>
-              </Group>
-            </Group>
-            {doc.kind === 'EMBED' ? (
-              <Box className={classes.embedPreview}>
-                <Text size="sm" c="dimmed">
-                  {doc.embedUrl}
-                </Text>
-              </Box>
-            ) : (
-              <Text size="sm" c="dimmed" lineClamp={5}>
-                {doc.markdown || doc.sourceName || 'Image asset'}
-              </Text>
-            )}
-          </UnstyledButton>
+          <DocCard
+            key={doc.id}
+            doc={doc}
+            canEdit={canEdit}
+            onOpen={onOpen}
+            onChanged={onChanged}
+            onError={onError}
+          />
         ))}
       </SimpleGrid>
       {canEdit && (

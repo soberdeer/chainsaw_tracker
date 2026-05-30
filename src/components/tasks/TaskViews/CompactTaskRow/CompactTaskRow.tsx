@@ -5,7 +5,7 @@ import {
   IconFlag,
   IconGitPullRequest,
   IconChecklist,
-  IconList,
+  IconGripVertical,
 } from '@tabler/icons-react';
 import { useState } from 'react';
 import { displayStatus, formatDueDate, type Task } from '@/lib';
@@ -23,6 +23,9 @@ export interface CompactTaskRowProps {
   canWriteTasks: boolean;
   selected?: boolean;
   onSelectedChange?: (taskId: string, selected: boolean) => void;
+  isDraggable?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
 }
 
 function formatEstimate(hours?: number | null) {
@@ -40,6 +43,9 @@ export function CompactTaskRow({
   canWriteTasks,
   selected,
   onSelectedChange,
+  isDraggable,
+  onDragStart,
+  onDragEnd,
 }: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
@@ -54,8 +60,16 @@ export function CompactTaskRow({
   };
 
   return (
-    <div className={classes.taskRow} data-testid="task-row" data-task-id={task.id}>
+    <div
+      className={classes.taskRow}
+      data-testid="task-row"
+      data-task-id={task.id}
+      draggable={Boolean(isDraggable)}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+    >
       <div className={classes.nameCell}>
+        {canWriteTasks && <IconGripVertical size="1rem" className={classes.dragHandle} />}
         {onSelectedChange && (
           <Checkbox
             aria-label={`Select ${task.title}`}
@@ -85,19 +99,6 @@ export function CompactTaskRow({
         >
           {task.title}
         </Text>
-        {task.taskKey && (
-          <Tooltip label={task.taskKey}>
-            <Badge color="gray">{task.taskKey}</Badge>
-          </Tooltip>
-        )}
-        <Tooltip label="Task list">
-          <IconList size="1rem" className={classes.mutedIcon} />
-        </Tooltip>
-        {task.taskList?.name && (
-          <Tooltip label={task.taskList.name}>
-            <Badge color="blue">{task.taskList.name}</Badge>
-          </Tooltip>
-        )}
         {task.milestone?.title && (
           <Tooltip label={task.milestone.title}>
             <Badge color="grape">{task.milestone.title}</Badge>

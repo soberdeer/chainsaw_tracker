@@ -72,11 +72,11 @@ export function UserSelect({
           size="sm"
           radius="xl"
           color="initials"
-          name={user.name}
+          name={user.name.replace('ㅤ', '').replace('ㅤ', '')}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" truncate>
-            {user.name}
+            {user.name.replace('ㅤ', '')}
           </Text>
           {user.email && (
             <Text size="xs" c="dimmed" truncate>
@@ -106,17 +106,24 @@ export function UserSelect({
                 onRemove={() => handleRemove(user.id)}
                 styles={{ label: { display: 'flex', alignItems: 'center', gap: 4 } }}
               >
-                <Tooltip label={user.email ? `${user.name} (${user.email})` : user.name} withArrow>
+                <Tooltip
+                  label={
+                    user.email
+                      ? `${user.name.replace('ㅤ', '')} (${user.email})`
+                      : user.name.replace('ㅤ', '')
+                  }
+                  withArrow
+                >
                   <Avatar
                     src={user.avatarUrl || null}
                     size={16}
                     radius="xl"
                     color="initials"
-                    name={user.name}
+                    name={user.name.replace('ㅤ', '')}
                   />
                 </Tooltip>
                 <Text size="xs" component="span">
-                  {user.name}
+                  {user.name.replace('ㅤ', '')}
                 </Text>
               </Pill>
             ))}

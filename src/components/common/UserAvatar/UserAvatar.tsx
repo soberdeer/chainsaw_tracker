@@ -14,7 +14,7 @@ export function UserAvatar({ user, size = 'sm', withTooltip = true }: UserAvatar
       size={size}
       radius="xl"
       color="initials"
-      name={user.name}
+      name={user.name.replace('ㅤ', '')}
     />
   );
 
@@ -23,7 +23,12 @@ export function UserAvatar({ user, size = 'sm', withTooltip = true }: UserAvatar
   }
 
   return (
-    <Tooltip label={user.email ? `${user.name} (${user.email})` : user.name} withArrow>
+    <Tooltip
+      label={
+        user.email ? `${user.name.replace('ㅤ', '')} (${user.email})` : user.name.replace('ㅤ', '')
+      }
+      withArrow
+    >
       {avatar}
     </Tooltip>
   );
