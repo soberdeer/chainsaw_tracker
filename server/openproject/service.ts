@@ -847,6 +847,33 @@ export async function saveBoardCardOrder(
   });
 }
 
+/**
+ * Given a flat list of mapped tasks, nest children under their parents.
+ *
+ * Tasks whose `parentId` references another task in the same page are removed
+ * from the top-level array and placed inside their parent's `subtasks` list.
+ * Tasks whose parent is not in the current page are kept at the top level so
+ * they remain visible (e.g. when paginating).
+ */
+function nestSubtasks<T extends { id: string; parentId?: string; subtasks?: T[] }>(
+  items: T[]
+): T[] {
+  const byId = new Map(items.map((t) => [t.id, t]));
+  const topLevel: T[] = [];
+
+  for (const item of items) {
+    if (item.parentId && byId.has(item.parentId)) {
+      const parent = byId.get(item.parentId)!;
+      if (!parent.subtasks) (parent as { subtasks: T[] }).subtasks = [];
+      (parent.subtasks as T[]).push(item);
+    } else {
+      topLevel.push(item);
+    }
+  }
+
+  return topLevel;
+}
+
 export async function getTasks(projectId: string | undefined, query: PageQuery) {
   const seeded = useSeededHierarchy() ? await loadSeededHierarchy() : null;
   const seededList = projectId ? findSeededListById(seeded, projectId) : undefined;
@@ -892,7 +919,7 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
     const orderedItems = projectId ? await applyBoardOrder(projectId, items) : items;
     const enrichedItems = await attachRuntimeMetadata(orderedItems);
     return {
-      items: enrichedItems,
+      items: nestSubtasks(enrichedItems),
       nextCursor: nextOffset <= total ? String(nextOffset) : null,
     };
   }
@@ -975,7 +1002,7 @@ export async function getTasks(projectId: string | undefined, query: PageQuery) 
   const orderedItems = projectId ? await applyBoardOrder(projectId, matchedItems) : matchedItems;
 
   return {
-    items: orderedItems.slice(0, pageSize),
+    items: nestSubtasks(orderedItems.slice(0, pageSize)),
     nextCursor: scanOffset <= total ? String(scanOffset) : null,
   };
 }

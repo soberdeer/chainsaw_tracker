@@ -27,20 +27,39 @@ authRouter.get('/setup-status', async (_req, res) => {
   });
 });
 
-authRouter.post('/login', async (req, res) => {
-  const body = z.object({ email: z.string().min(1), password: z.string().min(1) }).parse(req.body);
+authRouter.get('/openproject-url', (_req, res) => {
+  res.json({
+    url: (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(/\/$/, ''),
+  });
+});
 
-  // password field holds the OpenProject API token (apikey:TOKEN Basic auth)
-  const opUser = await verifyViaOpenProject(body.password);
-  if (!opUser) {
-    res.status(401).json({ error: 'Invalid email or password' });
+authRouter.post('/login', async (req, res) => {
+  const body = z.object({ login: z.string().min(1), password: z.string().min(1) }).parse(req.body);
+
+  const result = await verifyViaOpenProject(body.login, body.password);
+
+  if (result === 'MUST_CHANGE_PASSWORD') {
+    res.status(403).json({
+      error: 'MUST_CHANGE_PASSWORD',
+      openProjectUrl: (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(
+        /\/$/,
+        ''
+      ),
+    });
     return;
   }
+
+  if (!result) {
+    res.status(401).json({ error: 'Invalid username or password' });
+    return;
+  }
+
+  const opUser = result;
 
   const workspace = await ensureWorkspace();
 
   // Find or create local user record — no password stored
-  const email = opUser.email || body.email;
+  const email = opUser.email || opUser.login || body.login;
   const name = (opUser as any).name || opUser.login || email;
 
   let user = await prisma.user.findUnique({ where: { email } });

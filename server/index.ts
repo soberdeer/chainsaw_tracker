@@ -50,8 +50,12 @@ export function createApp() {
 
   app.use(
     (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
-      console.error(error);
       const httpError = toHttpError(error);
+      // Only log unexpected server errors (5xx). 4xx are expected client errors
+      // (auth failures, validation, not-found) and should not pollute logs.
+      if (httpError.statusCode >= 500) {
+        console.error(error);
+      }
       res.status(httpError.statusCode).json(httpError.body);
     }
   );

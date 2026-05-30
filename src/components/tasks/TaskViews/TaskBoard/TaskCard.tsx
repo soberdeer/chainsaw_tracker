@@ -88,6 +88,10 @@ export function TaskCard({
     <UnstyledButton
       data-testid="task-card"
       data-task-id={task.id}
+      // e2e: expose drop-zone target so tests can locate a specific insert position.
+      // topTarget is the task to "insert before" when dropping on the top half.
+      data-drop-testid={topTarget != null ? 'board-dropzone' : undefined}
+      data-target-task-id={topTarget ?? undefined}
       className={classes.card}
       draggable={canWriteTasks}
       onDragStart={() => onDragStart(task.id)}

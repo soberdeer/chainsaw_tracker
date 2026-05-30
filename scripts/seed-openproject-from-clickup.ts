@@ -1443,6 +1443,7 @@ async function getClickUpTasks(listId: string) {
     const payload = await clickUpRequest<{ tasks: ClickUpTask[] }>(`/list/${listId}/task`, {
       query: {
         archived: false,
+        include_closed: true, // include shipped/done/closed tasks
         include_markdown_description: true,
         subtasks: true,
         page,

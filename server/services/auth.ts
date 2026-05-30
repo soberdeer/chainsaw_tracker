@@ -26,15 +26,103 @@ function parseCookies(header?: string) {
   );
 }
 
-export async function verifyViaOpenProject(apiToken: string): Promise<OpenProjectUser | null> {
+export type VerifyViaOpenProjectResult = OpenProjectUser | null | 'MUST_CHANGE_PASSWORD';
+
+/**
+ * Verify a user's OpenProject credentials via the web login form.
+ *
+ * OpenProject's REST API does NOT support login:password Basic Auth —
+ * only `apikey:<token>` format is accepted. To verify regular credentials
+ * we simulate a browser login:
+ *   1. GET /login  → extract CSRF token + session cookie
+ *   2. POST /login → check redirect target
+ *      - 302 to change_password → MUST_CHANGE_PASSWORD
+ *      - 302 to anything else   → credentials valid, fetch user via admin token
+ *      - 422 / no redirect      → invalid credentials
+ *   3. Look up the authenticated user via the admin API token.
+ *
+ * Returns:
+ *   - OpenProjectUser        — credentials are valid
+ *   - 'MUST_CHANGE_PASSWORD' — valid but OP requires a password change first
+ *   - null                   — invalid credentials or network error
+ */
+export async function verifyViaOpenProject(
+  login: string,
+  password: string
+): Promise<VerifyViaOpenProjectResult> {
   const baseUrl = (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
-  const authHeader = `Basic ${Buffer.from(`apikey:${apiToken}`).toString('base64')}`;
+  const adminToken = process.env.OPENPROJECT_API_TOKEN ?? '';
+
   try {
-    const res = await fetch(`${baseUrl}/api/v3/users/me`, {
-      headers: { Authorization: authHeader, Accept: 'application/json' },
+    // ── Step 1: GET /login to obtain CSRF token + session cookie ──────────────
+    const loginPage = await fetch(`${baseUrl}/login`, {
+      headers: { Accept: 'text/html', 'User-Agent': 'OpenProjectTracker/1.0' },
+      redirect: 'manual',
     });
-    if (!res.ok) return null;
-    return (await res.json()) as OpenProjectUser;
+
+    const sessionCookie = loginPage.headers.get('set-cookie') ?? '';
+    const html = await loginPage.text();
+
+    // Extract the authenticity_token from the HTML form
+    const csrfMatch = html.match(/name="authenticity_token"\s+value="([^"]+)"/);
+    if (!csrfMatch) return null; // OP unavailable or unexpected HTML
+    const csrfToken = csrfMatch[1]!;
+
+    // Extract just the cookie value (may be multiple; take the session one)
+    const sessionValue = sessionCookie.split(';')[0] ?? '';
+
+    // ── Step 2: POST /login with credentials ──────────────────────────────────
+    const params = new URLSearchParams({
+      username: login,
+      password,
+      authenticity_token: csrfToken,
+    });
+
+    const postRes = await fetch(`${baseUrl}/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/x-www-form-urlencoded',
+        Origin: baseUrl,
+        Referer: `${baseUrl}/login`,
+        Cookie: sessionValue,
+        'User-Agent': 'OpenProjectTracker/1.0',
+      },
+      body: params.toString(),
+      redirect: 'manual',
+    });
+
+    if (postRes.status === 302) {
+      const location = postRes.headers.get('location') ?? '';
+      if (location.includes('change_password') || location.includes('change-password')) {
+        return 'MUST_CHANGE_PASSWORD';
+      }
+      // Any other 302 = credentials accepted (dashboard, 2FA setup prompt, etc.)
+    } else {
+      // 422 = bad credentials; anything else = error
+      return null;
+    }
+
+    // ── Step 3: Look up the user via admin API token ───────────────────────────
+    // Encode login for the filter JSON
+    const filter = encodeURIComponent(
+      JSON.stringify([{ login: { operator: '=', values: [login] } }])
+    );
+    const usersRes = await fetch(`${baseUrl}/api/v3/users?filters=${filter}&pageSize=1`, {
+      headers: {
+        Authorization: `Basic ${Buffer.from(`apikey:${adminToken}`).toString('base64')}`,
+        Accept: 'application/json',
+      },
+    });
+
+    if (!usersRes.ok) return null;
+
+    const usersBody = (await usersRes.json()) as {
+      _embedded?: { elements?: OpenProjectUser[] };
+    };
+    const user = usersBody._embedded?.elements?.[0];
+    if (!user) return null;
+
+    return user;
   } catch {
     return null;
   }

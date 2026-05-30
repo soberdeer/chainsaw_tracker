@@ -84,13 +84,35 @@
 }
 
 .dragHandle {
+  transition: opacity 0.15s;
   opacity: 0;
   cursor: grab;
   color: var(--mantine-color-dimmed);
   flex-shrink: 0;
-  transition: opacity 0.15s;
 }
 
-.taskRow:hover .dragHandle {
+.checkbox {
+  transition: opacity 0.15s;
+  opacity: 0;
+  cursor: pointer;
+
+  &[data-checked='true'] {
+    opacity: 1;
+  }
+}
+
+.taskRow:hover .dragHandle,
+.taskRow:hover .checkbox {
   opacity: 1;
+}
+
+/* ── Subtask container ─────────────────────────────────────────────────── */
+
+.subtasksContainer {
+  position: relative;
+}
+
+/* Subtask rows are slightly dimmed and use a lighter font weight */
+.subtasksContainer .taskRow {
+  background: color-mix(in srgb, var(--mantine-color-dark-7, #1a1b1e) 60%, transparent);
 }

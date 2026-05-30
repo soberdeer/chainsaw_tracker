@@ -66,12 +66,12 @@ export function TaskBoard({
   // ── Task DnD (refs only, no re-renders during drag) ───────────────────
   const handleTaskDragStart = useCallback((taskId: string) => {
     draggingTaskIdRef.current = taskId;
-    boardRef.current?.setAttribute('data-dragging-task', taskId);
+    boardRef.current?.setAttribute('data-dragging-task-id', taskId);
   }, []);
 
   const handleTaskDragEnd = useCallback(() => {
     draggingTaskIdRef.current = null;
-    boardRef.current?.removeAttribute('data-dragging-task');
+    boardRef.current?.removeAttribute('data-dragging-task-id');
   }, []);
 
   // ── Status DnD (refs + minimal state for CSS fade) ────────────────────
@@ -123,8 +123,8 @@ export function TaskBoard({
   }, []);
 
   return (
-    <ScrollArea type="auto" className={classes.boardScroll} data-testid="task-board">
-      <div ref={boardRef}>
+    <ScrollArea type="auto" className={classes.boardScroll}>
+      <div ref={boardRef} data-testid="task-board">
         <Group align="stretch" gap="md" wrap="nowrap" className={classes.board}>
           {statusOrder.map((status) => (
             <BoardColumn

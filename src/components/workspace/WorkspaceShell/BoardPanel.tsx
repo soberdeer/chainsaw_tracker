@@ -1,4 +1,4 @@
-import { ActionIcon, Alert, Box, Button, Group, Loader, Tooltip } from '@mantine/core';
+import { ActionIcon, Alert, Badge, Box, Button, Group, Loader, Tooltip } from '@mantine/core';
 import { IconPlus, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
 import type { Task, TaskStatus } from '@/lib';
 import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
@@ -40,6 +40,13 @@ export function BoardPanel({
   return (
     <div>
       <Group className={classes.taskToolbar} justify="flex-end">
+        {isWorkspaceWide && (
+          <Tooltip label="Drag-and-drop card ordering is only available inside a specific folder view">
+            <Badge color="gray" variant="light">
+              Read-only
+            </Badge>
+          </Tooltip>
+        )}
         <Tooltip
           label={
             sortDir === 'asc'

@@ -93,11 +93,15 @@ export function completeFirstRunSetup(input: {
   });
 }
 
-export function login(input: { email: string; password: string }) {
+export function login(input: { login: string; password: string }) {
   return request<CurrentUser>('/api/auth/login', {
     method: 'POST',
     body: JSON.stringify(input),
   });
+}
+
+export function getOpenProjectUrl() {
+  return request<{ url: string }>('/api/auth/openproject-url');
 }
 
 export function logout() {

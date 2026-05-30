@@ -576,7 +576,7 @@ function createDefaultState(): MockState {
       externalSource: 'OPENPROJECT',
       externalUrl: 'https://openproject.example.test/wp/101',
       tagIds: ['tag-feature'],
-      githubPullRequestIds: [],
+      githubPullRequestIds: ['pr-hero'],
       githubBranchIds: [],
       customFields: {
         severity: 'Major',
@@ -807,6 +807,34 @@ function createDefaultState(): MockState {
     customFields: {},
   });
 
+  // Subtask of wp-101 (Hero controller) — used to test subtask expand/collapse in list & board
+  baseTasks.push({
+    id: 'wp-101-sub',
+    workspaceId: state.workspaceId,
+    spaceId: 'space-alpha',
+    folderId: 'folder-alpha',
+    taskListId: 'list-alpha',
+    taskKey: 'WP-101-SUB',
+    title: 'Setup input bindings',
+    description: 'Configure input action map for the hero controller.',
+    statusId: 'status-todo',
+    priority: 'NORMAL',
+    assigneeIds: ['user-lead'],
+    typeId: 'type-feature',
+    startDate: null,
+    dueDate: toIsoDate(3),
+    createdAt: NOW,
+    updatedAt: NOW,
+    position: 100,
+    externalSource: 'OPENPROJECT',
+    externalUrl: 'https://openproject.example.test/wp/101sub',
+    tagIds: [],
+    githubPullRequestIds: [],
+    githubBranchIds: [],
+    parentId: 'wp-101',
+    customFields: {},
+  });
+
   state.tasks = baseTasks;
   state.activities = [
     {
@@ -852,6 +880,24 @@ function createDefaultState(): MockState {
     },
   ];
   state.pullRequests = [
+    {
+      id: 'pr-hero',
+      repositoryId: 'repo-1',
+      workPackageId: 'wp-101',
+      githubPrId: 'gh-pr-hero',
+      number: 42,
+      title: 'WP-101 hero controller PR',
+      url: 'https://github.com/team/bootstrap-game/pull/42',
+      state: 'OPEN',
+      draft: false,
+      isMerged: false,
+      baseBranch: 'main',
+      headBranch: 'feature/wp-101-hero',
+      headSha: 'abc101',
+      authorLogin: 'lead.dev',
+      reviewStatus: 'APPROVED',
+      syncedAt: NOW,
+    },
     {
       id: 'pr-late',
       repositoryId: 'repo-1',
@@ -1601,9 +1647,12 @@ async function handleApiRoute(route: Route, state: MockState) {
     );
 
     if (!applyLocalFilters) {
-      const pageItems = baseTasks
-        .slice(cursor - 1, cursor - 1 + limit)
-        .map((task) => serializeTask(state, task));
+      // Mirror server-side nestSubtasks: remove children whose parent is in the
+      // same page and rely on serializeTask's subtasks array for nesting.
+      const pageRaw = baseTasks.slice(cursor - 1, cursor - 1 + limit);
+      const pageIds = new Set(pageRaw.map((t) => t.id));
+      const topLevel = pageRaw.filter((t) => !t.parentId || !pageIds.has(t.parentId));
+      const pageItems = topLevel.map((task) => serializeTask(state, task));
       const nextCursor = cursor - 1 + limit < baseTasks.length ? String(cursor + limit) : null;
       return fulfillJson(route, 200, { items: pageItems, nextCursor });
     }

@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Checkbox, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Checkbox, Group, Text, Tooltip } from '@mantine/core';
 import {
   IconChevronRight,
   IconFlag,
@@ -25,6 +25,8 @@ export interface CompactTaskRowProps {
   isDraggable?: boolean;
   onDragStart?: () => void;
   onDragEnd?: () => void;
+  /** Visual indentation depth for nested subtasks (0 = top-level) */
+  depth?: number;
 }
 
 function formatEstimate(hours?: number | null) {
@@ -45,143 +47,192 @@ export function CompactTaskRow({
   isDraggable,
   onDragStart,
   onDragEnd,
+  depth = 0,
 }: CompactTaskRowProps) {
   const due = formatDueDate(task.dueDate);
   const isLate = due.includes('ago');
   const status = displayStatus(undefined, task.status);
   const estimate = formatEstimate(task.estimatedHours);
-  const [_, setShowSubtasks] = useState(false);
+  const [showSubtasks, setShowSubtasks] = useState(false);
+  const hasSubtasks = (task.subtasks?.length ?? 0) > 0;
 
-  const toggleSubtasks = (e: any) => {
+  const toggleSubtasks = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     setShowSubtasks((s) => !s);
   };
 
   return (
-    <div
-      className={classes.taskRow}
-      data-testid="task-row"
-      data-task-id={task.id}
-      draggable={Boolean(isDraggable)}
-      onDragStart={onDragStart}
-      onDragEnd={onDragEnd}
-    >
-      <div className={classes.nameCell}>
-        {canWriteTasks && <IconGripVertical size="1rem" className={classes.dragHandle} />}
-        {onSelectedChange && (
-          <Checkbox
-            aria-label={`Select ${task.title}`}
-            checked={Boolean(selected)}
-            onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}
-          />
-        )}
-        {(task.subtasks?.length || 0) > 0 && (
-          <Tooltip label="Expand subtasks">
-            <ActionIcon onClick={toggleSubtasks}>
-              <IconChevronRight size="0.875rem" className={classes.mutedIcon} />
-            </ActionIcon>
-          </Tooltip>
-        )}
+    <div data-task-id={task.id} data-testid="task-row-wrapper">
+      {/* ── Main row ─────────────────────────────────────────────────────── */}
+      <div
+        className={classes.taskRow}
+        data-testid="task-row"
+        data-depth={depth}
+        style={
+          depth > 0
+            ? { paddingLeft: `calc(2.375rem * var(--mantine-scale) + ${depth * 2 + 2}rem)` }
+            : undefined
+        }
+        draggable={Boolean(isDraggable)}
+        onDragStart={onDragStart}
+        onDragEnd={onDragEnd}
+      >
+        <div className={classes.nameCell}>
+          <Group gap={0}>
+            {canWriteTasks && !task.parentId && (
+              <IconGripVertical size="1rem" className={classes.dragHandle} />
+            )}
+            {onSelectedChange && (
+              <Checkbox
+                aria-label={`Select ${task.title}`}
+                checked={Boolean(selected)}
+                className={classes.checkbox}
+                onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}
+              />
+            )}
+          </Group>
 
-        <Tooltip label={`Status: ${status.label}`}>
-          <StatusIcon type={status.type} tone={status.tone} />
-        </Tooltip>
-        <Text
-          data-testid="task-row-open"
-          component="button"
-          type="button"
-          className={classes.taskTitle}
-          fz="sm"
-          fw="bold"
-          onClick={() => onOpen(task)}
-        >
-          {task.title}
-        </Text>
-        {task.milestone?.title && (
-          <Tooltip label={task.milestone.title}>
-            <Badge color="grape">{task.milestone.title}</Badge>
+          {hasSubtasks ? (
+            <Tooltip label={showSubtasks ? 'Collapse subtasks' : 'Expand subtasks'}>
+              <ActionIcon
+                onClick={toggleSubtasks}
+                variant="transparent"
+                aria-label={showSubtasks ? 'Collapse subtasks' : 'Expand subtasks'}
+              >
+                <IconChevronRight
+                  className={classes.mutedIcon}
+                  style={{
+                    transition: 'transform 150ms ease',
+                    transform: showSubtasks ? 'rotate(90deg)' : 'rotate(0deg)',
+                  }}
+                />
+              </ActionIcon>
+            </Tooltip>
+          ) : (
+            <Box style={{ width: 28, height: 28 }} />
+          )}
+
+          <Tooltip label={`Status: ${status.label}`}>
+            <StatusIcon type={status.type} tone={status.tone} />
           </Tooltip>
-        )}
-        {estimate && (
-          <Tooltip label={`Estimate: ${estimate}`}>
-            <Badge color="cyan" variant="light">
-              {estimate}
-            </Badge>
-          </Tooltip>
-        )}
-        {task.checklistSummary?.total ? (
-          <Tooltip
-            label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
+          <Text
+            data-testid="task-row-open"
+            component="button"
+            type="button"
+            className={classes.taskTitle}
+            fz="sm"
+            fw={depth === 0 ? 'bold' : 'normal'}
+            onClick={() => onOpen(task)}
           >
-            <Badge color="lime" variant="light" leftSection={<IconChecklist size="0.75rem" />}>
-              {task.checklistSummary.completed}/{task.checklistSummary.total}
-            </Badge>
-          </Tooltip>
-        ) : null}
-        {task.tags.map(({ tag }) => (
-          <Tooltip key={tag.id} label={tag.name}>
-            <Badge>{tag.name}</Badge>
-          </Tooltip>
-        ))}
-        {task.githubPullRequests?.[0] && (
-          <Tooltip
-            label={`GitHub PR #${task.githubPullRequests[0].number}: ${task.githubPullRequests[0].reviewStatus}`}
-          >
-            <Badge
-              color={
-                task.githubPullRequests[0].isMerged
-                  ? 'teal'
-                  : task.githubPullRequests[0].reviewStatus === 'APPROVED'
-                    ? 'green'
-                    : task.githubPullRequests[0].reviewStatus === 'CHANGES_REQUESTED'
-                      ? 'red'
-                      : 'blue'
-              }
-              leftSection={<IconGitPullRequest size="0.75rem" />}
+            {task.title}
+          </Text>
+          {task.milestone?.title && (
+            <Tooltip label={task.milestone.title}>
+              <Badge color="grape">{task.milestone.title}</Badge>
+            </Tooltip>
+          )}
+          {estimate && (
+            <Tooltip label={`Estimate: ${estimate}`}>
+              <Badge color="cyan" variant="light">
+                {estimate}
+              </Badge>
+            </Tooltip>
+          )}
+          {task.checklistSummary?.total ? (
+            <Tooltip
+              label={`Checklist progress: ${task.checklistSummary.completed}/${task.checklistSummary.total}`}
             >
-              PR
-            </Badge>
-          </Tooltip>
-        )}
+              <Badge color="lime" variant="light" leftSection={<IconChecklist size="0.75rem" />}>
+                {task.checklistSummary.completed}/{task.checklistSummary.total}
+              </Badge>
+            </Tooltip>
+          ) : null}
+          {task.tags.map(({ tag }) => (
+            <Tooltip key={tag.id} label={tag.name}>
+              <Badge>{tag.name}</Badge>
+            </Tooltip>
+          ))}
+          {task.githubPullRequests?.[0] && (
+            <Tooltip
+              label={`GitHub PR #${task.githubPullRequests[0].number}: ${task.githubPullRequests[0].reviewStatus}`}
+            >
+              <Badge
+                color={
+                  task.githubPullRequests[0].isMerged
+                    ? 'teal'
+                    : task.githubPullRequests[0].reviewStatus === 'APPROVED'
+                      ? 'green'
+                      : task.githubPullRequests[0].reviewStatus === 'CHANGES_REQUESTED'
+                        ? 'red'
+                        : 'blue'
+                }
+                leftSection={<IconGitPullRequest size="0.75rem" />}
+              >
+                PR
+              </Badge>
+            </Tooltip>
+          )}
+        </div>
+
+        <div className={classes.assigneeCell}>
+          {task.assignees?.length ? (
+            <AvatarStack users={task.assignees} />
+          ) : (
+            <Text c="dimmed">-</Text>
+          )}
+        </div>
+        <Text className={isLate ? `${classes.dueCell} ${classes.lateDue}` : classes.dueCell}>
+          {due || (
+            <Tooltip label="No due date">
+              <Text component="span">-</Text>
+            </Tooltip>
+          )}
+        </Text>
+        <div className={classes.priorityCell}>
+          {!task.priority ? (
+            <Tooltip label="No priority">
+              <IconFlag size="1.1875rem" className={classes.mutedIcon} />
+            </Tooltip>
+          ) : task.priority === 'LOW' ? (
+            <Tooltip label="Priority: LOW">
+              <IconFlag size="1.1875rem" className={classes.mutedIcon} />
+            </Tooltip>
+          ) : (
+            <>
+              <Tooltip label={`Priority: ${task.priority}`}>
+                <IconFlag size="1.1875rem" fill="#ff8787" color="#ff8787" />
+              </Tooltip>{' '}
+              {task.priority[0] + task.priority.slice(1).toLowerCase()}
+            </>
+          )}
+        </div>
+        <Text size="sm" c="dimmed">
+          {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}
+        </Text>
+        <TaskActionsMenu
+          task={task}
+          onChanged={onChanged}
+          onError={onError}
+          canWriteTasks={canWriteTasks}
+        />
       </div>
-      <div className={classes.assigneeCell}>
-        {task.assignees?.length ? (
-          <AvatarStack users={task.assignees} />
-        ) : (
-          <Text c="dimmed">-</Text>
-        )}
-      </div>
-      <Text className={isLate ? `${classes.dueCell} ${classes.lateDue}` : classes.dueCell}>
-        {due || <Tooltip label="No due date">-</Tooltip>}
-      </Text>
-      <div className={classes.priorityCell}>
-        {!task.priority ? (
-          <Tooltip label="No priority">
-            <IconFlag size="1.1875rem" className={classes.mutedIcon} />
-          </Tooltip>
-        ) : task.priority === 'LOW' ? (
-          <Tooltip label="Priority: LOW">
-            <IconFlag size="1.1875rem" className={classes.mutedIcon} />
-          </Tooltip>
-        ) : (
-          <>
-            <Tooltip label={`Priority: ${task.priority}`}>
-              <IconFlag size="1.1875rem" fill="#ff8787" color="#ff8787" />
-            </Tooltip>{' '}
-            {task.priority[0] + task.priority.slice(1).toLowerCase()}
-          </>
-        )}
-      </div>
-      <Text size="sm" c="dimmed">
-        {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}
-      </Text>
-      <TaskActionsMenu
-        task={task}
-        onChanged={onChanged}
-        onError={onError}
-        canWriteTasks={canWriteTasks}
-      />
+
+      {showSubtasks && hasSubtasks && (
+        <div className={classes.subtasksContainer}>
+          {task.subtasks!.map((subtask) => (
+            <CompactTaskRow
+              key={subtask.id}
+              task={subtask}
+              onOpen={onOpen}
+              onChanged={onChanged}
+              onError={onError}
+              canWriteTasks={canWriteTasks}
+              depth={depth + 1}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

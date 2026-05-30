@@ -1,7 +1,17 @@
-import { Alert, Button, Paper, PasswordInput, Stack, Text, TextInput, Title } from '@mantine/core';
+import {
+  Alert,
+  Anchor,
+  Button,
+  Paper,
+  PasswordInput,
+  Stack,
+  Text,
+  TextInput,
+  Title,
+} from '@mantine/core';
 import { useForm } from '@mantine/form';
-import { useState } from 'react';
-import { getErrorMessage, login, type CurrentUser } from '@/lib';
+import { useEffect, useState } from 'react';
+import { getErrorMessage, getOpenProjectUrl, login, type CurrentUser } from '@/lib';
 import classes from './LoginPage.module.css';
 
 export interface LoginPageProps {
@@ -10,15 +20,24 @@ export interface LoginPageProps {
 
 export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
+  const [mustChangePassword, setMustChangePassword] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [opUrl, setOpUrl] = useState('http://localhost:8080');
+
+  useEffect(() => {
+    getOpenProjectUrl()
+      .then(({ url }) => setOpUrl(url))
+      .catch(() => {});
+  }, []);
+
   const form = useForm({
     initialValues: {
-      email: '',
+      login: '',
       password: '',
     },
     validate: {
-      email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
-      password: (value) => (value.trim().length ? null : 'API token is required'),
+      login: (value) => (value.trim().length ? null : 'Username or email is required'),
+      password: (value) => (value.trim().length ? null : 'Password is required'),
     },
   });
 
@@ -26,9 +45,15 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
     try {
       setLoading(true);
       setError(null);
+      setMustChangePassword(null);
       onLoggedIn(await login(values));
     } catch (caughtError) {
-      setError(getErrorMessage(caughtError));
+      const raw = getErrorMessage(caughtError);
+      if (raw.includes('MUST_CHANGE_PASSWORD')) {
+        setMustChangePassword(opUrl);
+      } else {
+        setError(raw);
+      }
     } finally {
       setLoading(false);
     }
@@ -40,17 +65,33 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
         <Stack gap="md">
           <div>
             <Title order={2}>OpenProject Tracker</Title>
-            <Text c="dimmed">Sign in with your OpenProject API token.</Text>
+            <Text c="dimmed">Sign in with your OpenProject credentials.</Text>
           </div>
-          {error && (
+
+          {mustChangePassword && (
+            <Alert color="yellow" title="Password change required">
+              Your OpenProject account requires a password change before you can log in. Please{' '}
+              <Anchor href={`${mustChangePassword}/account/change_password`} target="_blank">
+                change your password in OpenProject
+              </Anchor>
+              , then return here to sign in.
+            </Alert>
+          )}
+
+          {error && !mustChangePassword && (
             <Alert color="red" title="Could not sign in">
               {error}
             </Alert>
           )}
-          <TextInput label="Email" {...form.getInputProps('email')} />
+
+          <TextInput
+            label="Username or email"
+            autoComplete="username"
+            {...form.getInputProps('login')}
+          />
           <PasswordInput
-            label="OpenProject API token"
-            description="Find it in OpenProject → My account → Access tokens → API"
+            label="Password"
+            autoComplete="current-password"
             {...form.getInputProps('password')}
           />
           <Button loading={loading} type="submit">
