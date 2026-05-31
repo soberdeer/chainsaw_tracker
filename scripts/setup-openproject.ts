@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import { openProjectRequest } from '../server/openproject/client.js';
+import { saveTagsCustomFieldId } from '../server/openproject/tagsCustomField.js';
 import type {
   HalCollection,
   OpenProjectProject,
@@ -486,6 +487,145 @@ async function cleanupDemoProjects(): Promise<void> {
   }
 }
 
+// ── Tags Custom Field ────────────────────────────────────────────────────────
+
+const TAGS_CF_NAME = 'Tags';
+
+/**
+ * Ensures the "Tags" WorkPackageCustomField exists in OpenProject.
+ * - field_format: list (multi-value)
+ * - is_for_all: true (available on every work package type / project)
+ * Saves the CF ID to our DB via saveTagsCustomFieldId().
+ */
+function ensureTagsCustomFieldViaDocker(containerName = 'openproject-web-1'): number | null {
+  // field_format is readonly after creation in Rails 8 — only set it on new records.
+  const script = `
+cf = WorkPackageCustomField.find_by(name: ${JSON.stringify(TAGS_CF_NAME)})
+if cf.nil?
+  cf = WorkPackageCustomField.new(field_format: "list")
+end
+cf.name = ${JSON.stringify(TAGS_CF_NAME)}
+cf.is_required = false
+cf.is_for_all = true
+cf.multi_value = true
+cf.save!
+puts "TAGS_CF_ID:" + cf.id.to_s
+`;
+
+  try {
+    const out = execSync(`docker exec -i ${containerName} bundle exec rails runner -`, {
+      input: script,
+      timeout: 60_000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    const match = out.match(/TAGS_CF_ID:(\d+)/);
+    if (!match) {
+      warn(`Tags CF created but could not parse ID from output: ${out.slice(0, 200)}`);
+      return null;
+    }
+    return Number(match[1]);
+  } catch (error: any) {
+    const msg = (error?.stderr || error?.stdout || error?.message || String(error)).slice(0, 400);
+    warn(`Could not ensure Tags custom field: ${msg}`);
+    return null;
+  }
+}
+
+/**
+ * Enables the Tags CF on all existing work package types.
+ * OpenProject links CFs to types; is_for_all=true handles projects,
+ * but types still need the CF explicitly associated.
+ */
+function enableTagsCfOnAllTypesViaDocker(cfId: number, containerName = 'openproject-web-1'): void {
+  const script = `
+cf = WorkPackageCustomField.find(${cfId})
+Type.all.each do |t|
+  unless t.custom_fields.include?(cf)
+    t.custom_fields << cf
+    puts "TYPE_ENABLED:" + t.name
+  end
+end
+`;
+  try {
+    const out = execSync(`docker exec -i ${containerName} bundle exec rails runner -`, {
+      input: script,
+      timeout: 60_000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    for (const line of out.split('\n')) {
+      const m = line.match(/^TYPE_ENABLED:(.+)$/);
+      if (m) ok(`Tags CF enabled on type "${m[1]}"`);
+    }
+  } catch (error: any) {
+    warn(
+      `Could not enable Tags CF on types: ${(error?.stderr || error?.message || '').slice(0, 200)}`
+    );
+  }
+}
+
+async function setupTagsCustomField(): Promise<void> {
+  step(`Setting up "${TAGS_CF_NAME}" custom field`);
+  const cfId = ensureTagsCustomFieldViaDocker();
+  if (!cfId) return;
+  ok(`Tags custom field ID: ${cfId}`);
+  enableTagsCfOnAllTypesViaDocker(cfId);
+  await saveTagsCustomFieldId(cfId);
+  ok(`Tags CF ID saved to DB`);
+}
+
+// ── Priorities ───────────────────────────────────────────────────────────────
+
+function ensureNoPriorityViaDocker(containerName = 'openproject-web-1'): void {
+  // "No" priority sits below Low — used for ClickUp tasks with no priority set.
+  // IssuePriority position: lower number = higher priority (Immediate=1, High=2, ..., Low=4).
+  const script = `
+low = IssuePriority.find_by(name: 'Low')
+existing = IssuePriority.find_by(name: 'No')
+if existing
+  target_pos = low ? low.position + 1 : existing.position
+  if existing.position != target_pos
+    existing.update_column(:position, target_pos)
+    puts "PRIORITY_REPOSITIONED:" + existing.id.to_s + ":pos=" + target_pos.to_s
+  else
+    puts "PRIORITY_EXISTS:" + existing.id.to_s
+  end
+else
+  pos = low ? low.position + 1 : (IssuePriority.maximum(:position).to_i + 1)
+  p = IssuePriority.create!(name: 'No', position: pos)
+  puts "PRIORITY_CREATED:" + p.id.to_s + ":pos=" + pos.to_s
+end
+`;
+  try {
+    const out = execSync(`docker exec -i ${containerName} bundle exec rails runner -`, {
+      input: script,
+      timeout: 30_000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+    for (const line of out.split('\n')) {
+      if (line.startsWith('PRIORITY_CREATED:'))
+        ok(`Created "No" priority (${line.slice('PRIORITY_CREATED:'.length)})`);
+      if (line.startsWith('PRIORITY_EXISTS:'))
+        ok(`"No" priority already exists (id:${line.split(':')[1]})`);
+      if (line.startsWith('PRIORITY_REPOSITIONED:'))
+        ok(`Repositioned "No" priority (${line.slice('PRIORITY_REPOSITIONED:'.length)})`);
+    }
+  } catch (error: any) {
+    warn(
+      `Could not ensure "No" priority: ${(error?.stderr || error?.message || String(error)).slice(0, 300)}`
+    );
+  }
+}
+
+async function setupPriorities(): Promise<void> {
+  step('Configuring "No" priority (below Low)');
+  ensureNoPriorityViaDocker();
+}
+
+// ── Main ─────────────────────────────────────────────────────────────────────
+
 async function main() {
   console.log('OpenProject Setup');
   console.log('=================');
@@ -493,6 +633,8 @@ async function main() {
 
   await verifyToken();
   await setupStatuses(); // also calls cleanupExtraStatuses + reorderStatuses internally
+  await setupPriorities();
+  await setupTagsCustomField();
   await cleanupDemoProjects();
   await deletePlaceholderProject();
 

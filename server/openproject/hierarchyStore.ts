@@ -89,9 +89,24 @@ export function seededLists(workspace: SeededWorkspace) {
   return workspace.spaces.flatMap((space) => space.folders.flatMap((folder) => folder.taskLists));
 }
 
+/**
+ * Extract the OpenProject project numeric ID from a task-list ID.
+ *
+ * Formats supported (in priority order):
+ *   "{projectId}:{listId}"              e.g. "42:789"            → "42"   (current)
+ *   "list:{projectId}:{listId}"         e.g. "list:42:789"       → "42"   (old, kept for compat)
+ *   "op-project:{id}:clickup-list:{id}" e.g. "op-project:42:..." → "42"   (legacy)
+ *   plain numeric string                e.g. "42"                → "42"
+ */
 export function listOpenProjectProjectId(listId: string) {
-  const match = listId.match(/^op-project:(\d+):clickup-list:/);
-  return match?.[1] || listId;
+  // Current format: {projectId}:{anything}  (digits before first colon)
+  const bareMatch = listId.match(/^(\d+):/);
+  if (bareMatch) return bareMatch[1];
+  // Legacy format: op-project:{id}:clickup-list:{id}
+  const legacyMatch = listId.match(/^op-project:(\d+):/);
+  if (legacyMatch) return legacyMatch[1];
+  // Plain numeric project ID
+  return listId;
 }
 
 export function openProjectStatusId(statusId?: string) {
@@ -114,15 +129,41 @@ export function statusIdForOpenProjectStatus(list: SeededTaskList | undefined, s
   return list?.statuses.find((status) => status.openProjectStatusId === statusId)?.id || statusId;
 }
 
+/**
+ * Find a seeded list that matches the given imported work package description.
+ * Matching strategy (in order of reliability):
+ *   1. ClickUp IDs ("Space ID:" + "List ID:" lines in the meta block)
+ *   2. Names ("Space:" + "List:" lines) — fallback for older imports
+ */
 export function findSeededListByImportedDescription(
   workspace: SeededWorkspace | null,
   description?: string
 ) {
   if (!workspace || !description) return undefined;
+
+  // Extract IDs and names from description meta block
+  const spaceId = description.match(/^Space ID:\s*(.+)$/m)?.[1]?.trim();
+  const listId = description.match(/^List ID:\s*(.+)$/m)?.[1]?.trim();
   const spaceName = description.match(/^Space:\s*(.+)$/m)?.[1]?.trim();
   const listName = description.match(/^List:\s*(.+)$/m)?.[1]?.trim();
+
+  const lists = seededLists(workspace);
+
+  // 1. ID-based match (most reliable)
+  if (spaceId || listId) {
+    const byId = lists.find((list) => {
+      const f = list.importFilter;
+      if (!f) return false;
+      const spaceMatch = !spaceId || !f.clickUpSpaceId || f.clickUpSpaceId === spaceId;
+      const listMatch = !listId || !f.clickUpListId || f.clickUpListId === listId;
+      return spaceMatch && listMatch;
+    });
+    if (byId) return byId;
+  }
+
+  // 2. Name-based match (fallback)
   if (!spaceName && !listName) return undefined;
-  return seededLists(workspace).find(
+  return lists.find(
     (list) =>
       (!list.importFilter?.spaceName || list.importFilter.spaceName === spaceName) &&
       (!list.importFilter?.listName || list.importFilter.listName === listName)

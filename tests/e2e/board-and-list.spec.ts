@@ -341,7 +341,7 @@ test.describe('board view', () => {
     const heroCard = page.locator('[data-testid="task-card"][data-task-id="wp-101"]');
     await expect(heroCard).toContainText('Hero controller');
     await expect(heroCard).toContainText('HIGH');
-    // Assignee avatar — AvatarStack renders Avatar elements
+    // Assignee avatar — Priority renders Avatar elements
     await expect(heroCard.locator('.mantine-Avatar-root').first()).toBeVisible();
   });
 

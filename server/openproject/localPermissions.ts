@@ -1,34 +1,28 @@
-import { prisma } from '../db.js';
-
 export const openProjectRuntimeWorkspaceSlug = 'openproject-runtime';
 
-export async function getOpenProjectRuntimeWorkspace() {
-  return prisma.workspace.findUnique({
-    where: { slug: openProjectRuntimeWorkspaceSlug },
-    include: {
-      memberships: { include: { user: true } },
-      migrationRuns: { orderBy: { startedAt: 'desc' }, take: 5 },
-    },
-  });
+const RUNTIME_WORKSPACE = {
+  id: 'openproject',
+  name: process.env.OPENPROJECT_WORKSPACE_NAME || 'ChainsawLeg',
+  slug: openProjectRuntimeWorkspaceSlug,
+  description: 'Local tracker',
+  color: '#228be6',
+  avatarUrl: null as string | null,
+  memberships: [] as Array<{
+    id: string;
+    role: string;
+    user: { id: string; email: string; name: string };
+  }>,
+  migrationRuns: [] as Array<{ id: string }>,
+};
+
+export function getOpenProjectRuntimeWorkspace() {
+  return Promise.resolve(RUNTIME_WORKSPACE);
 }
 
-export async function ensureOpenProjectRuntimeWorkspaceScaffold() {
-  const workspace = await prisma.workspace.upsert({
-    where: { slug: openProjectRuntimeWorkspaceSlug },
-    update: {
-      color: '#228be6',
-    },
-    create: {
-      name: 'ChainsawLeg',
-      slug: openProjectRuntimeWorkspaceSlug,
-      description: 'Local tracker',
-      color: '#228be6',
-    },
-  });
-
-  return workspace;
+export function ensureOpenProjectRuntimeWorkspaceScaffold() {
+  return Promise.resolve(RUNTIME_WORKSPACE);
 }
 
-export async function bootstrapOpenProjectLocalPermissions() {
-  return ensureOpenProjectRuntimeWorkspaceScaffold();
+export function bootstrapOpenProjectLocalPermissions() {
+  return Promise.resolve(RUNTIME_WORKSPACE);
 }

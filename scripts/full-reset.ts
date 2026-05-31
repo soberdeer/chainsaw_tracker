@@ -11,7 +11,6 @@
  *   npx tsx scripts/full-reset.ts [--container <name>] [--skip-seed]
  */
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import { seededHierarchyPath } from '../server/openproject/hierarchyStore.js';
 import { execSync, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -145,57 +144,6 @@ async function nukeOpenProject(container: string) {
   }
 }
 
-// ─── Prisma nuking ────────────────────────────────────────────────────────────
-
-async function nukePrisma() {
-  step('Cleaning Prisma data');
-  const prisma = new PrismaClient();
-
-  try {
-    // Delete in dependency order (children before parents)
-    const counts = await prisma.$transaction([
-      prisma.taskGitHubLink.deleteMany(),
-      prisma.gitHubCommit.deleteMany(),
-      prisma.gitHubBranch.deleteMany(),
-      prisma.gitHubPullRequest.deleteMany(),
-      prisma.gitHubRepository.deleteMany(),
-      prisma.githubIntegration.deleteMany(),
-      prisma.taskDependency.deleteMany(),
-      prisma.taskComment.deleteMany(),
-      prisma.taskTag.deleteMany(),
-      prisma.openProjectWorkPackageTag.deleteMany(),
-      prisma.checklistItem.deleteMany(),
-      prisma.checklist.deleteMany(),
-      prisma.activityLog.deleteMany(),
-      prisma.notification.deleteMany(),
-      prisma.openProjectBoardCardOrder.deleteMany(),
-      prisma.task.deleteMany(),
-      prisma.tag.deleteMany(),
-      prisma.openProjectTag.deleteMany(),
-      prisma.taskStatus.deleteMany(),
-      prisma.taskList.deleteMany(),
-      prisma.milestone.deleteMany(),
-      prisma.document.deleteMany(),
-      prisma.spacePermission.deleteMany(),
-      prisma.folder.deleteMany(),
-      prisma.space.deleteMany(),
-      prisma.savedView.deleteMany(),
-      prisma.migrationRun.deleteMany(),
-      prisma.invite.deleteMany(),
-      prisma.membership.deleteMany(),
-      prisma.permissionSet.deleteMany(),
-      // Delete workspace last — it's the parent of most things.
-      // The runtime workspace is recreated by the seed script.
-      prisma.workspace.deleteMany(),
-    ]);
-
-    const total = counts.reduce((sum, c) => sum + c.count, 0);
-    ok(`Deleted ${total} rows across all tables`);
-  } finally {
-    await prisma.$disconnect();
-  }
-}
-
 // ─── Hierarchy file ───────────────────────────────────────────────────────────
 
 async function deleteHierarchyFile() {
@@ -258,7 +206,6 @@ async function main() {
   console.log(`  Skip seed : ${args.skipSeed}`);
 
   await nukeOpenProject(args.container);
-  await nukePrisma();
   await deleteHierarchyFile();
 
   if (!args.skipSetup) {
@@ -268,7 +215,13 @@ async function main() {
   }
 
   if (!args.skipSeed) {
+    // Seed first — users are created here (imported from ClickUp).
+    // reset:passwords and verify must run AFTER seed, not before.
     runScript('scripts/seed-openproject-from-clickup.ts', 'seed-openproject-from-clickup');
+    // Reset passwords after seed: all newly-imported users get force_password_change=false
+    // so verify smoke-test logins work without being redirected to change-password.
+    runScript('scripts/reset-openproject-passwords.ts', 'reset-openproject-passwords');
+    runScript('scripts/verify-openproject.ts', 'verify-openproject');
   }
 
   console.log('\n\x1b[32m✓ Full reset complete.\x1b[0m\n');

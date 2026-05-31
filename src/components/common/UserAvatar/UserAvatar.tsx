@@ -1,13 +1,13 @@
-import { Avatar, Tooltip } from '@mantine/core';
+import { Avatar, AvatarProps, Tooltip } from '@mantine/core';
 import type { User } from '@/lib';
 
-export interface UserAvatarProps {
+export interface UserAvatarProps extends AvatarProps {
   user: User;
   size?: string | number;
   withTooltip?: boolean;
 }
 
-export function UserAvatar({ user, size = 'sm', withTooltip = true }: UserAvatarProps) {
+export function UserAvatar({ user, size = 'sm', withTooltip = true, ...others }: UserAvatarProps) {
   const avatar = (
     <Avatar
       src={user.avatarUrl || null}
@@ -15,6 +15,7 @@ export function UserAvatar({ user, size = 'sm', withTooltip = true }: UserAvatar
       radius="xl"
       color="initials"
       name={user.name.replace('ㅤ', '')}
+      {...others}
     />
   );
 

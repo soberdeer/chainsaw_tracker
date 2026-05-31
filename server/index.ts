@@ -2,16 +2,8 @@ import 'dotenv/config';
 import cors from 'cors';
 import express from 'express';
 import { toHttpError } from './errors.js';
-import { bootstrapOpenProjectLocalPermissions } from './openproject/localPermissions.js';
 import { openProjectRouter } from './openproject/routes.js';
 import { authRouter } from './routes/auth.js';
-import { checklistsRouter } from './routes/checklists.js';
-import { documentsRouter } from './routes/documents.js';
-import { importReportsRouter } from './routes/importReports.js';
-import { integrationsRouter } from './routes/integrations.js';
-import { notificationsRouter } from './routes/notifications.js';
-import { referencesRouter } from './routes/references.js';
-import { savedViewsRouter } from './routes/savedViews.js';
 import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import path from 'node:path';
@@ -38,21 +30,11 @@ export function createApp() {
   app.use('/api/workspaces', workspacesRouter);
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
-  app.use('/api', checklistsRouter);
   app.use('/api/openproject', openProjectRouter);
-  app.use('/api/documents', documentsRouter);
-  app.use('/api/saved-views', savedViewsRouter);
-  app.use('/api/notifications', notificationsRouter);
-  app.use('/api/import-reports', importReportsRouter);
-  app.use('/api', referencesRouter);
-  app.use('/api/integrations', integrationsRouter);
-  app.use('/integrations', integrationsRouter);
 
   app.use(
     (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
       const httpError = toHttpError(error);
-      // Only log unexpected server errors (5xx). 4xx are expected client errors
-      // (auth failures, validation, not-found) and should not pollute logs.
       if (httpError.statusCode >= 500) {
         console.error(error);
       }
@@ -69,17 +51,7 @@ const isMainModule =
   process.argv[1] !== undefined && fileURLToPath(import.meta.url) === path.resolve(process.argv[1]);
 
 if (isMainModule) {
-  bootstrapOpenProjectLocalPermissions()
-    .catch((error) => {
-      console.warn(
-        `OpenProject local permission bootstrap skipped: ${
-          error instanceof Error ? error.message : String(error)
-        }`
-      );
-    })
-    .finally(() => {
-      app.listen(port, () => {
-        console.log(`API listening on http://localhost:${port}`);
-      });
-    });
+  app.listen(port, () => {
+    console.log(`API listening on http://localhost:${port}`);
+  });
 }

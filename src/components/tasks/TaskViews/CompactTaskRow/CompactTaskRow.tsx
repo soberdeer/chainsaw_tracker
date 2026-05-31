@@ -1,12 +1,12 @@
-import { ActionIcon, Badge, Box, Checkbox, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Group, Text, Tooltip } from '@mantine/core';
 import {
   IconChevronRight,
-  IconFlag,
   IconGitPullRequest,
   IconChecklist,
   IconGripVertical,
 } from '@tabler/icons-react';
 import { useState } from 'react';
+import { Priority } from '@/components/common/Priority/Priority';
 import { displayStatus, formatDueDate, type Task } from '@/lib';
 import { AvatarStack } from '../../../common/AvatarStack';
 import { StatusIcon } from '../../StatusIcon/StatusIcon';
@@ -42,8 +42,8 @@ export function CompactTaskRow({
   onChanged,
   onError,
   canWriteTasks,
-  selected,
-  onSelectedChange,
+  selected: _selected,
+  onSelectedChange: _onSelectedChange,
   isDraggable,
   onDragStart,
   onDragEnd,
@@ -83,14 +83,15 @@ export function CompactTaskRow({
             {canWriteTasks && !task.parentId && (
               <IconGripVertical size="1rem" className={classes.dragHandle} />
             )}
-            {onSelectedChange && (
-              <Checkbox
-                aria-label={`Select ${task.title}`}
-                checked={Boolean(selected)}
-                className={classes.checkbox}
-                onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}
-              />
-            )}
+            <Box style={{ width: 20 }} />
+            {/*{onSelectedChange && (*/}
+            {/*  <Checkbox*/}
+            {/*    aria-label={`Select ${task.title}`}*/}
+            {/*    checked={Boolean(selected)}*/}
+            {/*    className={classes.checkbox}*/}
+            {/*    onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}*/}
+            {/*  />*/}
+            {/*)}*/}
           </Group>
 
           {hasSubtasks ? (
@@ -148,11 +149,28 @@ export function CompactTaskRow({
               </Badge>
             </Tooltip>
           ) : null}
-          {task.tags.map(({ tag }) => (
-            <Tooltip key={tag.id} label={tag.name}>
-              <Badge>{tag.name}</Badge>
-            </Tooltip>
-          ))}
+          {task.tags.map(({ tag }) =>
+            tag.theme ? (
+              <Badge key={tag.id} variant="light" size="sm" color={tag.theme}>
+                {tag.name}
+              </Badge>
+            ) : (
+              <Badge
+                key={tag.id}
+                variant="light"
+                size="sm"
+                style={{
+                  backgroundColor: `${tag.color}22`,
+                  color: tag.color,
+                  borderColor: `${tag.color}55`,
+                  border: '1px solid',
+                  fontWeight: 500,
+                }}
+              >
+                {tag.name}
+              </Badge>
+            )
+          )}
           {task.githubPullRequests?.[0] && (
             <Tooltip
               label={`GitHub PR #${task.githubPullRequests[0].number}: ${task.githubPullRequests[0].reviewStatus}`}
@@ -190,22 +208,7 @@ export function CompactTaskRow({
           )}
         </Text>
         <div className={classes.priorityCell}>
-          {!task.priority ? (
-            <Tooltip label="No priority">
-              <IconFlag size="1.1875rem" className={classes.mutedIcon} />
-            </Tooltip>
-          ) : task.priority === 'LOW' ? (
-            <Tooltip label="Priority: LOW">
-              <IconFlag size="1.1875rem" className={classes.mutedIcon} />
-            </Tooltip>
-          ) : (
-            <>
-              <Tooltip label={`Priority: ${task.priority}`}>
-                <IconFlag size="1.1875rem" fill="#ff8787" color="#ff8787" />
-              </Tooltip>{' '}
-              {task.priority[0] + task.priority.slice(1).toLowerCase()}
-            </>
-          )}
+          <Priority priority={task.priority} />
         </div>
         <Text size="sm" c="dimmed">
           {task.updatedAt ? new Date(task.updatedAt).toLocaleDateString() : ''}

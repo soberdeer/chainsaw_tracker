@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import { openProjectRequest } from '../server/openproject/client.js';
 import { seededHierarchyPath } from '../server/openproject/hierarchyStore.js';
 import type {
@@ -57,8 +56,6 @@ type ResetSummary = {
 };
 
 type CleanupCounts = ResetSummary['staleCleanup'];
-
-type CleanupPrisma = Pick<PrismaClient, 'notification' | 'savedView' | 'migrationRun'>;
 
 function baseUrlForSummary() {
   return (process.env.OPENPROJECT_BASE_URL || 'http://localhost:8080').replace(/\/$/, '');
@@ -160,57 +157,9 @@ export function sortProjectsForDeletion(projects: DeleteItem[]) {
     .sort((a, b) => (b.depth || 0) - (a.depth || 0) || a.name.localeCompare(b.name));
 }
 
-export async function cleanupLocalOpenProjectState(
-  prisma: CleanupPrisma,
-  input: {
-    deletedProjectIds: string[];
-    deletedWorkPackageIds: string[];
-    clearImportReports?: boolean;
-    hierarchyPath?: string;
-  }
-): Promise<CleanupCounts> {
-  const listProjectPrefixes = input.deletedProjectIds.map((id) => `op-project:${id}:`);
-  const [notificationsDeleted, savedViewsProjectCleared, existingSavedViews] = await Promise.all([
-    prisma.notification.deleteMany({
-      where: {
-        OR: [
-          { workPackageId: { in: input.deletedWorkPackageIds } },
-          { taskId: { in: input.deletedWorkPackageIds } },
-        ],
-      },
-    }),
-    prisma.savedView.updateMany({
-      where: { projectId: { in: input.deletedProjectIds } },
-      data: { projectId: null },
-    }),
-    prisma.savedView.findMany({
-      where: {
-        OR: [
-          { listId: { in: input.deletedProjectIds } },
-          ...listProjectPrefixes.map((prefix) => ({
-            listId: { startsWith: prefix },
-          })),
-        ],
-      },
-      select: { id: true },
-    }),
-  ]);
-
-  let savedViewsListCleared = 0;
-  if (existingSavedViews.length > 0) {
-    const update = await prisma.savedView.updateMany({
-      where: { id: { in: existingSavedViews.map((view) => view.id) } },
-      data: { listId: null },
-    });
-    savedViewsListCleared = update.count;
-  }
-
-  let importReportsDeleted = 0;
-  if (input.clearImportReports) {
-    const deleted = await prisma.migrationRun.deleteMany({ where: { source: 'CLICKUP' } });
-    importReportsDeleted = deleted.count;
-  }
-
+export async function cleanupLocalOpenProjectState(input: {
+  hierarchyPath?: string;
+}): Promise<CleanupCounts> {
   const hierarchyPath = input.hierarchyPath || seededHierarchyPath();
   let hierarchyFileDeleted = false;
   let hierarchyFileMissing = false;
@@ -227,10 +176,10 @@ export async function cleanupLocalOpenProjectState(
   }
 
   return {
-    notificationsDeleted: notificationsDeleted.count,
-    savedViewsProjectCleared: savedViewsProjectCleared.count,
-    savedViewsListCleared,
-    importReportsDeleted,
+    notificationsDeleted: 0,
+    savedViewsProjectCleared: 0,
+    savedViewsListCleared: 0,
+    importReportsDeleted: 0,
     hierarchyFileDeleted,
     hierarchyFileMissing,
   };
@@ -280,10 +229,7 @@ async function deleteProjects(projects: DeleteItem[]) {
   return { deleted, deletedIds, failures };
 }
 
-export async function runResetOpenProject(
-  args: ResetArgs,
-  prisma = new PrismaClient()
-): Promise<ResetSummary> {
+export async function runResetOpenProject(args: ResetArgs): Promise<ResetSummary> {
   const baseUrl = baseUrlForSummary();
   const [workPackages, projects] = await Promise.all([
     listOpenProjectWorkPackages(),
@@ -327,11 +273,7 @@ export async function runResetOpenProject(
   summary.projectsDeleted = projectDeletion.deleted;
   summary.projectDeleteFailures = projectDeletion.failures;
 
-  summary.staleCleanup = await cleanupLocalOpenProjectState(prisma, {
-    deletedProjectIds: projectDeletion.deletedIds,
-    deletedWorkPackageIds: workPackageDeletion.deletedIds,
-    clearImportReports: args.clearImportReports,
-  });
+  summary.staleCleanup = await cleanupLocalOpenProjectState({});
 
   return summary;
 }
@@ -339,7 +281,6 @@ export async function runResetOpenProject(
 async function main() {
   const args = parseResetArgs(process.argv.slice(2));
   const safety = isDestructiveResetAllowed(args);
-  const prisma = new PrismaClient();
 
   console.log(
     JSON.stringify(
@@ -356,14 +297,10 @@ async function main() {
     )
   );
 
-  try {
-    const summary = await runResetOpenProject(args, prisma);
-    console.log(JSON.stringify(summary, null, 2));
-    if (!args.dryRun && !safety.allowed) {
-      process.exitCode = 1;
-    }
-  } finally {
-    await prisma.$disconnect();
+  const summary = await runResetOpenProject(args);
+  console.log(JSON.stringify(summary, null, 2));
+  if (!args.dryRun && !safety.allowed) {
+    process.exitCode = 1;
   }
 }
 

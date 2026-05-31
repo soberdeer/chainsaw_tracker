@@ -14,6 +14,7 @@ interface SpaceTreeItemProps {
   onToggleSpace: (id: string) => void;
   onOpenFolder: (spaceId: string, folder: Folder) => void;
   onToggleFolder: (id: string) => void;
+  onOpenProjectAccess?: () => void;
   onCreateSubProject: (parentSpaceId: string) => void;
 }
 
@@ -27,6 +28,7 @@ export function SpaceTreeItem({
   onToggleSpace,
   onOpenFolder,
   onToggleFolder,
+  onOpenProjectAccess: _onOpenProjectAccess,
   onCreateSubProject,
 }: SpaceTreeItemProps) {
   const isActiveSpace = space.id === activeSpace?.id;

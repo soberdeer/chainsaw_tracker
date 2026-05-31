@@ -1,5 +1,6 @@
 import type { Request, Response } from 'express';
 import {
+  _setOpRetryConfig,
   clearSessionCookie,
   currentUserId,
   setSessionCookie,
@@ -16,8 +17,12 @@ const COOKIE_NAME = 'tracker_session';
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
-function makeSignedCookie(userId: string, secret = 'auth-test-secret-key') {
-  const payload = Buffer.from(JSON.stringify({ userId })).toString('base64url');
+function makeSessionUser(id: string) {
+  return { id, email: `${id}@test.com`, name: id, login: id, admin: false };
+}
+
+function makeSignedCookie(id: string, secret = 'auth-test-secret-key') {
+  const payload = Buffer.from(JSON.stringify(makeSessionUser(id))).toString('base64url');
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
   return `${COOKIE_NAME}=${payload}.${signature}`;
 }
@@ -41,7 +46,7 @@ test('currentUserId returns null when no cookie is present', () => {
 });
 
 test('currentUserId returns null when signature is tampered', () => {
-  const payload = Buffer.from(JSON.stringify({ userId: 'hacker' })).toString('base64url');
+  const payload = Buffer.from(JSON.stringify(makeSessionUser('hacker'))).toString('base64url');
   const badToken = `${payload}.invalidsignature`;
   const req = makeReq(`${COOKIE_NAME}=${badToken}`);
   assert.equal(currentUserId(req), null);
@@ -56,8 +61,7 @@ test('currentUserId returns null when payload is not valid base64url JSON', () =
   assert.equal(currentUserId(req), null);
 });
 
-test('currentUserId returns null when userId field is missing from payload', () => {
-  // Valid JWT-like cookie but without userId key
+test('currentUserId returns null when id field is missing from payload', () => {
   const payload = Buffer.from(JSON.stringify({ email: 'test@example.com' })).toString('base64url');
   const secret = process.env.SESSION_SECRET!;
   const signature = crypto.createHmac('sha256', secret).update(payload).digest('base64url');
@@ -92,7 +96,7 @@ test('setSessionCookie sets a signed httpOnly cookie on the response', () => {
     },
   } as unknown as Response;
 
-  setSessionCookie(res, 'user-99');
+  setSessionCookie(res, makeSessionUser('user-99'));
 
   assert.equal(cookies.length, 1);
   const [name, value, options] = cookies[0]!;
@@ -102,7 +106,6 @@ test('setSessionCookie sets a signed httpOnly cookie on the response', () => {
     'cookie value should contain a dot separator'
   );
 
-  // Verify the cookie can be round-tripped back to the userId
   const req = makeReq(`${name}=${value}`);
   assert.equal(currentUserId(req), 'user-99');
 
@@ -115,8 +118,8 @@ test('setSessionCookie produces a different token for each userId', () => {
     cookie: (_n: string, value: string) => cookies.push(value),
   } as unknown as Response;
 
-  setSessionCookie(res, 'user-a');
-  setSessionCookie(res, 'user-b');
+  setSessionCookie(res, makeSessionUser('user-a'));
+  setSessionCookie(res, makeSessionUser('user-b'));
 
   assert.notEqual(cookies[0], cookies[1]);
 });
@@ -145,7 +148,7 @@ test('clearSessionCookie clears the tracker_session cookie', () => {
 // mockFetchSequence() lets each call return a different fake response.
 
 const LOGIN_PAGE_HTML = `
-<html><body>
+<html lang="en"><body>
 <input name="authenticity_token" value="test-csrf-token">
 </body></html>
 `;
@@ -212,31 +215,35 @@ test('verifyViaOpenProject returns user when credentials are valid', async () =>
   }
 });
 
-test('verifyViaOpenProject returns null when GET /login fails (OP unavailable)', async () => {
+test('verifyViaOpenProject returns OPENPROJECT_UNAVAILABLE when GET /login fails', async () => {
+  _setOpRetryConfig(1, 0); // 1 attempt, no delay — keeps test fast
   const original = globalThis.fetch;
   globalThis.fetch = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch;
   try {
     const result = await verifyViaOpenProject('admin', 'pass');
-    assert.equal(result, null);
+    assert.equal(result, 'OPENPROJECT_UNAVAILABLE');
   } finally {
     globalThis.fetch = original;
+    _setOpRetryConfig(5, 3_000); // restore production defaults
   }
 });
 
-test('verifyViaOpenProject returns null when login page has no CSRF token', async () => {
+test('verifyViaOpenProject returns OPENPROJECT_UNAVAILABLE when login page has no CSRF token', async () => {
+  _setOpRetryConfig(1, 0); // 1 attempt, no delay — keeps test fast
   const restore = mockFetchSequence([
     {
       status: 200,
       ok: true,
       headers: new Headers(),
-      text: () => Promise.resolve('<html>no form here</html>'),
+      text: () => Promise.resolve('<html lang="en">no form here</html>'),
     },
   ]);
   try {
     const result = await verifyViaOpenProject('admin', 'pass');
-    assert.equal(result, null);
+    assert.equal(result, 'OPENPROJECT_UNAVAILABLE');
   } finally {
     restore();
+    _setOpRetryConfig(5, 3_000); // restore production defaults
   }
 });
 
@@ -313,13 +320,15 @@ test('verifyViaOpenProject returns null when admin user lookup returns empty lis
   }
 });
 
-test('verifyViaOpenProject returns null when fetch throws a network error', async () => {
+test('verifyViaOpenProject returns OPENPROJECT_UNAVAILABLE when fetch throws a network error', async () => {
+  _setOpRetryConfig(1, 0);
   const original = globalThis.fetch;
   globalThis.fetch = (() => Promise.reject(new Error('ECONNREFUSED'))) as unknown as typeof fetch;
   try {
     const result = await verifyViaOpenProject('admin', 'pass');
-    assert.equal(result, null);
+    assert.equal(result, 'OPENPROJECT_UNAVAILABLE');
   } finally {
     globalThis.fetch = original;
+    _setOpRetryConfig(5, 3_000);
   }
 });

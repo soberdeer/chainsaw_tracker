@@ -1,5 +1,3 @@
-import type { GitHubPullRequest } from '@prisma/client';
-
 export type TaskDevelopmentStatus =
   | 'NOT_STARTED'
   | 'IN_PROGRESS'
@@ -14,9 +12,12 @@ export type TaskDevelopmentStatus =
 type TaskWithGithub = {
   status: string;
   githubBranches?: unknown[];
-  githubPullRequests?: Array<
-    Pick<GitHubPullRequest, 'state' | 'draft' | 'reviewStatus' | 'isMerged'>
-  >;
+  githubPullRequests?: Array<{
+    state: string;
+    draft: boolean;
+    reviewStatus: string;
+    isMerged: boolean;
+  }>;
 };
 
 export function computeTaskDevelopmentStatus(task: TaskWithGithub): TaskDevelopmentStatus {

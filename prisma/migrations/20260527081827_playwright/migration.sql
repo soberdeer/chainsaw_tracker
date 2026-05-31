@@ -1,8 +1,0 @@
--- RenameIndex
-ALTER INDEX "OpenProjectBoardCardOrder_workspaceId_taskListId_statusId_pos_i" RENAME TO "OpenProjectBoardCardOrder_workspaceId_taskListId_statusId_p_idx";
-
--- RenameIndex
-ALTER INDEX "OpenProjectBoardCardOrder_workspaceId_taskListId_statusId_wo_ke" RENAME TO "OpenProjectBoardCardOrder_workspaceId_taskListId_statusId_w_key";
-
--- RenameIndex
-ALTER INDEX "OpenProjectBoardCardOrder_workspaceId_taskListId_workPackageId_" RENAME TO "OpenProjectBoardCardOrder_workspaceId_taskListId_workPackag_idx";

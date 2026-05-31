@@ -239,6 +239,8 @@ export type Tag = {
   id: string;
   name: string;
   color: string;
+  /** Mantine color name (e.g. "blue", "grape"). Optional. */
+  theme?: string;
 };
 
 export type OpenProjectTaskTypeOption = {

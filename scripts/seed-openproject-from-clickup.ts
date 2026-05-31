@@ -1,5 +1,4 @@
 import 'dotenv/config';
-import { PrismaClient } from '@prisma/client';
 import { openProjectRequest } from '../server/openproject/client.js';
 import { seededHierarchyPath, type SeededWorkspace } from '../server/openproject/hierarchyStore.js';
 import { statusThemeColor, statusThemeType } from '../server/openproject/mappers.js';
@@ -25,7 +24,7 @@ type OpenProjectCategory = {
 
 // `${projectId}:${normalizedTagName}` → category href
 type CategoryCache = Map<string, string>;
-import type { PermissionSet, TaskStatusType, WorkspaceRole } from '../src/lib/types.js';
+import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
   ClickUpFolder,
@@ -47,11 +46,10 @@ import {
   type OpenProjectRoleLike,
   type ImportedPermissionLevel,
 } from './migration/openprojectPermissions.js';
+import { execSync } from 'node:child_process';
 import { mkdir, writeFile } from 'node:fs/promises';
 import path, { dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const prisma = new PrismaClient();
 
 type ImportedMeta = {
   clickUpTaskId?: string;
@@ -473,7 +471,7 @@ function priorityNameFromClickUp(priority: ClickUpTask['priority']) {
   if (id === 3) return 'Normal';
   if (id === 4) return 'Low';
 
-  return undefined;
+  return 'No';
 }
 
 function priorityHref(priorities: OpenProjectPriority[], priority: ClickUpTask['priority']) {
@@ -565,49 +563,6 @@ function mapStatusToOpenProjectId(
  * - custom type is categorised by name: prep | progress | test.
  * - "on hold"-like names always stay 'open'.
  */
-function clickUpStatusType(status: ClickUpStatus): TaskStatusType {
-  const name = status.status.toLowerCase();
-
-  if (name.includes('hold') || name.includes('block') || name.includes('wait')) return 'open';
-
-  if (status.type === 'open') return 'open';
-  if (status.type === 'done') return 'done';
-  if (status.type === 'closed') return 'closed';
-
-  // custom → by name
-  if (
-    name.includes('scop') ||
-    name.includes('design') ||
-    name.includes('plan') ||
-    name.includes('spec') ||
-    name.includes('research') ||
-    name.includes('ready')
-  )
-    return 'prep';
-
-  if (
-    name.includes('review') ||
-    name.includes('test') ||
-    name.includes(' qa') ||
-    name === 'qa' ||
-    name.includes('verif')
-  )
-    return 'test';
-
-  return 'progress';
-}
-
-function clickUpStatuses(
-  list: ClickUpList,
-  folder: ClickUpFolder | null,
-  space: ClickUpSpace
-): ClickUpStatus[] {
-  return list.statuses?.length
-    ? list.statuses
-    : folder?.statuses?.length
-      ? folder.statuses
-      : space.statuses || [];
-}
 
 function seededPermissions() {
   return permissionSets.map((set) => ({
@@ -616,33 +571,6 @@ function seededPermissions() {
     canEdit: set.manageTasks,
     canManage: set.manageSpaces,
   }));
-}
-
-function seededStatuses(params: {
-  statuses: ClickUpStatus[];
-  openProjectStatuses: OpenProjectStatus[];
-  taskListId: string;
-}) {
-  return params.statuses
-    .map((status, index) => {
-      const openProjectStatusId = mapStatusToOpenProjectId(status, params.openProjectStatuses);
-      const opName =
-        params.openProjectStatuses.find((s) => String(s.id) === openProjectStatusId)?.name ?? '';
-
-      return {
-        id: `op-status:${openProjectStatusId}:clickup-status:${statusSlug(status.status)}`,
-        clickupStatusId: status.id,
-        clickupStatusName: status.status,
-        openProjectStatusId,
-        taskListId: params.taskListId,
-        name: status.status,
-        color: statusThemeColor(opName),
-        position: Number(status.orderindex ?? index),
-        isDone: status.type === 'closed' || status.type === 'done',
-        statusType: clickUpStatusType(status),
-      };
-    })
-    .sort((a, b) => a.position - b.position);
 }
 
 function seededStatusesFromOpenProject(params: {
@@ -728,14 +656,7 @@ function isInvalidStatusTransitionError(error: unknown) {
 }
 
 async function ensureLocalRuntimeWorkspace() {
-  return prisma.workspace.upsert({
-    where: { slug: 'chainsaw' },
-    update: {},
-    create: {
-      name: 'Chainsaw',
-      slug: 'chainsaw',
-    },
-  });
+  return { id: 'openproject' };
 }
 
 async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context: UserSyncContext) {
@@ -752,85 +673,9 @@ async function syncClickUpUserIntoLocalWorkspace(user: ClickUpUserLike, context:
   context.seenClickUpUserKeys.add(key);
   context.summary.clickUpUsersSeen += 1;
 
-  const email = clickUpUserEmail(user);
-  const name = clickUpUserName(user);
-
-  const existing = await prisma.user.findUnique({
-    where: { email },
-  });
-
-  let localUser;
-
-  if (existing) {
-    const needsUpdate = existing.name !== name;
-
-    localUser = needsUpdate
-      ? await prisma.user.update({
-          where: { id: existing.id },
-          data: {
-            name,
-            avatarUrl:
-              existing.avatarUrl || user.profilePicture || user.profile_picture || undefined,
-            source: existing.source || 'CLICKUP_IMPORTED',
-          },
-        })
-      : existing;
-
-    if (needsUpdate) {
-      context.summary.localUsersUpdated += 1;
-    } else {
-      context.summary.localUsersReused += 1;
-    }
-  } else {
-    localUser = await prisma.user.create({
-      data: {
-        email,
-        name,
-        avatarUrl: user.profilePicture || user.profile_picture || undefined,
-        source: 'CLICKUP_IMPORTED',
-      },
-    });
-
-    context.summary.localUsersCreated += 1;
-  }
-
-  const existingMembership = await prisma.membership.findUnique({
-    where: {
-      userId_workspaceId: {
-        userId: localUser.id,
-        workspaceId: context.workspaceId,
-      },
-    },
-  });
-
-  if (!existingMembership) {
-    await prisma.membership.create({
-      data: {
-        userId: localUser.id,
-        workspaceId: context.workspaceId,
-        role: 'MEMBER',
-      },
-    });
-
-    context.summary.localMembershipsCreated += 1;
-  }
-
-  return localUser;
-}
-
-async function linkLocalUserToOpenProjectUser(
-  localUserId: string,
-  openProjectUser: OpenProjectUser
-) {
-  return prisma.user.update({
-    where: { id: localUserId },
-    data: {
-      openProjectUserId: String(openProjectUser.id),
-      openProjectLogin:
-        openProjectUser.login || openProjectUser.email || String(openProjectUser.id),
-      source: 'CLICKUP_IMPORTED',
-    },
-  });
+  // User tracking removed - users managed in OpenProject
+  context.summary.localUsersReused += 1;
+  return null;
 }
 
 async function syncClickUpTeamUsersIntoLocalWorkspace(
@@ -847,14 +692,8 @@ async function syncClickUpTeamUsersIntoLocalWorkspace(
       continue;
     }
 
-    const localUser = await syncClickUpUserIntoLocalWorkspace(clickUpUser, context);
-    const openProjectUser = await ensureOpenProjectUserFromClickUp(
-      clickUpUser,
-      openProjectUserSync
-    );
-    if (localUser && openProjectUser) {
-      await linkLocalUserToOpenProjectUser(localUser.id, openProjectUser);
-    }
+    await syncClickUpUserIntoLocalWorkspace(clickUpUser, context);
+    await ensureOpenProjectUserFromClickUp(clickUpUser, openProjectUserSync);
   }
 }
 
@@ -864,11 +703,8 @@ async function syncPermissionGrantUsersIntoLocalWorkspace(
   openProjectUserSync: OpenProjectUserSyncContext
 ) {
   for (const grant of grants) {
-    const localUser = await syncClickUpUserIntoLocalWorkspace(grant.user, context);
-    const openProjectUser = await ensureOpenProjectUserFromClickUp(grant.user, openProjectUserSync);
-    if (localUser && openProjectUser) {
-      await linkLocalUserToOpenProjectUser(localUser.id, openProjectUser);
-    }
+    await syncClickUpUserIntoLocalWorkspace(grant.user, context);
+    await ensureOpenProjectUserFromClickUp(grant.user, openProjectUserSync);
   }
 }
 
@@ -1093,6 +929,10 @@ function openProjectPayloadDetails(payload: unknown): string | null {
     _embedded?: {
       errors?: Array<{
         message?: unknown;
+        // OpenProject puts the attribute name under _embedded.details.attribute on
+        // each individual error item (locale-independent, always English).
+        _embedded?: { details?: { attribute?: unknown } };
+        // Older / flat format kept for compatibility
         details?: { attribute?: unknown };
       }>;
     };
@@ -1101,7 +941,8 @@ function openProjectPayloadDetails(payload: unknown): string | null {
   const errors = body._embedded?.errors || [];
   const errorMessages = errors
     .map((item) => {
-      const attribute = item.details?.attribute;
+      // Prefer _embedded.details.attribute (current OP format); fall back to flat details
+      const attribute = item._embedded?.details?.attribute ?? item.details?.attribute;
       const prefix = typeof attribute === 'string' ? `${attribute}: ` : '';
       return typeof item.message === 'string' ? `${prefix}${item.message}` : null;
     })
@@ -1524,6 +1365,10 @@ async function activateArchivedProjectForBootstrap(): Promise<number | null> {
     query: { pageSize: 500 },
   });
   const all = page._embedded?.elements || [];
+
+  // Already have active projects — no bootstrap needed
+  if (all.some((p) => p.active !== false)) return null;
+
   const archived = all.filter((p) => p.active === false);
   const roots = archived.filter((p) => {
     const parent = (p._links as any).parent;
@@ -1981,8 +1826,53 @@ export function buildTaskBody(params: {
   return body;
 }
 
+/**
+ * Returns true if an error object's OP payload indicates an assignee/responsible
+ * attribute constraint violation (locale-independent, same pattern as isStatusAttributePayload).
+ */
+function isAssigneeAttributePayload(p: Record<string, unknown>): boolean {
+  const embedded = p._embedded;
+  if (!embedded || typeof embedded !== 'object') return false;
+  const details = (embedded as Record<string, unknown>).details;
+  if (details && typeof details === 'object') {
+    const attr = (details as Record<string, unknown>).attribute;
+    return attr === 'assignee' || attr === 'responsible';
+  }
+  return false;
+}
+
 function isAssigneeMappingError(error: unknown) {
-  return /assignee|responsible/i.test(openProjectErrorMessage(error));
+  // Fast path: English text in the formatted message (covers cases where the attribute
+  // prefix was successfully extracted by openProjectPayloadDetails)
+  if (/assignee|responsible/i.test(openProjectErrorMessage(error))) return true;
+
+  // Locale-independent path: inspect the raw OP payload for the attribute name.
+  // OpenProject stores the attribute in _embedded.details.attribute regardless of
+  // the UI locale — this catches Russian, German, etc. instances.
+  const payload =
+    error instanceof Error && 'payload' in error
+      ? (error as { payload?: unknown }).payload
+      : undefined;
+  if (!payload || typeof payload !== 'object') return false;
+
+  const p = payload as Record<string, unknown>;
+
+  // Single-error payload
+  if (isAssigneeAttributePayload(p)) return true;
+
+  // Multi-error payload: check each error item in _embedded.errors[]
+  const embedded = p._embedded;
+  if (embedded && typeof embedded === 'object') {
+    const errors = (embedded as Record<string, unknown>).errors;
+    if (Array.isArray(errors)) {
+      return errors.some((e) => {
+        if (typeof e !== 'object' || e === null) return false;
+        return isAssigneeAttributePayload(e as Record<string, unknown>);
+      });
+    }
+  }
+
+  return false;
 }
 
 function indexExistingWorkPackages(workPackages: OpenProjectWorkPackage[]) {
@@ -2144,6 +2034,23 @@ const clickUpNoisyTagPatterns = [
   /^imported$/i,
 ];
 
+/** Best-effort color palette for ClickUp tag names stored in local DB */
+/** Accumulated during seed: OP work package ID → meaningful ClickUp tag names */
+const _seedTagCollector = new Map<string, string[]>();
+
+function collectTagsForWP(wpId: string, tags: ClickUpTag[]): void {
+  const meaningful = tags.filter(
+    (t) => t.name && !clickUpNoisyTagPatterns.some((p) => p.test(t.name.trim()))
+  );
+  if (!meaningful.length) return;
+  const existing = _seedTagCollector.get(wpId) || [];
+  for (const t of meaningful) {
+    const name = t.name.trim();
+    if (!existing.includes(name)) existing.push(name);
+  }
+  _seedTagCollector.set(wpId, existing);
+}
+
 async function getProjectCategories(projectId: number): Promise<OpenProjectCategory[]> {
   const page = await openProjectRequest<HalCollection<OpenProjectCategory>>(
     `/api/v3/projects/${projectId}/categories`,
@@ -2186,9 +2093,12 @@ async function ensureOpenProjectCategory(
       summary.categoriesReused += 1;
       return href;
     }
-    summary.warnings.push(
-      `Could not create category "${name}" in project ${projectId}: ${(error as Error).message}`
-    );
+    // 404 = project has no "Work package tracking" module enabled — skip silently.
+    // Tags are synced via the custom field; categories are a fallback only.
+    const msg = (error as Error).message || '';
+    if (!msg.includes('404') && !msg.toLowerCase().includes('not found')) {
+      summary.warnings.push(`Could not create category "${name}" in project ${projectId}: ${msg}`);
+    }
     return undefined;
   }
 }
@@ -2235,12 +2145,18 @@ async function syncClickUpTasksIntoProject(params: {
   workspaceId: string;
   categoryCache: CategoryCache;
 }) {
-  const [existingWorkPackages, type, clickUpTasks] = await Promise.all([
+  const [existingWorkPackages, type, allClickUpTasks] = await Promise.all([
     getProjectWorkPackages(params.project.id).catch(() => []),
     firstTaskType(params.project.id),
     getClickUpTasks(params.context.list.id),
     initializeProjectCategoryCache(params.project.id, params.categoryCache),
   ]);
+
+  // ClickUp returns subtasks that belong to *other* lists when subtasks=true.
+  // Only process tasks that actually live in this list to avoid cross-contamination.
+  const clickUpTasks = allClickUpTasks.filter(
+    (task) => !task.list || task.list.id === params.context.list.id
+  );
 
   const { byClickUpTaskId } = indexExistingWorkPackages(existingWorkPackages);
 
@@ -2290,6 +2206,9 @@ async function syncClickUpTasksIntoProject(params: {
 
         byClickUpTaskId.set(task.id, updated);
         params.summary.tasksUpdated += 1;
+        if (task.tags?.length) {
+          collectTagsForWP(String(updated.id), task.tags);
+        }
       } else {
         const created = await createOpenProjectWorkPackage({
           project: params.project,
@@ -2305,6 +2224,9 @@ async function syncClickUpTasksIntoProject(params: {
 
         byClickUpTaskId.set(task.id, created);
         params.summary.tasksCreated += 1;
+        if (task.tags?.length) {
+          collectTagsForWP(String(created.id), task.tags);
+        }
       }
     } catch (error) {
       params.summary.errors.push(
@@ -2347,7 +2269,7 @@ async function syncClickUpTasksIntoProject(params: {
 
 function createSeededSpace(space: ClickUpSpace): SeededWorkspace['spaces'][number] {
   return {
-    id: `clickup-space:${space.id}`,
+    id: space.id,
     clickupSpaceId: space.id,
     workspaceId: 'openproject',
     name: space.name,
@@ -2370,7 +2292,7 @@ function createSeededFolder(params: {
   kind?: string;
 }): SeededWorkspace['spaces'][number]['folders'][number] {
   return {
-    id: `clickup-folder:${params.folderId}`,
+    id: params.folderId,
     clickupFolderId: params.clickupFolderId,
     spaceId: params.spaceId,
     name: params.name,
@@ -2384,15 +2306,25 @@ function createSeededTaskList(params: {
   project: OpenProjectProject;
   list: ClickUpList;
   folderId: string;
-  statuses: ReturnType<typeof seededStatuses>;
+  statuses: ReturnType<typeof seededStatusesFromOpenProject>;
+  space: ClickUpSpace;
+  folder?: ClickUpFolder | null;
 }) {
   return {
-    id: `op-project:${params.project.id}:clickup-list:${params.list.id}`,
+    id: `${params.project.id}:${params.list.id}`,
     clickupListId: params.list.id,
     openProjectProjectId: String(params.project.id),
     folderId: params.folderId,
     name: params.list.name,
     icon: '✓',
+    importFilter: {
+      spaceName: params.space.name,
+      folderName: params.folder?.name,
+      listName: params.list.name,
+      clickUpSpaceId: params.space.id,
+      clickUpFolderId: params.folder?.id,
+      clickUpListId: params.list.id,
+    },
     statuses: params.statuses,
     _count: { tasks: Number(params.list.task_count || 0) },
   };
@@ -2532,9 +2464,8 @@ async function seedFolderedLists(params: {
       categoryCache: params.categoryCache,
     });
 
-    const taskListId = `op-project:${project.id}:clickup-list:${list.id}`;
-    const statuses = seededStatuses({
-      statuses: clickUpStatuses(list, params.folder, params.space),
+    const taskListId = `${project.id}:${list.id}`;
+    const statuses = seededStatusesFromOpenProject({
       openProjectStatuses: params.openProjectStatuses,
       taskListId,
     });
@@ -2547,6 +2478,8 @@ async function seedFolderedLists(params: {
         list,
         folderId: seededFolder.id,
         statuses,
+        space: params.space,
+        folder: params.folder,
       })
     );
 
@@ -2606,7 +2539,7 @@ async function seedFolderlessLists(params: {
 
     const seededListFolder = createSeededFolder({
       spaceId: params.seededSpace.id,
-      folderId: `${params.space.id}:list:${list.id}`,
+      folderId: list.id,
       clickupFolderId: undefined,
       name: list.name,
       locked: false,
@@ -2631,9 +2564,8 @@ async function seedFolderlessLists(params: {
       categoryCache: params.categoryCache,
     });
 
-    const taskListId = `op-project:${project.id}:clickup-list:${list.id}`;
-    const statuses = seededStatuses({
-      statuses: clickUpStatuses(list, null, params.space),
+    const taskListId = `${project.id}:${list.id}`;
+    const statuses = seededStatusesFromOpenProject({
       openProjectStatuses: params.openProjectStatuses,
       taskListId,
     });
@@ -2646,6 +2578,8 @@ async function seedFolderlessLists(params: {
         list,
         folderId: seededListFolder.id,
         statuses,
+        space: params.space,
+        folder: null,
       })
     );
 
@@ -2678,7 +2612,7 @@ function addRecoveredList(params: {
 
   if (!space) {
     space = {
-      id: `clickup-space:${spaceKey}`,
+      id: spaceKey,
       clickupSpaceId: spaceKey,
       workspaceId: params.workspace.id,
       name: params.meta.clickUpSpaceName,
@@ -2694,9 +2628,7 @@ function addRecoveredList(params: {
     params.workspace.spaces.push(space);
   }
 
-  const folderId = params.meta.clickUpFolderName
-    ? `clickup-folder:${spaceKey}:${folderKey || slug(params.meta.clickUpFolderName)}`
-    : `clickup-folder:${spaceKey}:list:${listKey}`;
+  const folderId = folderKey || slug(params.meta.clickUpFolderName ?? params.meta.clickUpListName);
 
   let folder = params.folderMap.get(folderId);
 
@@ -2717,7 +2649,7 @@ function addRecoveredList(params: {
     space.folders.push(folder);
   }
 
-  const taskListId = `op-project:${params.project.id}:clickup-list:${listKey}`;
+  const taskListId = `${params.project.id}:${listKey}`;
 
   if (!folder.taskLists.some((list) => list.id === taskListId)) {
     folder.taskLists.push({
@@ -2848,6 +2780,102 @@ function addUnsupportedFeatureWarnings(summary: Summary) {
   });
 }
 
+/**
+ * After all work packages are imported, push tag values to the OpenProject
+ * "Tags" custom field using our local DB as the source of truth.
+ *
+ * This runs via `docker exec rails runner` to avoid the complexity of
+ * managing custom option hrefs via the REST API.
+ */
+async function syncTagsCFViaRails(
+  /** Map of OP work package ID (string) → tag names */
+  tagsByWpId: Map<string, string[]>,
+  containerName = process.env.OPENPROJECT_CONTAINER || 'openproject-web-1'
+): Promise<void> {
+  // Fetch CF ID from DB
+  const cfId = process.env.OPENPROJECT_TAGS_CF_ID
+    ? Number(process.env.OPENPROJECT_TAGS_CF_ID)
+    : null;
+
+  if (!cfId) {
+    console.warn(
+      '  ⚠ OPENPROJECT_TAGS_CF_ID not set — run setup:openproject first. Skipping CF sync.'
+    );
+    return;
+  }
+
+  const byWP = tagsByWpId;
+
+  if (!byWP.size) {
+    console.log('  ✓ No tags to sync to OP custom field');
+    return;
+  }
+
+  // Encode data as base64 to avoid Ruby parsing issues with inline JSON
+  const encodedData = Buffer.from(JSON.stringify(Array.from(byWP.entries()))).toString('base64');
+
+  const railsScript = `
+require 'base64'
+require 'json'
+
+cf = WorkPackageCustomField.find_by(id: ${cfId})
+unless cf
+  puts "CF_NOT_FOUND"
+  exit
+end
+
+synced = 0
+errors = 0
+
+data = JSON.parse(Base64.decode64(${JSON.stringify(encodedData)}))
+
+data.each do |wp_id, tag_names|
+  begin
+    wp = WorkPackage.find_by(id: wp_id)
+    next unless wp
+
+    options = tag_names.map do |name|
+      cf.custom_options.find_or_create_by!(value: name)
+    end
+
+    wp.custom_field_values = { cf.id => options.map(&:id) }
+    wp.save(validate: false)
+
+    synced += 1
+  rescue => e
+    errors += 1
+    puts "WP_ERROR:#{wp_id}:#{e.message[0..80]}"
+  end
+end
+
+puts "CF_SYNC_DONE:synced=#{synced},errors=#{errors}"
+`;
+
+  console.log(`  → Syncing tags to OP custom field ${cfId} for ${byWP.size} work packages…`);
+
+  try {
+    const out = execSync(`docker exec -i ${containerName} bundle exec rails runner -`, {
+      input: railsScript,
+      timeout: 300_000,
+      encoding: 'utf8',
+      stdio: ['pipe', 'pipe', 'pipe'],
+    });
+
+    if (out.includes('CF_NOT_FOUND')) {
+      console.warn(`  ⚠ Tags CF id=${cfId} not found in OpenProject — re-run setup:openproject`);
+      return;
+    }
+
+    const doneMatch = out.match(/CF_SYNC_DONE:synced=(\d+),errors=(\d+)/);
+    if (doneMatch) {
+      console.log(`  ✓ CF sync: ${doneMatch[1]} work packages updated, ${doneMatch[2]} errors`);
+    }
+  } catch (error: any) {
+    const msg = (error?.stderr || error?.stdout || error?.message || String(error)).slice(0, 300);
+    console.warn(`  ⚠ CF sync failed: ${msg}`);
+  }
+}
+
 async function main() {
   const summary: Summary = {
     teams: 0,
@@ -2910,12 +2938,11 @@ async function main() {
 
   const categoryCache: CategoryCache = new Map();
 
-  const migrationRun = await prisma.migrationRun.create({
-    data: {
-      source: 'CLICKUP',
-      status: 'RUNNING',
-    },
-  });
+  // Ensure at least one active project exists before fetching global endpoints.
+  // statuses, priorities, and roles all require view_work_packages in at least
+  // one active project in some OpenProject versions — even for admin tokens.
+  // We keep the placeholder alive until after all global fetches complete.
+  const bootstrapProjectId = await activateArchivedProjectForBootstrap();
 
   const rawOpenProjectStatuses = await getOpenProjectStatuses();
   const openProjectStatuses = await ensureRequiredStatuses(rawOpenProjectStatuses);
@@ -2947,6 +2974,9 @@ async function main() {
       return [] as OpenProjectMembership[];
     }),
   ]);
+
+  // All global fetches done — clean up bootstrap placeholder (real projects come next)
+  if (bootstrapProjectId != null) void deleteSeedBootstrapPlaceholder(bootstrapProjectId);
   const localWorkspace = await ensureLocalRuntimeWorkspace();
 
   const userSync: UserSyncContext = {
@@ -2976,16 +3006,7 @@ async function main() {
     );
 
     const path = await writeSeededHierarchy(workspace);
-    await prisma.migrationRun.update({
-      where: { id: migrationRun.id },
-      data: {
-        status: 'SUCCESS',
-        finishedAt: new Date(),
-        summary: summary as unknown as object,
-        warnings: summary.warnings,
-        errors: summary.errors,
-      },
-    });
+    // migration run tracking removed
 
     console.log(
       JSON.stringify(
@@ -3163,22 +3184,11 @@ async function main() {
   const path = await writeSeededHierarchy(workspace);
   addUnsupportedFeatureWarnings(summary);
   await cleanupDefaultDemoProjects(summary);
-  await prisma.migrationRun.update({
-    where: { id: migrationRun.id },
-    data: {
-      status: summary.errors.length ? 'FAILED' : 'SUCCESS',
-      finishedAt: new Date(),
-      workspaceId: localWorkspace.id,
-      summary: summary as unknown as object,
-      warnings: [...summary.warnings, ...summary.permissionWarnings],
-      errors: [
-        ...summary.errors,
-        ...summary.assigneeMappingErrors,
-        ...summary.openProjectUserErrors,
-        ...summary.openProjectMembershipErrors,
-      ],
-    },
-  });
+
+  // Sync tags to OP custom field (requires setup:openproject to have run first)
+  console.log('\n→ Syncing tags to OpenProject custom field…');
+  await syncTagsCFViaRails(_seedTagCollector);
+  // migration run tracking removed
 
   console.log(
     JSON.stringify(
@@ -3201,7 +3211,5 @@ if (isMainModule) {
       console.error(error instanceof Error ? error.message : error);
       process.exitCode = 1;
     })
-    .finally(async () => {
-      await prisma.$disconnect();
-    });
+    .finally(async () => {});
 }

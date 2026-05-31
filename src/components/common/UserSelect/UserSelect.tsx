@@ -1,5 +1,5 @@
 import {
-  Avatar,
+  ActionIcon,
   Combobox,
   Group,
   Loader,
@@ -7,10 +7,11 @@ import {
   PillsInput,
   ScrollArea,
   Text,
-  Tooltip,
   useCombobox,
 } from '@mantine/core';
+import { IconX } from '@tabler/icons-react';
 import { useState } from 'react';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import type { User } from '@/lib';
 
 export interface UserSelectProps {
@@ -67,12 +68,10 @@ export function UserSelect({
   const options = filteredUsers.map((user) => (
     <Combobox.Option value={user.id} key={user.id}>
       <Group gap="sm" wrap="nowrap">
-        <Avatar
-          src={user.avatarUrl || null}
-          size="sm"
-          radius="xl"
-          color="initials"
-          name={user.name.replace('ㅤ', '').replace('ㅤ', '')}
+        <UserAvatar
+          user={user}
+          withTooltip
+          style={{ border: `1.2px solid var(--mantine-color-placeholder)` }}
         />
         <div style={{ flex: 1, minWidth: 0 }}>
           <Text size="sm" truncate>
@@ -102,29 +101,31 @@ export function UserSelect({
             {selectedUsers.map((user) => (
               <Pill
                 key={user.id}
-                withRemoveButton={!disabled}
-                onRemove={() => handleRemove(user.id)}
-                styles={{ label: { display: 'flex', alignItems: 'center', gap: 4 } }}
+                styles={{
+                  root: { position: 'relative', background: 'none' },
+                  label: { display: 'flex', alignItems: 'center', gap: 4 },
+                }}
               >
-                <Tooltip
-                  label={
-                    user.email
-                      ? `${user.name.replace('ㅤ', '')} (${user.email})`
-                      : user.name.replace('ㅤ', '')
-                  }
-                  withArrow
+                <ActionIcon
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    right: 5,
+                    zIndex: 2,
+                    border: `1.2px solid var(--mantine-color-placeholder)`,
+                  }}
+                  size={12}
+                  onClick={() => handleRemove(user.id)}
+                  color="gray"
                 >
-                  <Avatar
-                    src={user.avatarUrl || null}
-                    size={16}
-                    radius="xl"
-                    color="initials"
-                    name={user.name.replace('ㅤ', '')}
-                  />
-                </Tooltip>
-                <Text size="xs" component="span">
-                  {user.name.replace('ㅤ', '')}
-                </Text>
+                  <IconX size={7} />
+                </ActionIcon>
+                <UserAvatar
+                  user={user}
+                  withTooltip
+                  size={22}
+                  style={{ border: `1.2px solid var(--mantine-color-placeholder)` }}
+                />
               </Pill>
             ))}
             <Combobox.EventsTarget>
@@ -143,7 +144,7 @@ export function UserSelect({
                     handleRemove(value[value.length - 1]);
                   }
                 }}
-                disabled={disabled || isMaxReached}
+                disabled={disabled}
               />
             </Combobox.EventsTarget>
           </Pill.Group>

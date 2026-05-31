@@ -8,9 +8,9 @@ import {
   SimpleGrid,
   Stack,
   Text,
-  TextInput,
   Tooltip,
 } from '@mantine/core';
+import { DatePickerInput } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconCalendarDue, IconFlag } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -125,7 +125,6 @@ export function TaskDetailsGrid({
         searchable
         disabled={!canWriteTasks}
       />
-      {task.taskKey && <TextInput label="Task key" value={task.taskKey} readOnly />}
       <UserSelect
         data-testid="task-assignee-select"
         label="Assignee"
@@ -174,22 +173,19 @@ export function TaskDetailsGrid({
           )}
         </Group>
       </Stack>
-      <TextInput
+      <DatePickerInput
         label="Start date"
-        leftSection={<IconCalendarDue size="1rem" />}
-        type="date"
         value={form.values.startDate}
-        onChange={(event) => form.setFieldValue('startDate', event.currentTarget.value)}
+        onChange={(str) => form.setFieldValue('startDate', str as string)}
         onBlur={() => void onUpdateAndRefresh({ startDate: form.values.startDate || undefined })}
         placeholder={start || 'No start'}
         readOnly={!canWriteTasks}
       />
-      <TextInput
+      <DatePickerInput
         label="Due date"
         leftSection={<IconCalendarDue size="1rem" />}
-        type="date"
         value={form.values.dueDate}
-        onChange={(event) => form.setFieldValue('dueDate', event.currentTarget.value)}
+        onChange={(str) => form.setFieldValue('dueDate', str as string)}
         onBlur={() => void onUpdateAndRefresh({ dueDate: form.values.dueDate || undefined })}
         placeholder={due || 'No due'}
         readOnly={!canWriteTasks}
@@ -211,7 +207,6 @@ export function TaskDetailsGrid({
       <MultiSelect
         data-testid="task-tag-picker"
         label="Tags"
-        description="Stored locally for this OpenProject work package. Tags do not create a duplicate local task."
         data={tagData}
         value={taskTagIds}
         onChange={(value) => void handleTagChange(value)}
@@ -223,11 +218,7 @@ export function TaskDetailsGrid({
         placeholder="Search or create a tag…"
       />
       <Stack gap="xs">
-        <Text fw={700}>Source</Text>
         <Group gap="xs">
-          <Tooltip label={`Source: ${task.externalSource || 'LOCAL'}`}>
-            <Badge>{task.externalSource || 'LOCAL'}</Badge>
-          </Tooltip>
           {task.externalUrl && (
             <Button
               size="xs"

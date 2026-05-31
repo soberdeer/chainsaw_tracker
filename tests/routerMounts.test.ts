@@ -33,9 +33,8 @@ test('core API routers are mounted and return auth errors instead of 404', async
       ['/api/auth/me', 401],
       ['/api/users/me', 401],
       ['/api/users/me/my-work', 401],
-      ['/api/saved-views', 401],
-      ['/api/notifications', 401],
-      ['/api/import-reports', 401],
+      ['/api/openproject/tags', 401],
+      ['/api/workspaces', 401],
     ] as const;
 
     for (const [pathname, expectedStatus] of checks) {

@@ -78,7 +78,7 @@ export function GroupedTaskList({
     typeof theme.primaryShade === 'object'
       ? theme.primaryShade[computedTheme as 'light' | 'dark']
       : theme.primaryShade;
-
+  console.log(tasks);
   const [collapsedStatuses, setCollapsedStatuses] = useState<Set<string>>(() => new Set());
 
   const computedOrder = useMemo(() => computeStatusOrder(statuses, sortDir), [statuses, sortDir]);

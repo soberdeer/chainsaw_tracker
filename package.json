@@ -4,27 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "concurrently \"npm run dev:api\" \"npm run dev:web\"",
+    "dev": "concurrently -k \"tsx watch server/index.ts\" \"vite --host 0.0.0.0\"",
     "dev:web": "vite --host 0.0.0.0",
     "dev:api": "tsx watch server/index.ts",
     "docker:check": "tsx scripts/check-docker.ts",
-    "db:up": "npm run docker:check && docker compose up -d postgres",
-    "db:down": "docker compose down",
-    "db:logs": "docker compose logs -f postgres",
-    "db:ps": "docker compose ps postgres",
-    "db:create": "PGPASSWORD=postgres createdb -h localhost -U postgres compact_tracker || true",
-    "db:sync": "npm run prisma:migrate && npm run prisma:generate",
-    "setup": "npm run db:up && npm run prisma:migrate && npm run prisma:generate",
-    "setup:local": "npm run db:create && npm run prisma:migrate && npm run prisma:generate",
+    "setup": "npm run setup:openproject && npm run seed:openproject:clickup && npm run reset:passwords && npm run verify:openproject",
+    "setup:openproject": "tsx scripts/setup-openproject.ts",
+    "snapshot:openproject": "tsx scripts/snapshot-openproject.ts",
+    "verify:openproject": "tsx scripts/verify-openproject.ts",
     "build": "tsc -b && vite build",
     "typecheck:node": "tsc -p tsconfig.node.json --noEmit",
     "typecheck:client": "tsc -p tsconfig.app.json --noEmit",
     "typecheck:e2e": "tsc -p tsconfig.e2e.json --noEmit",
     "typecheck": "npm run typecheck:node && npm run typecheck:client && npm run typecheck:e2e",
     "preview": "vite preview --host 0.0.0.0",
-    "prisma:generate": "prisma generate",
-    "prisma:migrate": "prisma migrate dev",
-    "setup:openproject": "tsx scripts/setup-openproject.ts",
     "seed:openproject:clickup": "tsx scripts/seed-openproject-from-clickup.ts",
     "reset:openproject": "tsx scripts/reset-openproject.ts",
     "oxlint": "oxlint .",
@@ -36,9 +29,12 @@
     "e2e:ui": "playwright test --ui",
     "e2e:headed": "playwright test --headed",
     "e2e:debug": "playwright test --debug",
-    "format": "oxfmt --write \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && prisma format",
-    "format:check": "oxfmt --check \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"prisma/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\" && tsx scripts/check-prisma-format.ts",
-    "reset:full": "tsx scripts/full-reset.ts"
+    "format": "oxfmt --write \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\"",
+    "format:check": "oxfmt --check \"server/**/*.{ts,tsx,js,jsx,json,css}\" \"src/**/*.{ts,tsx,js,jsx,json,css}\" \"tests/**/*.{ts,tsx,js,jsx,json,css}\" \"scripts/**/*.{ts,tsx,js,jsx,json,css}\" \"*.{ts,tsx,js,jsx,json,css}\" \"!test-results/**\" \"!dist/**\"",
+    "reset:full": "tsx scripts/full-reset.ts",
+    "reset:clear": "tsx scripts/full-reset.ts -- --skip-setup --skip-seed",
+    "reset:passwords": "tsx scripts/reset-openproject-passwords.ts",
+    "reset:verify": "tsx scripts/verify-openproject.ts"
   },
   "dependencies": {
     "@e965/xlsx": "^0.20.3",
@@ -49,7 +45,6 @@
     "@mantine/hooks": "9.2.2",
     "@mantine/modals": "^9.2.2",
     "@mantine/notifications": "^9.2.2",
-    "@prisma/client": "^6.19.0",
     "@tabler/icons-react": "^3.35.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
@@ -58,7 +53,6 @@
     "marked": "^18.0.4",
     "multer": "^2.0.2",
     "nodemailer": "^8.0.7",
-    "prisma": "^6.19.0",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-router-dom": "^7.9.6",
@@ -88,8 +82,5 @@
     "tsx": "^4.20.6",
     "typescript": "~5.9.3",
     "vite": "^8.0.0"
-  },
-  "prisma": {
-    "seed": "tsx prisma/seed.ts"
   }
 }

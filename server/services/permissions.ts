@@ -1,6 +1,5 @@
 import type { Request } from 'express';
-import { prisma } from '../db.js';
-import { currentUserId as authCurrentUserId } from './auth.js';
+import { currentUser, currentUserId as authCurrentUserId } from './auth.js';
 
 export { authCurrentUserId as currentUserId };
 
@@ -13,9 +12,7 @@ type Permission =
   | 'manageIntegrations'
   | 'manageImports'
   | 'viewReports';
-type SpacePermissionKind = 'view' | 'edit' | 'manage';
 
-// Static role → permission map. Roles come from OpenProject (admin flag → ADMIN, else MEMBER/READER).
 export const ROLE_PERMISSIONS: Record<string, Partial<Record<Permission, boolean>>> = {
   ADMIN: {
     manageWorkspace: true,
@@ -39,158 +36,28 @@ export function rolePermissions(role: string): Partial<Record<Permission, boolea
   return ROLE_PERMISSIONS[role] ?? {};
 }
 
-export async function can(req: Request, workspaceId: string, permission: Permission) {
-  const userId = authCurrentUserId(req);
-  if (!userId) {
-    return false;
-  }
-
-  const membership = await prisma.membership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
-
-  if (!membership) {
-    return false;
-  }
-
-  return Boolean(rolePermissions(membership.role)[permission]);
+function userRole(req: Request) {
+  const user = currentUser(req);
+  return user?.admin ? 'ADMIN' : 'MEMBER';
 }
 
-export async function requirePermission(req: Request, workspaceId: string, permission: Permission) {
-  if (!(await can(req, workspaceId, permission))) {
+export async function can(_req: Request, _workspaceId: string, permission: Permission) {
+  const role = userRole(_req);
+  return Boolean(rolePermissions(role)[permission]);
+}
+
+export async function requirePermission(
+  req: Request,
+  _workspaceId: string,
+  permission: Permission
+) {
+  if (!(await can(req, _workspaceId, permission))) {
     const error = new Error(`Missing permission: ${permission}`);
     Object.assign(error, { statusCode: 403 });
     throw error;
   }
 }
 
-export async function workspaceMembership(req: Request, workspaceId: string) {
-  const userId = authCurrentUserId(req);
-  if (!userId) {
-    return null;
-  }
-  return prisma.membership.findUnique({
-    where: { userId_workspaceId: { userId, workspaceId } },
-  });
-}
-
-export async function canAccessSpace(
-  req: Request,
-  spaceId: string,
-  permission: SpacePermissionKind
-) {
-  const space = await prisma.space.findUnique({
-    where: { id: spaceId },
-    include: { permissions: true },
-  });
-  if (!space) {
-    return false;
-  }
-
-  const membership = await workspaceMembership(req, space.workspaceId);
-  if (!membership) {
-    return false;
-  }
-  if (membership.role === 'ADMIN') {
-    return true;
-  }
-
-  const spaceSet = space.permissions.find((item) => item.role === membership.role);
-  const perms = rolePermissions(membership.role);
-
-  if (!spaceSet) {
-    if (permission === 'view') {
-      // READER can view by default; MEMBER can view
-      return membership.role !== 'READER' || true; // all roles can view if no override
-    }
-    if (permission === 'edit') {
-      return Boolean(perms.manageTasks || perms.manageDocs || perms.manageSpaces);
-    }
-    return Boolean(perms.manageSpaces);
-  }
-  if (permission === 'view') {
-    return Boolean(spaceSet.canView);
-  }
-  if (permission === 'edit') {
-    return Boolean(spaceSet.canEdit || spaceSet.canManage);
-  }
-  return Boolean(spaceSet.canManage);
-}
-
-export async function requireSpacePermission(
-  req: Request,
-  spaceId: string,
-  permission: SpacePermissionKind
-) {
-  if (!(await canAccessSpace(req, spaceId, permission))) {
-    const error = new Error(`Missing space permission: ${permission}`);
-    Object.assign(error, { statusCode: 403 });
-    throw error;
-  }
-}
-
-export async function accessibleSpaceIds(req: Request, workspaceId: string) {
-  const membership = await workspaceMembership(req, workspaceId);
-  if (!membership) {
-    return [];
-  }
-
-  const spaces = await prisma.space.findMany({
-    where: { workspaceId },
-    include: { permissions: true },
-  });
-  if (membership.role === 'ADMIN') {
-    return spaces.map((space) => space.id);
-  }
-
-  return spaces
-    .filter((space) => {
-      const spaceSet = space.permissions.find((permission) => permission.role === membership.role);
-      if (spaceSet) {
-        return spaceSet.canView;
-      }
-      // No space-level override: MEMBER can view, READER cannot
-      return membership.role !== 'READER';
-    })
-    .map((space) => space.id);
-}
-
-export async function canEditTask(
-  req: Request,
-  task: {
-    workspaceId?: string | null;
-    assigneeId?: string | null;
-    createdById?: string | null;
-    folder: { spaceId: string; space: { workspaceId: string } };
-  }
-) {
-  const workspaceId = task.workspaceId || task.folder.space.workspaceId;
-  const membership = await workspaceMembership(req, workspaceId);
-  if (!membership) {
-    return false;
-  }
-  if (membership.role === 'ADMIN') {
-    return true;
-  }
-  if (membership.role === 'MEMBER') {
-    return canAccessSpace(req, task.folder.spaceId, 'edit');
-  }
-  // READER: read-only
-  return false;
-}
-
-export async function requireTaskEditPermission(
-  req: Request,
-  task: {
-    workspaceId?: string | null;
-    assigneeId?: string | null;
-    createdById?: string | null;
-    folder: { spaceId: string; space: { workspaceId: string } };
-  }
-) {
-  if (!(await canEditTask(req, task))) {
-    const error = new Error('Missing task edit permission');
-    Object.assign(error, { statusCode: 403 });
-    throw error;
-  }
+export async function accessibleSpaceIds(_req: Request, _workspaceId: string): Promise<string[]> {
+  return [];
 }

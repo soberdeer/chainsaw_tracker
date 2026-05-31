@@ -21,6 +21,7 @@ export interface LoginPageProps {
 export function LoginPage({ onLoggedIn }: LoginPageProps) {
   const [error, setError] = useState<string | null>(null);
   const [mustChangePassword, setMustChangePassword] = useState<string | null>(null);
+  const [opUnavailable, setOpUnavailable] = useState(false);
   const [loading, setLoading] = useState(false);
   const [opUrl, setOpUrl] = useState('http://localhost:8080');
 
@@ -46,11 +47,14 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
       setLoading(true);
       setError(null);
       setMustChangePassword(null);
+      setOpUnavailable(false);
       onLoggedIn(await login(values));
     } catch (caughtError) {
       const raw = getErrorMessage(caughtError);
       if (raw.includes('MUST_CHANGE_PASSWORD')) {
         setMustChangePassword(opUrl);
+      } else if (raw.includes('OPENPROJECT_UNAVAILABLE')) {
+        setOpUnavailable(true);
       } else {
         setError(raw);
       }
@@ -68,6 +72,13 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
             <Text c="dimmed">Sign in with your OpenProject credentials.</Text>
           </div>
 
+          {opUnavailable && (
+            <Alert color="orange" title="OpenProject is starting up">
+              OpenProject is not ready yet. Please wait a moment and try again — it usually takes
+              15–30 seconds after the container starts.
+            </Alert>
+          )}
+
           {mustChangePassword && (
             <Alert color="yellow" title="Password change required">
               Your OpenProject account requires a password change before you can log in. Please{' '}
@@ -78,7 +89,7 @@ export function LoginPage({ onLoggedIn }: LoginPageProps) {
             </Alert>
           )}
 
-          {error && !mustChangePassword && (
+          {error && !mustChangePassword && !opUnavailable && (
             <Alert color="red" title="Could not sign in">
               {error}
             </Alert>

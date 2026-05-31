@@ -81,59 +81,17 @@ test('sortProjectsForDeletion deletes children before parents', () => {
   );
 });
 
-test('cleanupLocalOpenProjectState clears stale references but preserves unrelated stores', async () => {
-  const calls: Record<string, unknown[]> = {
-    notificationDeleteMany: [],
-    savedViewUpdateMany: [],
-    savedViewFindMany: [],
-    migrationRunDeleteMany: [],
-  };
+test('cleanupLocalOpenProjectState deletes hierarchy file', async () => {
   const tmpDir = await mkdtemp(join(tmpdir(), 'op-reset-test-'));
   const hierarchyPath = join(tmpDir, 'clickup-hierarchy.json');
   await writeFile(hierarchyPath, '{"ok":true}\n');
 
-  const fakePrisma = {
-    notification: {
-      deleteMany: async (args: unknown) => {
-        calls.notificationDeleteMany.push(args);
-        return { count: 2 };
-      },
-    },
-    savedView: {
-      updateMany: async (args: unknown) => {
-        calls.savedViewUpdateMany.push(args);
-        return { count: calls.savedViewUpdateMany.length === 1 ? 3 : 2 };
-      },
-      findMany: async (args: unknown) => {
-        calls.savedViewFindMany.push(args);
-        return [{ id: 'a' }, { id: 'b' }];
-      },
-    },
-    migrationRun: {
-      deleteMany: async (args: unknown) => {
-        calls.migrationRunDeleteMany.push(args);
-        return { count: 1 };
-      },
-    },
-  } as const;
+  const result = await cleanupLocalOpenProjectState({ hierarchyPath });
 
-  const result = await cleanupLocalOpenProjectState(fakePrisma as never, {
-    deletedProjectIds: ['10'],
-    deletedWorkPackageIds: ['20'],
-    clearImportReports: true,
-    hierarchyPath,
-  });
-
-  assert.equal(result.notificationsDeleted, 2);
-  assert.equal(result.savedViewsProjectCleared, 3);
-  assert.equal(result.savedViewsListCleared, 2);
-  assert.equal(result.importReportsDeleted, 1);
   assert.equal(result.hierarchyFileDeleted, true);
   assert.equal(result.hierarchyFileMissing, false);
-  assert.equal(calls.notificationDeleteMany.length, 1);
-  assert.equal(calls.savedViewUpdateMany.length, 2);
-  assert.equal(calls.savedViewFindMany.length, 1);
-  assert.equal(calls.migrationRunDeleteMany.length, 1);
+  assert.equal(result.notificationsDeleted, 0);
+  assert.equal(result.importReportsDeleted, 0);
 });
 
 test('runResetOpenProject dry-run never sends DELETE', async () => {
@@ -161,16 +119,7 @@ test('runResetOpenProject dry-run never sends DELETE', async () => {
     return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
   }) as typeof fetch;
 
-  const fakePrisma = {
-    notification: { deleteMany: async () => ({ count: 0 }) },
-    savedView: {
-      updateMany: async () => ({ count: 0 }),
-      findMany: async () => [],
-    },
-    migrationRun: { deleteMany: async () => ({ count: 0 }) },
-  } as const;
-
-  const summary = await runResetOpenProject(parseResetArgs(['--dry-run']), fakePrisma as never);
+  const summary = await runResetOpenProject(parseResetArgs(['--dry-run']));
 
   assert.equal(summary.mode, 'dry-run');
   assert.equal(summary.workPackagesFound, 1);
@@ -193,13 +142,10 @@ test('runResetOpenProject continues after delete failures and reports them', asy
 
     if (method === 'GET' && url.pathname === '/api/v3/work_packages') {
       return new Response(
-        JSON.stringify({
-          _embedded: { elements: [{ id: 20, subject: 'Task A', _links: {} }] },
-        }),
+        JSON.stringify({ _embedded: { elements: [{ id: 20, subject: 'Task A', _links: {} }] } }),
         { status: 200 }
       );
     }
-
     if (method === 'GET' && url.pathname === '/api/v3/projects') {
       return new Response(
         JSON.stringify({
@@ -218,34 +164,20 @@ test('runResetOpenProject continues after delete failures and reports them', asy
         { status: 200 }
       );
     }
-
     if (method === 'DELETE' && url.pathname === '/api/v3/work_packages/20') {
       return new Response(JSON.stringify({ message: 'locked' }), { status: 409 });
     }
-
     if (method === 'DELETE' && url.pathname === '/api/v3/projects/11') {
       return new Response(null, { status: 204 });
     }
-
     if (method === 'DELETE' && url.pathname === '/api/v3/projects/10') {
       return new Response(JSON.stringify({ message: 'cannot delete parent' }), { status: 409 });
     }
-
     return new Response(JSON.stringify({ _embedded: { elements: [] } }), { status: 200 });
   }) as typeof fetch;
 
-  const fakePrisma = {
-    notification: { deleteMany: async () => ({ count: 0 }) },
-    savedView: {
-      updateMany: async () => ({ count: 0 }),
-      findMany: async () => [],
-    },
-    migrationRun: { deleteMany: async () => ({ count: 0 }) },
-  } as const;
-
   const summary = await runResetOpenProject(
-    parseResetArgs(['--yes', '--confirm', REQUIRED_CONFIRMATION]),
-    fakePrisma as never
+    parseResetArgs(['--yes', '--confirm', REQUIRED_CONFIRMATION])
   );
 
   assert.equal(summary.workPackagesDeleted, 0);

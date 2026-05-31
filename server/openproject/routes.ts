@@ -1,49 +1,12 @@
 import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
-import { prisma } from '../db.js';
 import { requireCurrentUser } from '../services/auth.js';
 import { requireOpenProjectProjectWrite, requireOpenProjectTaskWrite } from './permissions.js';
 import * as service from './service.js';
 
 export const openProjectRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
-
-async function notifyAssignedUsers(task: {
-  id: string;
-  title: string;
-  assignee?: { email?: string; id?: string };
-}) {
-  const emails = task.assignee?.email ? [task.assignee.email] : [];
-  if (!emails.length) return;
-  const users = await prisma.user.findMany({ where: { email: { in: emails } } });
-  await prisma.notification.createMany({
-    data: users.map((user) => ({
-      userId: user.id,
-      type: 'TASK_ASSIGNED',
-      title: `Assigned: ${task.title}`,
-      message: 'You are assigned or responsible on this OpenProject work package.',
-      workPackageId: task.id,
-    })),
-    skipDuplicates: false,
-  });
-}
-
-async function notifyCommentOnAssignedTask(taskId: string, comment: string) {
-  const task = await service.getTask(taskId).catch(() => null);
-  if (!task?.assignee?.email) return;
-  const emails = [task.assignee.email];
-  const users = await prisma.user.findMany({ where: { email: { in: emails } } });
-  await prisma.notification.createMany({
-    data: users.map((user) => ({
-      userId: user.id,
-      type: 'TASK_COMMENTED',
-      title: `Comment: ${task.title}`,
-      message: comment.slice(0, 240),
-      workPackageId: task.id,
-    })),
-  });
-}
 
 openProjectRouter.use(async (req, _res, next) => {
   try {
@@ -260,7 +223,7 @@ openProjectRouter.post('/tasks', async (req, res) => {
     return;
   }
   const task = await service.createTask(projectId, body);
-  await notifyAssignedUsers(task);
+
   res.status(201).json(task);
 });
 
@@ -296,7 +259,7 @@ openProjectRouter.patch('/tasks/:taskId', async (req, res) => {
     })
     .parse(req.body);
   const task = await service.updateTask(req.params.taskId, body);
-  await notifyAssignedUsers(task);
+
   res.json(task);
 });
 
@@ -323,7 +286,7 @@ openProjectRouter.post('/tasks/:taskId/activity', async (req, res) => {
   await requireOpenProjectTaskWrite(req);
   const body = z.object({ comment: z.string().min(1) }).parse(req.body);
   const activity = await service.addTaskComment(req.params.taskId, body.comment);
-  await notifyCommentOnAssignedTask(req.params.taskId, body.comment);
+
   res.status(201).json(activity);
 });
 

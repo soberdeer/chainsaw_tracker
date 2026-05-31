@@ -15,6 +15,7 @@ import { ROLE_PERMISSIONS } from '../services/permissions.js';
 import { extractTaskKey } from '../services/taskKeys.js';
 import { openProjectWebUrl } from './client.js';
 import { statusIdForOpenProjectStatus, type SeededTaskList } from './hierarchyStore.js';
+import { extractTagsFromLinks, tagMetaFromName } from './tagsCustomField.js';
 import type {
   OpenProjectActivity,
   OpenProjectPriority,
@@ -26,6 +27,28 @@ import type {
 
 function linkId(href?: string | null) {
   return href?.split('/').filter(Boolean).at(-1);
+}
+
+/** Colors for ClickUp-imported category tags (matches the default palette in service.ts) */
+const CATEGORY_COLOR_PALETTE: Record<string, string> = {
+  bug: '#e03131',
+  feature: '#1971c2',
+  art: '#9c36b5',
+  audio: '#f08c00',
+  level: '#2b8a3e',
+  ui: '#5f3dc4',
+  build: '#495057',
+  playtest: '#0c8599',
+  blocker: '#c2255c',
+  polish: '#fab005',
+};
+
+export function categoryTitleToTag(title: string): {
+  tag: { id: string; name: string; color: string };
+} {
+  const normalized = title.trim().toLowerCase().replace(/\s+/g, ' ');
+  const color = CATEGORY_COLOR_PALETTE[normalized] || '#868e96';
+  return { tag: { id: `category:${normalized}`, name: title.trim(), color } };
 }
 
 function link(project: OpenProjectProject, key: string) {
@@ -248,7 +271,8 @@ export function mapWorkPackage(
     folderId?: string;
     spaceId?: string;
   },
-  usersByHref = new Map<string, User>()
+  usersByHref = new Map<string, User>(),
+  tagsCfId?: number | null
 ): Task {
   const projectId = linkId(workPackage._links.project?.href) || fallback?.projectId || '';
   const taskListId = fallback?.taskList?.id || projectId;
@@ -318,7 +342,16 @@ export function mapWorkPackage(
       : undefined,
     assignee: assignees[0],
     assignees,
-    tags: [],
+    tags: tagsCfId
+      ? extractTagsFromLinks(workPackage._links as Record<string, unknown>, tagsCfId).map(
+          ({ id, name }) => {
+            const meta = tagMetaFromName(name);
+            return { tag: { id, name, ...meta } };
+          }
+        )
+      : workPackage._links.category?.title
+        ? [categoryTitleToTag(workPackage._links.category.title)]
+        : [],
     subtasks: [],
     dependencies: [],
     dependents: [],

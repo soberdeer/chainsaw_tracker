@@ -205,7 +205,7 @@ test('maps OpenProject work package fields into tracker task shape', () => {
   assert.equal(mapped.taskKey, 'CL-PROTO-001');
 });
 
-test('mapWorkPackage maps URGENT (Immediate) and LOW priorities correctly', () => {
+test('mapWorkPackage maps URGENT, HIGH, LOW priorities correctly; Normal becomes undefined', () => {
   const base = {
     id: 100,
     lockVersion: 0,
@@ -229,6 +229,7 @@ test('mapWorkPackage maps URGENT (Immediate) and LOW priorities correctly', () =
   });
   assert.equal(low.priority, 'LOW');
 
+  // 'Normal' is OpenProject's default priority — treated as "not explicitly set"
   const normal = mapWorkPackage({
     ...base,
     _links: { ...base._links, priority: { href: '/api/v3/priorities/3', title: 'Normal' } },

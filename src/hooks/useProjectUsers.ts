@@ -3,13 +3,18 @@ import { getOpenProjectProjectMembers, type User } from '@/lib';
 
 /** Extract the OpenProject project numeric ID from a task-list ID.
  *  Task-list IDs can be:
- *   - "op-project:123:clickup-list:456"  → "123"
- *   - plain numeric string like "42"      → "42"
+ *   - "123:456"                           → "123"  (current: {projectId}:{listId})
+ *   - "op-project:123:clickup-list:456"   → "123"  (legacy)
+ *   - plain numeric string like "42"       → "42"
  */
 export function listToOpProjectId(listId: string | null | undefined): string | null {
   if (!listId) return null;
-  const match = listId.match(/^op-project:(\d+):/);
-  if (match) return match[1];
+  // Current format: {projectId}:{listId}  (digits before first colon)
+  const bareMatch = listId.match(/^(\d+):/);
+  if (bareMatch) return bareMatch[1];
+  // Legacy format: op-project:{id}:clickup-list:{id}
+  const legacyMatch = listId.match(/^op-project:(\d+):/);
+  if (legacyMatch) return legacyMatch[1];
   // plain numeric – treat as direct project id
   if (/^\d+$/.test(listId)) return listId;
   return null;

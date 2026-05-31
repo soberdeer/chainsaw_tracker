@@ -1,5 +1,4 @@
 import type { Request, Response } from 'express';
-import { prisma } from '../db.js';
 import type { OpenProjectUser } from '../openproject/types.js';
 import crypto from 'node:crypto';
 
@@ -26,26 +25,65 @@ function parseCookies(header?: string) {
   );
 }
 
-export type VerifyViaOpenProjectResult = OpenProjectUser | null | 'MUST_CHANGE_PASSWORD';
+export type VerifyViaOpenProjectResult =
+  | OpenProjectUser
+  | null
+  | 'MUST_CHANGE_PASSWORD'
+  | 'OPENPROJECT_UNAVAILABLE';
 
-/**
- * Verify a user's OpenProject credentials via the web login form.
- *
- * OpenProject's REST API does NOT support login:password Basic Auth —
- * only `apikey:<token>` format is accepted. To verify regular credentials
- * we simulate a browser login:
- *   1. GET /login  → extract CSRF token + session cookie
- *   2. POST /login → check redirect target
- *      - 302 to change_password → MUST_CHANGE_PASSWORD
- *      - 302 to anything else   → credentials valid, fetch user via admin token
- *      - 422 / no redirect      → invalid credentials
- *   3. Look up the authenticated user via the admin API token.
- *
- * Returns:
- *   - OpenProjectUser        — credentials are valid
- *   - 'MUST_CHANGE_PASSWORD' — valid but OP requires a password change first
- *   - null                   — invalid credentials or network error
- */
+/** If `input` looks like an email, resolve the actual OP login via the admin API. */
+async function resolveOpenProjectLogin(
+  input: string,
+  baseUrl: string,
+  adminToken: string
+): Promise<string> {
+  if (!input.includes('@')) return input;
+  try {
+    const authHeader = `Basic ${Buffer.from(`apikey:${adminToken}`).toString('base64')}`;
+    const res = await fetch(`${baseUrl}/api/v3/users?pageSize=500&status=any`, {
+      headers: { Authorization: authHeader, Accept: 'application/json' },
+    });
+    if (!res.ok) return input;
+    const body = (await res.json()) as {
+      _embedded?: { elements?: Array<{ login?: string; email?: string }> };
+    };
+    const users = body._embedded?.elements ?? [];
+    const match = users.find((u) => u.email?.toLowerCase() === input.toLowerCase());
+    return match?.login || input;
+  } catch {
+    return input;
+  }
+}
+
+async function fetchLoginPage(
+  baseUrl: string
+): Promise<{ sessionCookie: string; csrfToken: string } | null> {
+  try {
+    const res = await fetch(`${baseUrl}/login`, {
+      headers: { Accept: 'text/html', 'User-Agent': 'OpenProjectTracker/1.0' },
+      redirect: 'manual',
+      signal: AbortSignal.timeout(8_000),
+    });
+    const html = await res.text();
+    const match = html.match(/name="authenticity_token"\s+value="([^"]+)"/);
+    if (!match) return null;
+    return {
+      sessionCookie: res.headers.get('set-cookie') ?? '',
+      csrfToken: match[1]!,
+    };
+  } catch {
+    return null;
+  }
+}
+
+let _opReadyRetries = 5;
+let _opReadyRetryMs = 3_000;
+
+export function _setOpRetryConfig(retries: number, delayMs: number): void {
+  _opReadyRetries = retries;
+  _opReadyRetryMs = delayMs;
+}
+
 export async function verifyViaOpenProject(
   login: string,
   password: string
@@ -54,26 +92,23 @@ export async function verifyViaOpenProject(
   const adminToken = process.env.OPENPROJECT_API_TOKEN ?? '';
 
   try {
-    // ── Step 1: GET /login to obtain CSRF token + session cookie ──────────────
-    const loginPage = await fetch(`${baseUrl}/login`, {
-      headers: { Accept: 'text/html', 'User-Agent': 'OpenProjectTracker/1.0' },
-      redirect: 'manual',
-    });
+    const opLogin = await resolveOpenProjectLogin(login, baseUrl, adminToken);
 
-    const sessionCookie = loginPage.headers.get('set-cookie') ?? '';
-    const html = await loginPage.text();
+    let loginPageData: { sessionCookie: string; csrfToken: string } | null = null;
+    for (let attempt = 0; attempt < _opReadyRetries; attempt++) {
+      loginPageData = await fetchLoginPage(baseUrl);
+      if (loginPageData) break;
+      if (attempt < _opReadyRetries - 1 && _opReadyRetryMs > 0) {
+        await new Promise((r) => setTimeout(r, _opReadyRetryMs));
+      }
+    }
+    if (!loginPageData) return 'OPENPROJECT_UNAVAILABLE';
 
-    // Extract the authenticity_token from the HTML form
-    const csrfMatch = html.match(/name="authenticity_token"\s+value="([^"]+)"/);
-    if (!csrfMatch) return null; // OP unavailable or unexpected HTML
-    const csrfToken = csrfMatch[1]!;
-
-    // Extract just the cookie value (may be multiple; take the session one)
+    const { sessionCookie, csrfToken } = loginPageData;
     const sessionValue = sessionCookie.split(';')[0] ?? '';
 
-    // ── Step 2: POST /login with credentials ──────────────────────────────────
     const params = new URLSearchParams({
-      username: login,
+      username: opLogin,
       password,
       authenticity_token: csrfToken,
     });
@@ -96,16 +131,12 @@ export async function verifyViaOpenProject(
       if (location.includes('change_password') || location.includes('change-password')) {
         return 'MUST_CHANGE_PASSWORD';
       }
-      // Any other 302 = credentials accepted (dashboard, 2FA setup prompt, etc.)
     } else {
-      // 422 = bad credentials; anything else = error
       return null;
     }
 
-    // ── Step 3: Look up the user via admin API token ───────────────────────────
-    // Encode login for the filter JSON
     const filter = encodeURIComponent(
-      JSON.stringify([{ login: { operator: '=', values: [login] } }])
+      JSON.stringify([{ login: { operator: '=', values: [opLogin] } }])
     );
     const usersRes = await fetch(`${baseUrl}/api/v3/users?filters=${filter}&pageSize=1`, {
       headers: {
@@ -128,8 +159,17 @@ export async function verifyViaOpenProject(
   }
 }
 
-export function setSessionCookie(res: Response, userId: string) {
-  const payload = Buffer.from(JSON.stringify({ userId })).toString('base64url');
+export interface SessionUser {
+  id: string;
+  email: string;
+  name: string;
+  login: string;
+  admin: boolean;
+  avatarUrl?: string;
+}
+
+export function setSessionCookie(res: Response, user: SessionUser) {
+  const payload = Buffer.from(JSON.stringify(user)).toString('base64url');
   const token = `${payload}.${sign(payload)}`;
   res.cookie(cookieName, token, {
     httpOnly: true,
@@ -144,29 +184,24 @@ export function clearSessionCookie(res: Response) {
   res.clearCookie(cookieName, { path: '/' });
 }
 
-export function currentUserId(req: Request) {
+export function currentUser(req: Request): SessionUser | null {
   const token = parseCookies(req.header('cookie'))[cookieName];
   if (!token) return null;
   const [payload, signature] = token.split('.');
   if (!payload || !signature || sign(payload) !== signature) return null;
   try {
-    const parsed = JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as {
-      userId?: string;
-    };
-    return parsed.userId || null;
+    return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8')) as SessionUser;
   } catch {
     return null;
   }
 }
 
-export async function currentUser(req: Request) {
-  const userId = currentUserId(req);
-  if (!userId) return null;
-  return prisma.user.findUnique({ where: { id: userId } });
+export function currentUserId(req: Request): string | null {
+  return currentUser(req)?.id ?? null;
 }
 
-export async function requireCurrentUser(req: Request) {
-  const user = await currentUser(req);
+export async function requireCurrentUser(req: Request): Promise<SessionUser> {
+  const user = currentUser(req);
   if (!user) {
     const error = new Error('Authentication required');
     Object.assign(error, { statusCode: 401 });
