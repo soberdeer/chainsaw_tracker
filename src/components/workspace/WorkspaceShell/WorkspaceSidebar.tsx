@@ -39,6 +39,7 @@ interface WorkspaceSidebarProps {
   onOpenSettings: () => void;
   onOpenProjectAccess: () => void;
   onCreateSpace: () => void;
+  onCreateSubProject: (parentSpaceId: string) => void;
   onLogout: () => void;
 }
 
@@ -67,6 +68,7 @@ export function WorkspaceSidebar({
   onOpenSettings,
   onOpenProjectAccess,
   onCreateSpace,
+  onCreateSubProject,
   onLogout,
 }: WorkspaceSidebarProps) {
   const profileUser = {
@@ -111,7 +113,11 @@ export function WorkspaceSidebar({
         </Group>
       </Group>
 
-      <UnstyledButton className={classes.profileButton} onClick={onOpenProfile}>
+      <UnstyledButton
+        data-testid="profile-button"
+        className={classes.profileButton}
+        onClick={onOpenProfile}
+      >
         <AvatarStack users={[profileUser]} size="1.75rem" />
         <span>
           <Text size="sm" fw={700}>
@@ -157,6 +163,7 @@ export function WorkspaceSidebar({
         </Button>
         {docsAvailable && (
           <Button
+            data-testid="local-docs-link"
             variant={taskView === 'docs' ? 'light' : 'subtle'}
             justify="flex-start"
             leftSection={<IconFolder size="1rem" />}
@@ -179,14 +186,20 @@ export function WorkspaceSidebar({
             activeFolder={activeFolder}
             expandedSpaceIds={expandedSpaceIds}
             expandedFolderIds={expandedFolderIds}
+            canManageSpaces={canManageSpaces}
             onToggleSpace={onToggleSpace}
             onOpenFolder={onOpenFolder}
             onToggleFolder={onToggleFolder}
             onOpenProjectAccess={onOpenProjectAccess}
+            onCreateSubProject={onCreateSubProject}
           />
         ))}
         {canManageSpaces && (
-          <UnstyledButton className={classes.newSpaceRow} onClick={onCreateSpace}>
+          <UnstyledButton
+            data-testid="new-space-button"
+            className={classes.newSpaceRow}
+            onClick={onCreateSpace}
+          >
             <IconPlus size="1.125rem" />
             New Space
           </UnstyledButton>

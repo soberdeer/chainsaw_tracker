@@ -1,5 +1,6 @@
 import { IconProps } from '@tabler/icons-react';
 import { statusIcons } from './status-icons';
+import classes from './StatusIcon.module.css';
 
 export interface StatusIconProps extends IconProps {
   type?: string;
@@ -9,5 +10,11 @@ export interface StatusIconProps extends IconProps {
 export function StatusIcon({ type, tone, color, ...others }: StatusIconProps) {
   const Icon = (statusIcons[type?.toLowerCase() as keyof typeof statusIcons] || statusIcons.open)
     .icon;
-  return <Icon {...others} color={tone ? `var(--mantine-color-${tone}-6)` : color} />;
+  return (
+    <Icon
+      {...others}
+      color={tone ? `var(--mantine-color-${tone}-6)` : color}
+      className={classes.icon}
+    />
+  );
 }

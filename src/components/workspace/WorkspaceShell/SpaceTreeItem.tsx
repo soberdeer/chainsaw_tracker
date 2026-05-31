@@ -1,5 +1,5 @@
-import { ActionIcon, Box, Group, Menu, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconDots, IconPlus } from '@tabler/icons-react';
+import { ActionIcon, Box, Group, Tooltip, UnstyledButton } from '@mantine/core';
+import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
 import { firstTaskFolder, type Folder, type Space } from '@/lib';
 import { FolderTreeItem } from './FolderTreeItem';
 import classes from './WorkspaceShell.module.css';
@@ -10,10 +10,11 @@ interface SpaceTreeItemProps {
   activeFolder: Folder | undefined;
   expandedSpaceIds: Set<string>;
   expandedFolderIds: Set<string>;
+  canManageSpaces?: boolean;
   onToggleSpace: (id: string) => void;
   onOpenFolder: (spaceId: string, folder: Folder) => void;
   onToggleFolder: (id: string) => void;
-  onOpenProjectAccess: () => void;
+  onCreateSubProject: (parentSpaceId: string) => void;
 }
 
 export function SpaceTreeItem({
@@ -22,10 +23,11 @@ export function SpaceTreeItem({
   activeFolder,
   expandedSpaceIds,
   expandedFolderIds,
+  canManageSpaces,
   onToggleSpace,
   onOpenFolder,
   onToggleFolder,
-  onOpenProjectAccess,
+  onCreateSubProject,
 }: SpaceTreeItemProps) {
   const isActiveSpace = space.id === activeSpace?.id;
   const isExpanded = expandedSpaceIds.has(space.id);
@@ -59,47 +61,16 @@ export function SpaceTreeItem({
           </span>
           <span className={classes.spaceName}>{space.name}</span>
         </UnstyledButton>
-        {isActiveSpace && (
-          <Menu width="22rem" position="right-start">
-            <Menu.Target>
-              <Tooltip label="Space actions">
-                <ActionIcon
-                  component="div"
-                  variant="subtle"
-                  aria-label="Space actions"
-                  className={classes.rowAction}
-                >
-                  <IconDots size="1.125rem" />
-                </ActionIcon>
-              </Tooltip>
-            </Menu.Target>
-            <Menu.Dropdown
-              className={classes.menuDropdown}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Menu.Item disabled>Rename in OpenProject project settings</Menu.Item>
-              <Menu.Item onClick={onOpenProjectAccess}>OpenProject access</Menu.Item>
-              <Menu.Item
-                onClick={() =>
-                  navigator.clipboard?.writeText(`${window.location.origin}/space/${space.id}`)
-                }
-              >
-                Copy link
-              </Menu.Item>
-              <Menu.Divider />
-              <Menu.Label>Create new</Menu.Label>
-              <Menu.Item disabled>Folders are not available in OpenProject</Menu.Item>
-              <Menu.Item disabled>Lists are not available in OpenProject</Menu.Item>
-            </Menu.Dropdown>
-          </Menu>
-        )}
-        {isActiveSpace && (
-          <Tooltip label="OpenProject projects do not have folders">
+        {isActiveSpace && canManageSpaces && (
+          <Tooltip label="Create sub-project">
             <ActionIcon
               variant="subtle"
-              aria-label="Folders are not available in OpenProject"
+              aria-label="Create sub-project"
               className={classes.rowAction}
-              disabled
+              onClick={(e) => {
+                e.stopPropagation();
+                onCreateSubProject(space.id);
+              }}
             >
               <IconPlus size="1.125rem" />
             </ActionIcon>

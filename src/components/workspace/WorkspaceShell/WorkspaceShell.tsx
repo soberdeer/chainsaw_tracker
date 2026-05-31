@@ -125,6 +125,30 @@ function readInitialQuery(search = typeof window === 'undefined' ? '' : window.l
 
 const EXPANDED_SPACE_KEY = 'op-tracker:expanded-spaces';
 const EXPANDED_FOLDER_KEY = 'op-tracker:expanded-folders';
+const LAST_FOLDER_KEY = 'op-tracker:last-folder';
+
+function readLastFolder(): { spaceId: string; folderId: string } | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const raw = localStorage.getItem(LAST_FOLDER_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && typeof parsed.spaceId === 'string' && typeof parsed.folderId === 'string')
+      return parsed as { spaceId: string; folderId: string };
+  } catch {
+    /* ignore */
+  }
+  return null;
+}
+
+function saveLastFolder(spaceId: string, folderId: string) {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.setItem(LAST_FOLDER_KEY, JSON.stringify({ spaceId, folderId }));
+  } catch {
+    /* ignore */
+  }
+}
 
 export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceShellProps) {
   const navigate = useNavigate();
@@ -191,6 +215,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   const [workspaceSettingsTab, setWorkspaceSettingsTab] = useState<string | undefined>(undefined);
   const [projectAccessOpen, setProjectAccessOpen] = useState(false);
   const [spaceCreateOpen, setSpaceCreateOpen] = useState(false);
+  const [subProjectParentId, setSubProjectParentId] = useState<string | null>(null);
   const [taskReturnPath, setTaskReturnPath] = useState<string | null>(null);
   const [expandedSpaceIds, setExpandedSpaceIds] = useState<Set<string>>(() => {
     if (typeof window === 'undefined') {
@@ -351,17 +376,27 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
         if (defaultWorkspace?.id && defaultWorkspace.id !== workspaceId)
           setWorkspaceId(defaultWorkspace.id);
 
+        const storedFolder = readLastFolder();
         const defaultSpace =
           defaultWorkspace?.spaces.find((space) => space.id === route.spaceId) ||
+          (storedFolder
+            ? defaultWorkspace?.spaces.find((space) => space.id === storedFolder.spaceId)
+            : undefined) ||
           defaultWorkspace?.spaces.find((space) => firstTaskFolder(space)) ||
           defaultWorkspace?.spaces[0];
         const defaultFolder =
           defaultSpace?.folders.find((folder) => folder.id === route.folderId) ||
+          (storedFolder?.spaceId === defaultSpace?.id
+            ? findFolderById(defaultSpace?.folders || [], storedFolder.folderId)
+            : undefined) ||
           firstTaskFolder(defaultSpace);
         const defaultTaskList = firstTaskList(defaultFolder);
         setSpaceId(defaultSpace?.id);
         setFolderId(defaultFolder?.id);
         setTaskListId(defaultTaskList?.id);
+        if (defaultSpace?.id && defaultFolder?.id) {
+          saveLastFolder(defaultSpace.id, defaultFolder.id);
+        }
         setExpandedSpaceIds(
           (current) => new Set([...current, ...(defaultSpace?.id ? [defaultSpace.id] : [])])
         );
@@ -832,6 +867,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
     setTaskView('tasks');
     setExpandedSpaceIds((current) => new Set([...current, spaceIdValue]));
     setExpandedFolderIds((current) => new Set([...current, folder.id]));
+    saveLastFolder(spaceIdValue, folder.id);
     navigate(folderPath(spaceIdValue, folder.id));
   };
 
@@ -969,6 +1005,15 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             onCreated={reload}
           />
         )}
+        {workspace && (
+          <SpaceCreateModal
+            opened={subProjectParentId !== null}
+            workspace={workspace}
+            initialParentId={subProjectParentId ?? undefined}
+            onClose={() => setSubProjectParentId(null)}
+            onCreated={reload}
+          />
+        )}
         <AppShell.Navbar p="md" className={classes.workspaceSidebar} data-testid="sidebar">
           <WorkspaceSidebar
             workspace={workspace}
@@ -1012,6 +1057,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             }}
             onOpenProjectAccess={() => setProjectAccessOpen(true)}
             onCreateSpace={() => setSpaceCreateOpen(true)}
+            onCreateSubProject={(parentId) => setSubProjectParentId(parentId)}
             onLogout={async () => {
               await logout().catch(() => undefined);
               onCurrentUserChange(null);

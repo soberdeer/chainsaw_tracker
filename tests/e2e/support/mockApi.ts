@@ -186,6 +186,13 @@ type MockImportRun = {
   errors?: unknown;
 };
 
+type MockFolder = {
+  id: string;
+  name: string;
+  taskLists: Array<{ id: string; name: string }>;
+  folders?: MockFolder[];
+};
+
 type MockState = {
   workspaceId: string;
   workspaceName: string;
@@ -200,14 +207,7 @@ type MockState = {
     color: string;
     initials: string;
     locked?: boolean;
-    folders: Array<{
-      id: string;
-      name: string;
-      taskLists: Array<{
-        id: string;
-        name: string;
-      }>;
-    }>;
+    folders: Array<MockFolder>;
   }>;
   statuses: Array<{
     id: string;
@@ -424,6 +424,26 @@ function createDefaultState(): MockState {
             id: 'folder-beta',
             name: 'Content',
             taskLists: [{ id: 'list-beta', name: 'Work packages' }],
+          },
+        ],
+      },
+      {
+        id: 'space-gamma',
+        name: 'Project Gamma',
+        color: '#e67700',
+        initials: 'G',
+        folders: [
+          {
+            id: 'folder-gamma-parent',
+            name: 'Engine',
+            taskLists: [],
+            folders: [
+              {
+                id: 'folder-gamma-child',
+                name: 'Rendering',
+                taskLists: [{ id: 'list-gamma', name: 'Work packages' }],
+              },
+            ],
           },
         ],
       },
@@ -1170,6 +1190,28 @@ function serializeTask(state: MockState, task: MockTask): any {
   };
 }
 
+function serializeFolders(state: MockState, spaceId: string, folders: MockFolder[]): any[] {
+  return folders.map((folder) => ({
+    id: folder.id,
+    spaceId,
+    name: folder.name,
+    locked: false,
+    folders: serializeFolders(state, spaceId, folder.folders ?? []),
+    taskLists: folder.taskLists.map((taskList) => ({
+      id: taskList.id,
+      folderId: folder.id,
+      name: taskList.name,
+      statuses: state.statuses.map((status) => ({ ...status, taskListId: taskList.id })),
+      _count: {
+        tasks: state.tasks.filter((task) => task.taskListId === taskList.id).length,
+      },
+    })),
+    _count: {
+      tasks: state.tasks.filter((task) => task.folderId === folder.id).length,
+    },
+  }));
+}
+
 function buildWorkspaceResponse(state: MockState): any[] {
   return [
     {
@@ -1186,25 +1228,7 @@ function buildWorkspaceResponse(state: MockState): any[] {
         color: space.color,
         initials: space.initials,
         locked: false,
-        folders: space.folders.map((folder) => ({
-          id: folder.id,
-          spaceId: space.id,
-          name: folder.name,
-          locked: false,
-          folders: [],
-          taskLists: folder.taskLists.map((taskList) => ({
-            id: taskList.id,
-            folderId: folder.id,
-            name: taskList.name,
-            statuses: state.statuses.map((status) => ({ ...status, taskListId: taskList.id })),
-            _count: {
-              tasks: state.tasks.filter((task) => task.taskListId === taskList.id).length,
-            },
-          })),
-          _count: {
-            tasks: state.tasks.filter((task) => task.folderId === folder.id).length,
-          },
-        })),
+        folders: serializeFolders(state, space.id, space.folders),
         documents: state.documents.filter((document) => document.spaceId === space.id),
       })),
       memberships: state.users.map((user) => ({
@@ -1215,7 +1239,10 @@ function buildWorkspaceResponse(state: MockState): any[] {
       permissionSets: (['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'] as MockRole[]).map((role) =>
         rolePermissions(role)
       ),
-      openProjectUsers: state.users.map((user) => userView(state, user.id)),
+      // Only expose users that are actually linked to an OpenProject account
+      openProjectUsers: state.users
+        .filter((user) => user.openProjectUserId)
+        .map((user) => userView(state, user.id)),
       githubIntegration: {
         organization: state.repositories[0]?.owner,
         repository: state.repositories[0]?.repo,
@@ -1541,6 +1568,34 @@ async function handleApiRoute(route: Route, state: MockState) {
       return;
     }
     return fulfillJson(route, 200, buildWorkspaceResponse(state));
+  }
+
+  if (pathname === '/api/openproject/spaces' && method === 'POST') {
+    const user = requireUser(route, state);
+    if (!user) return;
+    if (!rolePermissions(user.role).manageSpaces) {
+      return fulfillJson(route, 403, { error: 'Forbidden' });
+    }
+    const body = await route.request().postDataJSON();
+    const newSpaceId = nextId(state, 'space');
+    const newFolderId = nextId(state, 'folder');
+    const newListId = nextId(state, 'list');
+    const newSpace = {
+      id: newSpaceId,
+      name: body.name as string,
+      color: body.color || '#adb5bd',
+      initials: body.initials || (body.name as string).slice(0, 1).toUpperCase(),
+      locked: false,
+      folders: [
+        {
+          id: newFolderId,
+          name: 'Work packages',
+          taskLists: [{ id: newListId, name: 'Work packages' }],
+        },
+      ],
+    };
+    state.spaces.push(newSpace);
+    return fulfillJson(route, 201, { id: newSpaceId, name: body.name });
   }
 
   if (pathname === '/api/openproject/task-types' && method === 'GET') {

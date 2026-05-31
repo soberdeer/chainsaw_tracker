@@ -17,11 +17,19 @@ import classes from './SpaceCreateModal.module.css';
 export interface SpaceCreateModalProps {
   opened: boolean;
   workspace: Workspace;
+  /** When set, the modal opens pre-filled as a sub-project of this parent. */
+  initialParentId?: string;
   onClose: () => void;
   onCreated: () => void;
 }
 
-export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: SpaceCreateModalProps) {
+export function SpaceCreateModal({
+  opened,
+  workspace,
+  initialParentId,
+  onClose,
+  onCreated,
+}: SpaceCreateModalProps) {
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const form = useForm({
@@ -42,8 +50,11 @@ export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: Spac
   useEffect(() => {
     if (!opened) return;
     formRef.current.reset();
+    if (initialParentId) {
+      formRef.current.setFieldValue('parentId', initialParentId);
+    }
     setError(null);
-  }, [opened]);
+  }, [opened, initialParentId]);
 
   const projectOptions = useMemo(() => flattenSpaces(workspace.spaces), [workspace.spaces]);
 
@@ -69,7 +80,12 @@ export function SpaceCreateModal({ opened, workspace, onClose, onCreated }: Spac
   });
 
   return (
-    <Modal opened={opened} onClose={onClose} title="New OpenProject project" centered>
+    <Modal
+      opened={opened}
+      onClose={onClose}
+      title={initialParentId ? 'New sub-project' : 'New OpenProject project'}
+      centered
+    >
       <form onSubmit={submit}>
         <Stack>
           {error && (

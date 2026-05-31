@@ -31,6 +31,8 @@ export function FolderTreeItem({
   return (
     <Box>
       <UnstyledButton
+        data-testid="folder-row"
+        data-folder-id={folder.id}
         className={isActive ? `${classes.folderTreeRow} ${classes.active}` : classes.folderTreeRow}
         style={{ paddingLeft: `${0.5 + depth * 1.1}rem` }}
         onClick={() => {

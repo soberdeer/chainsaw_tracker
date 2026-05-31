@@ -74,8 +74,8 @@
 }
 
 .spaceInitial {
-  width: 2rem;
-  height: 2rem;
+  width: calc(2rem * var(--mantine-scale));
+  height: calc(2rem * var(--mantine-scale));
   border-radius: var(--mantine-radius-md);
   color: #111;
   display: inline-grid;
