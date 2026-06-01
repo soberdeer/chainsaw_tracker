@@ -133,6 +133,7 @@ dist
 .idea
 server/openproject/seed-data/clickup-hierarchy.json
 .claude
+.agents
 
 # Playwright
 test-results/
