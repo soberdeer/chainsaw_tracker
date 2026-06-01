@@ -1,11 +1,7 @@
 import { Loader } from '@mantine/core';
 import { useEffect, useState } from 'react';
-import { Route, Routes } from 'react-router-dom';
-import { FirstRunSetupPage } from './components/auth/FirstRunSetupPage/FirstRunSetupPage';
-import { LoginPage } from './components/auth/LoginPage/LoginPage';
-import { AcceptInvitePage } from './components/team/AcceptInvitePage/AcceptInvitePage';
-import { WorkspaceShell } from './components/workspace/WorkspaceShell/WorkspaceShell';
 import { getCurrentUser, getSetupStatus, type AuthSetupStatus, type CurrentUser } from './lib';
+import { AppRouter } from './Router';
 
 export default function App() {
   const [user, setUser] = useState<CurrentUser | null>(null);
@@ -48,28 +44,16 @@ export default function App() {
   }
 
   return (
-    <Routes>
-      <Route path="/accept-invite/:token" element={<AcceptInvitePage onAccepted={setUser} />} />
-      <Route
-        path="*"
-        element={
-          user ? (
-            <WorkspaceShell currentUser={user} onCurrentUserChange={setUser} />
-          ) : setupStatus?.setupRequired ? (
-            <FirstRunSetupPage
-              status={setupStatus}
-              onCreated={(createdUser) => {
-                setUser(createdUser);
-                setSetupStatus((current) =>
-                  current ? { ...current, setupRequired: false, ownerCount: 1 } : current
-                );
-              }}
-            />
-          ) : (
-            <LoginPage onLoggedIn={setUser} />
-          )
-        }
-      />
-    </Routes>
+    <AppRouter
+      user={user}
+      setupStatus={setupStatus}
+      onCurrentUserChange={setUser}
+      onSetupCompleted={(createdUser) => {
+        setUser(createdUser);
+        setSetupStatus((current) =>
+          current ? { ...current, setupRequired: false, ownerCount: 1 } : current
+        );
+      }}
+    />
   );
 }

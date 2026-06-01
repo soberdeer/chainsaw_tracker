@@ -3,15 +3,22 @@
   width: 100%;
   border: 1px solid var(--app-border);
   border-radius: var(--mantine-radius-md);
-  padding: var(--mantine-spacing-sm);
   background: var(--app-panel);
   color: var(--app-text);
-  cursor: pointer;
-  text-align: left;
+  overflow: hidden;
+  transition: background 80ms ease;
 }
 
 .docCard:hover {
   background: var(--app-hover);
+}
+
+/* The anchor link that fills the card */
+.docCardLink {
+  display: block;
+  padding: var(--mantine-spacing-sm);
+  color: inherit;
+  text-decoration: none;
 }
 
 .menuDropdown {

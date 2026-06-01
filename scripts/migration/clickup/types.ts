@@ -1,5 +1,28 @@
 // Migration-only ClickUp response types for scripts/seed-openproject-from-clickup.ts.
 // Runtime task data comes from OpenProject.
+
+export type ClickUpDocPage = {
+  id: string;
+  name?: string;
+  content?: string; // legacy field (empty in v2 API)
+  text_content?: string; // actual markdown content in ClickUp v2 API
+  date_created?: number | string;
+  date_updated?: number | string;
+  parent_page_id?: string | null;
+  sub_pages?: ClickUpDocPage[];
+  pages?: ClickUpDocPage[]; // nested sub-pages returned by /doc/:id/page
+};
+
+export type ClickUpDoc = {
+  id: string;
+  name?: string;
+  title?: string;
+  date_created?: number | string;
+  date_updated?: number | string;
+  /** parent.type: 4 = space, 5 = folder, 7 = list, 0 = workspace root */
+  parent?: { id: string; type?: number };
+  pages?: ClickUpDocPage[];
+};
 export type ClickUpTeamMember = {
   user: ClickUpUser;
   /** 1 = owner, 2 = admin, 3 = member, 4 = guest */

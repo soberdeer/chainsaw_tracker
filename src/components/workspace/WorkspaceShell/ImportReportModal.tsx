@@ -1,15 +1,18 @@
 import { Alert, Button, Group, Modal, SimpleGrid, Stack, Text } from '@mantine/core';
-import { summarizeImportRun, type MigrationRun } from '@/lib';
+import { summarizeImportRun } from '@/lib';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 
-interface ImportReportModalProps {
-  report: MigrationRun | null;
-  onClose: () => void;
-  onCopied: (message: string) => void;
-}
+export function ImportReportModal() {
+  const state = useWorkspaceShellContext();
+  const report = state.activeImportReport;
 
-export function ImportReportModal({ report, onClose, onCopied }: ImportReportModalProps) {
   return (
-    <Modal opened={Boolean(report)} onClose={onClose} title="Import report" size="lg">
+    <Modal
+      opened={Boolean(report)}
+      onClose={() => state.setActiveImportReport(null)}
+      title="Import report"
+      size="lg"
+    >
       {report && (
         <Stack gap="md">
           <SimpleGrid cols={{ base: 1, sm: 2, xl: 4 }}>
@@ -71,7 +74,7 @@ export function ImportReportModal({ report, onClose, onCopied }: ImportReportMod
               variant="subtle"
               onClick={() => {
                 navigator.clipboard?.writeText(JSON.stringify(report, null, 2));
-                onCopied('Import report JSON copied.');
+                state.setActionNotice('Import report JSON copied.');
               }}
             >
               Copy JSON

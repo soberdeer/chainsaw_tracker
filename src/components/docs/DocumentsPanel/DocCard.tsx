@@ -1,34 +1,19 @@
-import {
-  ActionIcon,
-  Badge,
-  Box,
-  Group,
-  Menu,
-  Text,
-  ThemeIcon,
-  Tooltip,
-  UnstyledButton,
-} from '@mantine/core';
-import { IconDots, IconFileText, IconPhoto } from '@tabler/icons-react';
-import {
-  deleteDocument,
-  duplicateDocument,
-  getErrorMessage,
-  updateDocument,
-  type DocumentItem,
-} from '@/lib';
+import { ActionIcon, Box, Group, Menu, Text, ThemeIcon } from '@mantine/core';
+import { IconDots, IconFileText } from '@tabler/icons-react';
+import { Link } from 'react-router-dom';
+import { deleteDocument, docPath, getErrorMessage, updateDocument, type DocumentItem } from '@/lib';
 import { confirmAction, promptForText } from '@/lib/modals';
 import classes from './DocumentsPanel.module.css';
 
 interface DocCardProps {
   doc: DocumentItem;
+  spaceId: string;
   canEdit: boolean;
-  onOpen: (doc: DocumentItem) => void;
   onChanged: () => void;
   onError: (message: string) => void;
 }
 
-export function DocCard({ doc, canEdit, onOpen, onChanged, onError }: DocCardProps) {
+export function DocCard({ doc, spaceId, canEdit, onChanged, onError }: DocCardProps) {
   const run = async (action: () => Promise<unknown>) => {
     try {
       await action();
@@ -52,8 +37,8 @@ export function DocCard({ doc, canEdit, onOpen, onChanged, onError }: DocCardPro
   const handleDelete = async () => {
     const confirmed = await confirmAction({
       title: 'Delete doc',
-      message: `Delete "${doc.title}"? This removes the local tracker document.`,
-      confirmLabel: 'Delete doc',
+      message: `Delete "${doc.title}"? This removes the work package from OpenProject.`,
+      confirmLabel: 'Delete',
       confirmColor: 'red',
     });
     if (!confirmed) return;
@@ -61,84 +46,56 @@ export function DocCard({ doc, canEdit, onOpen, onChanged, onError }: DocCardPro
   };
 
   const copyLink = () =>
-    navigator.clipboard?.writeText(`${window.location.origin}/space/${doc.spaceId}/doc/${doc.id}`);
+    navigator.clipboard?.writeText(`${window.location.origin}${docPath(spaceId, doc.id)}`);
+
+  const preview = (doc.markdown || '')
+    .replace(/^#+\s+.*/gm, '')
+    .replace(/[*_`#>[\]]/g, '')
+    .trim()
+    .slice(0, 200);
 
   return (
-    <UnstyledButton className={classes.docCard} onClick={() => onOpen(doc)}>
-      <Group justify="space-between" mb="xs">
-        <Group gap="xs">
-          <Tooltip label={`Document type: ${doc.kind}`}>
-            <ThemeIcon
-              variant="light"
-              color={doc.kind === 'IMAGE' ? 'pink' : doc.kind === 'EMBED' ? 'violet' : 'blue'}
-            >
-              {doc.kind === 'IMAGE' ? (
-                <IconPhoto size="1.125rem" />
-              ) : (
-                <IconFileText size="1.125rem" />
-              )}
-            </ThemeIcon>
-          </Tooltip>
-          <Text fw={700}>{doc.title}</Text>
-        </Group>
-        <Group gap="xs">
-          <Tooltip label={`Document type: ${doc.kind}`}>
-            <Badge variant="outline">{doc.kind}</Badge>
-          </Tooltip>
-          <Menu width="18rem" position="bottom-end">
-            <Menu.Target>
-              <Tooltip label={canEdit ? 'Document settings' : 'Read-only document'}>
-                <ActionIcon
-                  component="div"
-                  variant="subtle"
-                  aria-label="Doc settings"
-                  onClick={(event) => event.stopPropagation()}
-                >
-                  <IconDots size="1rem" />
-                </ActionIcon>
-              </Tooltip>
-            </Menu.Target>
-            <Menu.Dropdown
-              className={classes.menuDropdown}
-              onClick={(event) => event.stopPropagation()}
-            >
-              <Menu.Label>Doc settings</Menu.Label>
-              {canEdit ? (
-                <>
-                  <Menu.Item onClick={() => void handleRename()}>Rename</Menu.Item>
-                  <Menu.Item onClick={copyLink}>Copy link</Menu.Item>
-                  <Menu.Item onClick={() => void run(() => duplicateDocument(doc.id))}>
-                    Duplicate
-                  </Menu.Item>
-                  <Menu.Item color="red" onClick={() => void handleDelete()}>
-                    Delete
-                  </Menu.Item>
-                  <Menu.Divider />
-                  <Menu.Item disabled>
-                    Managed through workspace members and project access
-                  </Menu.Item>
-                </>
-              ) : (
-                <>
-                  <Menu.Item onClick={copyLink}>Copy link</Menu.Item>
-                  <Menu.Item disabled>Your current role can view local docs only.</Menu.Item>
-                </>
-              )}
-            </Menu.Dropdown>
-          </Menu>
-        </Group>
-      </Group>
-      {doc.kind === 'EMBED' ? (
-        <Box className={classes.embedPreview}>
-          <Text size="sm" c="dimmed">
-            {doc.embedUrl}
+    <Box className={classes.docCard} style={{ position: 'relative' }}>
+      {/* Menu sits on top with absolute position so it doesn't interfere with the link */}
+      <Box
+        style={{ position: 'absolute', top: '0.5rem', right: '0.5rem', zIndex: 1 }}
+        onClick={(e) => e.preventDefault()}
+      >
+        <Menu width="16rem" position="bottom-end" withinPortal>
+          <Menu.Target>
+            <ActionIcon variant="subtle" aria-label="Doc actions" size="sm">
+              <IconDots size="1rem" />
+            </ActionIcon>
+          </Menu.Target>
+          <Menu.Dropdown>
+            <Menu.Item onClick={copyLink}>Copy link</Menu.Item>
+            {canEdit && (
+              <>
+                <Menu.Item onClick={() => void handleRename()}>Rename</Menu.Item>
+                <Menu.Divider />
+                <Menu.Item color="red" onClick={() => void handleDelete()}>
+                  Delete
+                </Menu.Item>
+              </>
+            )}
+          </Menu.Dropdown>
+        </Menu>
+      </Box>
+
+      {/* Card body is a plain link */}
+      <Link to={docPath(spaceId, doc.id)} className={classes.docCardLink}>
+        <Group gap="xs" mb="xs" pr="2rem">
+          <ThemeIcon variant="light" color="blue" size="sm">
+            <IconFileText size="1rem" />
+          </ThemeIcon>
+          <Text fw={700} lineClamp={1} style={{ flex: 1 }}>
+            {doc.title}
           </Text>
-        </Box>
-      ) : (
-        <Text size="sm" c="dimmed" lineClamp={5}>
-          {doc.markdown || doc.sourceName || 'Image asset'}
+        </Group>
+        <Text size="sm" c="dimmed" lineClamp={4}>
+          {preview || 'Empty document'}
         </Text>
-      )}
-    </UnstyledButton>
+      </Link>
+    </Box>
   );
 }

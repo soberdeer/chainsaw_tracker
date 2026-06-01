@@ -94,7 +94,7 @@ test('buildWorkspaceBreadcrumbs keeps docs and task paths distinct', () => {
   });
   assert.deepEqual(
     docBreadcrumbs.map((item) => item.label),
-    ['Workspace', 'Product', 'Local Docs', 'Brief']
+    ['Workspace', 'Product', 'Brief']
   );
 
   const taskBreadcrumbs = buildWorkspaceBreadcrumbs({

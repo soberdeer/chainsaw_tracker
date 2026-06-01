@@ -1,51 +1,35 @@
 import { Alert, Button, Group, MultiSelect, Select } from '@mantine/core';
-import type { TaskStatus, User } from '@/lib';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 
-interface BulkUpdateBarProps {
-  selectedCount: number;
-  statuses: TaskStatus[];
-  assignees: User[];
-  onBulkStatus: (statusId: string) => void;
-  onBulkPriority: (priority: string) => void;
-  onBulkAssignees: (assigneeIds: string[]) => void;
-  onClearSelection: () => void;
-}
+export function BulkUpdateBar() {
+  const state = useWorkspaceShellContext();
 
-export function BulkUpdateBar({
-  selectedCount,
-  statuses,
-  assignees,
-  onBulkStatus,
-  onBulkPriority,
-  onBulkAssignees,
-  onClearSelection,
-}: BulkUpdateBarProps) {
   return (
-    <Alert color="blue" title={`${selectedCount} selected`}>
+    <Alert color="blue" title={`${state.selectedTaskIds.size} selected`}>
       <Group gap="xs">
         <Select
           data-testid="bulk-status-select"
           placeholder="Bulk status"
-          data={statuses.map((item) => ({ value: item.id, label: item.name }))}
-          onChange={(value) => value && onBulkStatus(value)}
+          data={state.statuses.map((item) => ({ value: item.id, label: item.name }))}
+          onChange={(value) => value && void state.runBulkUpdate({ statusId: value })}
           w="12rem"
         />
         <Select
           data-testid="bulk-priority-select"
           placeholder="Bulk priority"
           data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
-          onChange={(value) => value && onBulkPriority(value)}
+          onChange={(value) => value && void state.runBulkUpdate({ priority: value })}
           w="12rem"
         />
         <MultiSelect
           data-testid="bulk-assignee-select"
           placeholder="Bulk assignee/responsible"
-          data={assignees.map((user) => ({ value: user.id, label: user.name }))}
+          data={state.availableAssignees.map((user) => ({ value: user.id, label: user.name }))}
           maxValues={2}
-          onChange={onBulkAssignees}
+          onChange={(assigneeIds) => void state.runBulkUpdate({ assigneeIds })}
           w="16rem"
         />
-        <Button variant="subtle" onClick={onClearSelection}>
+        <Button variant="subtle" onClick={state.clearTaskSelection}>
           Clear selection
         </Button>
       </Group>

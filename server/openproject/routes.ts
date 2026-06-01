@@ -2,8 +2,52 @@ import { Router } from 'express';
 import multer from 'multer';
 import { z } from 'zod';
 import { requireCurrentUser } from '../services/auth.js';
+import { openProjectRequest } from './client.js';
+import * as docs from './documents.js';
+import { loadSeededHierarchy } from './hierarchyStore.js';
 import { requireOpenProjectProjectWrite, requireOpenProjectTaskWrite } from './permissions.js';
 import * as service from './service.js';
+import type { OpenProjectProject } from './types.js';
+
+/**
+ * Resolve a space ID (which may be a ClickUp space ID stored in the seeded
+ * hierarchy) to the real OpenProject root-project ID so that docs operations
+ * target the correct OP project tree.
+ *
+ * Strategy:
+ *   1. Look up the space in the seeded hierarchy by ID.
+ *   2. Pick the first task-list that carries a known OP project ID.
+ *   3. Fetch that project from OP and follow its `parent` link – the parent
+ *      is the space root OP project we need.
+ *   4. If nothing resolves, return the original spaceId (it may already be a
+ *      numeric OP project ID when seeded hierarchy is absent).
+ */
+async function resolveOpSpaceId(spaceId: string): Promise<string> {
+  try {
+    const seeded = await loadSeededHierarchy();
+    if (seeded) {
+      const space = seeded.spaces.find((s) => s.id === spaceId || s.clickupSpaceId === spaceId);
+      if (space) {
+        for (const folder of space.folders) {
+          for (const list of folder.taskLists) {
+            const opId = list.openProjectProjectId;
+            if (!opId) continue;
+            const proj = await openProjectRequest<OpenProjectProject>(`/api/v3/projects/${opId}`);
+            const parentLink = Array.isArray(proj._links.parent)
+              ? proj._links.parent[0]
+              : proj._links.parent;
+            const parentId = parentLink?.href?.split('/').filter(Boolean).at(-1);
+            if (parentId) return parentId;
+            return opId;
+          }
+        }
+      }
+    }
+  } catch {
+    /* fall through to identity */
+  }
+  return spaceId;
+}
 
 export const openProjectRouter = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 25 * 1024 * 1024 } });
@@ -371,16 +415,156 @@ openProjectRouter.patch('/tasks/:taskId/custom-fields/:fieldKey', async (req, re
   });
 });
 
+// ── Docs (Documentation work packages in a dedicated "Docs" child project) ────
+
+openProjectRouter.get('/docs', async (req, res) => {
+  const query = z.object({ folderId: z.string().min(1) }).parse(req.query);
+  res.json({ items: await docs.getDocuments(query.folderId) });
+});
+
+openProjectRouter.get('/docs/:docId', async (req, res) => {
+  res.json(await docs.getDocumentById(req.params.docId));
+});
+
+openProjectRouter.post('/docs', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      folderId: z.string().min(1),
+      spaceId: z.string().min(1),
+      title: z.string().min(1),
+      markdown: z.string().default(''),
+    })
+    .parse(req.body);
+  res
+    .status(201)
+    .json(await docs.createDocument(body.folderId, body.spaceId, body.title, body.markdown));
+});
+
+openProjectRouter.post('/docs/ensure-folder', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z.object({ spaceId: z.string().min(1) }).parse(req.body);
+  const opSpaceId = await resolveOpSpaceId(body.spaceId);
+  const folderId = await docs.getOrCreateDocsProject(opSpaceId);
+  res.json({ folderId });
+});
+
+openProjectRouter.patch('/docs/:docId', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  const body = z
+    .object({
+      title: z.string().min(1).optional(),
+      markdown: z.string().optional(),
+    })
+    .parse(req.body);
+  res.json(await docs.updateDocumentById(req.params.docId, body));
+});
+
+openProjectRouter.delete('/docs/:docId', async (req, res) => {
+  await requireOpenProjectTaskWrite(req);
+  await docs.deleteDocumentById(req.params.docId);
+  res.status(204).send();
+});
+
+/**
+ * Cache: OP root project ID → ClickUp space ID.
+ * Built lazily on first search that encounters a doc result.
+ */
+const _opRootToClickUpSpace = new Map<string, string>();
+
+async function buildOpRootSpaceMap(): Promise<void> {
+  if (_opRootToClickUpSpace.size > 0) return;
+  try {
+    const seeded = await loadSeededHierarchy();
+    if (!seeded) return;
+    for (const space of seeded.spaces) {
+      const clickUpSpaceId = space.clickupSpaceId || space.id;
+      let mapped = false;
+      for (const folder of space.folders) {
+        for (const list of folder.taskLists) {
+          if (!list.openProjectProjectId) continue;
+          try {
+            const proj = await openProjectRequest<OpenProjectProject>(
+              `/api/v3/projects/${list.openProjectProjectId}`
+            );
+            const pLink = Array.isArray(proj._links.parent)
+              ? proj._links.parent[0]
+              : proj._links.parent;
+            const rootId =
+              pLink?.href?.split('/').filter(Boolean).at(-1) || list.openProjectProjectId;
+            _opRootToClickUpSpace.set(rootId, clickUpSpaceId);
+            mapped = true;
+          } catch {
+            /* skip */
+          }
+          break; // one list per folder
+        }
+        if (mapped) break;
+      }
+    }
+  } catch {
+    /* ignore */
+  }
+}
+
+function projectParentLink(project: OpenProjectProject) {
+  return Array.isArray(project._links.parent) ? project._links.parent[0] : project._links.parent;
+}
+
+async function resolveDocSearchSpaceId(task: { departmentId?: string; folderId?: string }) {
+  await buildOpRootSpaceMap();
+
+  if (task.departmentId) {
+    const clickUpSpaceId = _opRootToClickUpSpace.get(task.departmentId);
+    if (clickUpSpaceId) {
+      return clickUpSpaceId;
+    }
+  }
+
+  if (task.folderId) {
+    try {
+      const project = await openProjectRequest<OpenProjectProject>(
+        `/api/v3/projects/${task.folderId}`
+      );
+      const rootId =
+        projectParentLink(project)?.href?.split('/').filter(Boolean).at(-1) || task.folderId;
+      const clickUpSpaceId = _opRootToClickUpSpace.get(rootId);
+      if (clickUpSpaceId) {
+        return clickUpSpaceId;
+      }
+    } catch {
+      /* fall through */
+    }
+  }
+
+  return task.departmentId || 'openproject';
+}
+
 openProjectRouter.get('/search', async (req, res) => {
   const query = z.object({ q: z.string().optional() }).parse(req.query);
   const tasks = await service.searchTasks(query.q || '');
   res.json(
-    tasks.map((task) => ({
-      id: task.id,
-      type: 'task',
-      title: task.title,
-      subtitle: task.status,
-      url: `/space/${task.departmentId || 'openproject'}/folder/${task.folderId}/task/${task.id}`,
-    }))
+    await Promise.all(
+      tasks.map(async (task) => {
+        const isDoc = task.type?.toLowerCase() === 'documentation';
+        if (isDoc) {
+          const clickUpSpaceId = await resolveDocSearchSpaceId(task);
+          return {
+            id: task.id,
+            type: 'doc' as const,
+            title: task.title,
+            subtitle: 'Documentation',
+            url: `/space/${clickUpSpaceId}/docs/${task.id}`,
+          };
+        }
+        return {
+          id: task.id,
+          type: 'task' as const,
+          title: task.title,
+          subtitle: task.status,
+          url: `/space/${task.departmentId || 'openproject'}/folder/${task.folderId}/task/${task.id}`,
+        };
+      })
+    )
   );
 });

@@ -62,10 +62,24 @@ export type SeededWorkspace = Omit<Workspace, 'spaces'> & {
 
 let cachedHierarchy: SeededWorkspace | null | undefined;
 
+function normaliseDocsKind(workspace: SeededWorkspace): SeededWorkspace {
+  return {
+    ...workspace,
+    spaces: workspace.spaces.map((space) => ({
+      ...space,
+      folders: space.folders.map((folder) => {
+        const isDocsFolder = ['docs', 'doc'].includes(folder.name.toLowerCase());
+        return isDocsFolder ? { ...folder, kind: 'DOCS' as const, taskLists: [] } : folder;
+      }),
+    })),
+  };
+}
+
 export async function loadSeededHierarchy() {
   if (cachedHierarchy !== undefined) return cachedHierarchy;
   try {
-    cachedHierarchy = JSON.parse(await readFile(storePath, 'utf8')) as SeededWorkspace;
+    const raw = JSON.parse(await readFile(storePath, 'utf8')) as SeededWorkspace;
+    cachedHierarchy = normaliseDocsKind(raw);
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
       console.warn(

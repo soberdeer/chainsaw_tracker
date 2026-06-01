@@ -1,38 +1,18 @@
 import { ActionIcon, Box, Group, Tooltip, UnstyledButton } from '@mantine/core';
 import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
-import { firstTaskFolder, type Folder, type Space } from '@/lib';
+import { firstTaskFolder, type Space } from '@/lib';
 import { FolderTreeItem } from './FolderTreeItem';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 import classes from './WorkspaceShell.module.css';
 
 interface SpaceTreeItemProps {
   space: Space;
-  activeSpace: Space | undefined;
-  activeFolder: Folder | undefined;
-  expandedSpaceIds: Set<string>;
-  expandedFolderIds: Set<string>;
-  canManageSpaces?: boolean;
-  onToggleSpace: (id: string) => void;
-  onOpenFolder: (spaceId: string, folder: Folder) => void;
-  onToggleFolder: (id: string) => void;
-  onOpenProjectAccess?: () => void;
-  onCreateSubProject: (parentSpaceId: string) => void;
 }
 
-export function SpaceTreeItem({
-  space,
-  activeSpace,
-  activeFolder,
-  expandedSpaceIds,
-  expandedFolderIds,
-  canManageSpaces,
-  onToggleSpace,
-  onOpenFolder,
-  onToggleFolder,
-  onOpenProjectAccess: _onOpenProjectAccess,
-  onCreateSubProject,
-}: SpaceTreeItemProps) {
-  const isActiveSpace = space.id === activeSpace?.id;
-  const isExpanded = expandedSpaceIds.has(space.id);
+export function SpaceTreeItem({ space }: SpaceTreeItemProps) {
+  const state = useWorkspaceShellContext();
+  const isActiveSpace = space.id === state.activeSpace?.id;
+  const isExpanded = state.expandedSpaceIds.has(space.id);
 
   return (
     <Box className={classes.spaceTreeBlock}>
@@ -44,10 +24,10 @@ export function SpaceTreeItem({
             isActiveSpace ? `${classes.spaceTreeRow} ${classes.active}` : classes.spaceTreeRow
           }
           onClick={() => {
-            onToggleSpace(space.id);
+            state.toggleSpace(space.id);
             if (!isActiveSpace) {
               const folder = firstTaskFolder(space) ?? space.folders[0];
-              if (folder) onOpenFolder(space.id, folder);
+              if (folder) state.openFolder(space.id, folder);
             }
           }}
         >
@@ -63,7 +43,7 @@ export function SpaceTreeItem({
           </span>
           <span className={classes.spaceName}>{space.name}</span>
         </UnstyledButton>
-        {isActiveSpace && canManageSpaces && (
+        {isActiveSpace && state.canManageSpaces && (
           <Tooltip label="Create sub-project">
             <ActionIcon
               variant="subtle"
@@ -71,7 +51,7 @@ export function SpaceTreeItem({
               className={classes.rowAction}
               onClick={(e) => {
                 e.stopPropagation();
-                onCreateSubProject(space.id);
+                state.setSubProjectParentId(space.id);
               }}
             >
               <IconPlus size="1.125rem" />
@@ -82,15 +62,7 @@ export function SpaceTreeItem({
       {isExpanded && (
         <Box className={classes.folderTree}>
           {space.folders.map((folder) => (
-            <FolderTreeItem
-              key={folder.id}
-              spaceId={space.id}
-              folder={folder}
-              activeFolder={activeFolder}
-              expandedFolderIds={expandedFolderIds}
-              onOpenFolder={onOpenFolder}
-              onToggleFolder={onToggleFolder}
-            />
+            <FolderTreeItem key={folder.id} spaceId={space.id} folder={folder} />
           ))}
         </Box>
       )}

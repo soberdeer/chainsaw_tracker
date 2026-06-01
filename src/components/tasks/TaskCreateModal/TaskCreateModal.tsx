@@ -1,5 +1,4 @@
 import {
-  Alert,
   Button,
   Group,
   Modal,
@@ -232,11 +231,6 @@ export function TaskCreateModal({
                 {...form.getInputProps('priority')}
               />
             </Group>
-
-            <Alert color="blue" variant="light" title="OpenProject-backed fields">
-              Custom field definitions are managed in OpenProject. Tags can be added right after
-              creation from task detail without creating a duplicate local task.
-            </Alert>
           </Stack>
 
           <Group className={classes.footer} justify="space-between">

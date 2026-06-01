@@ -584,46 +584,47 @@ export function deleteTask(taskId: string) {
   return request<void>(`/api/openproject/tasks/${taskId}`, { method: 'DELETE' });
 }
 
-export function createMarkdownDoc(input: { spaceId: string; title: string; markdown: string }) {
-  return request<DocumentItem>('/api/documents/markdown', {
+export function getDocuments(folderId: string) {
+  return request<{ items: DocumentItem[] }>(
+    `/api/openproject/docs?folderId=${encodeURIComponent(folderId)}`
+  );
+}
+
+export function getDocumentById(docId: string) {
+  return request<DocumentItem>(`/api/openproject/docs/${docId}`);
+}
+
+export function ensureDocsFolder(spaceId: string) {
+  return request<{ folderId: string }>('/api/openproject/docs/ensure-folder', {
     method: 'POST',
-    body: JSON.stringify(input),
+    body: JSON.stringify({ spaceId }),
   });
 }
 
-export function createEmbedDoc(input: { spaceId: string; title: string; embedUrl: string }) {
-  return request<DocumentItem>('/api/documents/embed', {
+export function createMarkdownDoc(input: {
+  folderId: string;
+  spaceId: string;
+  title: string;
+  markdown: string;
+}) {
+  return request<DocumentItem>('/api/openproject/docs', {
     method: 'POST',
     body: JSON.stringify(input),
   });
-}
-
-export function uploadDocument(spaceId: string, file: File, title?: string) {
-  const form = new FormData();
-  form.set('spaceId', spaceId);
-  if (title) {
-    form.set('title', title);
-  }
-  form.set('file', file);
-  return request<DocumentItem>('/api/documents/upload', { method: 'POST', body: form });
 }
 
 export function updateDocument(
   documentId: string,
-  input: Partial<Pick<DocumentItem, 'title' | 'markdown' | 'embedUrl'>>
+  input: Partial<Pick<DocumentItem, 'title' | 'markdown'>>
 ) {
-  return request<DocumentItem>(`/api/documents/${documentId}`, {
+  return request<DocumentItem>(`/api/openproject/docs/${documentId}`, {
     method: 'PATCH',
     body: JSON.stringify(input),
   });
 }
 
-export function duplicateDocument(documentId: string) {
-  return request<DocumentItem>(`/api/documents/${documentId}/duplicate`, { method: 'POST' });
-}
-
 export function deleteDocument(documentId: string) {
-  return request<void>(`/api/documents/${documentId}`, { method: 'DELETE' });
+  return request<void>(`/api/openproject/docs/${documentId}`, { method: 'DELETE' });
 }
 
 export function inviteMember(workspaceId: string, input: { email: string; role?: string }) {

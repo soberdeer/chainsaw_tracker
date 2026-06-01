@@ -1,46 +1,16 @@
-import { ActionIcon, Alert, Badge, Box, Button, Group, Loader, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Button, Group, Loader, Tooltip } from '@mantine/core';
 import { IconPlus, IconSortAscending, IconSortDescending } from '@tabler/icons-react';
-import type { Task, TaskStatus } from '@/lib';
 import { TaskBoard } from '../../tasks/TaskViews/TaskBoard/TaskBoard';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 import classes from './WorkspaceShell.module.css';
 
-interface BoardPanelProps {
-  tasks: Task[];
-  tasksLoading: boolean;
-  tasksError: string | null;
-  statuses: TaskStatus[];
-  canWriteTasks: boolean;
-  isWorkspaceWide: boolean;
-  activeTaskListId?: string;
-  sortDir: 'asc' | 'desc';
-  onToggleSortDir: () => void;
-  onAddTask: (statusId: string) => void;
-  onOpenTask: (task: Task) => void;
-  onMoveTask: (
-    taskId: string,
-    statusId: string,
-    targetTaskId?: string | null
-  ) => Promise<void> | void;
-}
+export function BoardPanel() {
+  const state = useWorkspaceShellContext();
 
-export function BoardPanel({
-  tasks,
-  tasksLoading,
-  tasksError,
-  statuses,
-  canWriteTasks,
-  isWorkspaceWide,
-  activeTaskListId,
-  sortDir,
-  onToggleSortDir,
-  onAddTask,
-  onOpenTask,
-  onMoveTask,
-}: BoardPanelProps) {
   return (
     <div>
       <Group className={classes.taskToolbar} justify="flex-end">
-        {isWorkspaceWide && (
+        {state.isWorkspaceWide && (
           <Tooltip label="Drag-and-drop card ordering is only available inside a specific folder view">
             <Badge color="gray" variant="light">
               Read-only
@@ -49,48 +19,52 @@ export function BoardPanel({
         )}
         <Tooltip
           label={
-            sortDir === 'asc'
+            state.sortDir === 'asc'
               ? 'Sort statuses: Backlog → Shipped (click to reverse)'
               : 'Sort statuses: Shipped → Backlog (click to reverse)'
           }
         >
-          <ActionIcon variant="light" aria-label="Toggle sort direction" onClick={onToggleSortDir}>
-            {sortDir === 'asc' ? (
+          <ActionIcon
+            variant="light"
+            aria-label="Toggle sort direction"
+            onClick={state.toggleSortDirection}
+          >
+            {state.sortDir === 'asc' ? (
               <IconSortAscending size="1rem" />
             ) : (
               <IconSortDescending size="1rem" />
             )}
           </ActionIcon>
         </Tooltip>
-        {canWriteTasks && !isWorkspaceWide && activeTaskListId && (
+        {state.canManageBoardOrder && !state.isWorkspaceWide && state.activeTaskList?.id && (
           <Button
             color="teal"
             leftSection={<IconPlus size="1rem" />}
-            onClick={() => statuses[0] && onAddTask(statuses[0].id)}
+            onClick={() => state.statuses[0] && state.addTask(state.statuses[0].id)}
             data-testid="board-add-task-button"
           >
             Add Task
           </Button>
         )}
       </Group>
-      {tasksError && (
-        <Alert color="red" title="Could not load tasks">
-          {tasksError}
-        </Alert>
-      )}
-      {tasksLoading && !tasks.length ? (
+      {/*{tasksError && (*/}
+      {/*  <Alert color="red" title="Could not load tasks">*/}
+      {/*    {state.tasksError}*/}
+      {/*  </Alert>*/}
+      {/*)}*/}
+      {state.tasksLoading && !state.tasks.length ? (
         <Box className={classes.center} p="xl">
           <Loader />
         </Box>
       ) : (
         <TaskBoard
-          tasks={tasks}
-          statuses={statuses}
-          onAddTask={onAddTask}
-          onOpenTask={onOpenTask}
-          onMoveTask={onMoveTask}
-          canWriteTasks={canWriteTasks}
-          sortDir={sortDir}
+          tasks={state.tasks}
+          statuses={state.statuses}
+          onAddTask={state.addTask}
+          onOpenTask={state.openTask}
+          onMoveTask={state.moveTask}
+          canWriteTasks={state.canManageBoardOrder}
+          sortDir={state.sortDir}
         />
       )}
     </div>

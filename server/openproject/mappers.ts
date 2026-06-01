@@ -152,6 +152,17 @@ function mapProjectFolder(
   spaceId: string,
   childFolders: Folder[] = []
 ): Folder {
+  if (['docs', 'doc'].includes(project.name.toLowerCase())) {
+    return {
+      id: `${project.id}`,
+      spaceId,
+      name: project.name,
+      kind: 'DOCS',
+      locked: !project.public,
+      taskLists: [],
+      folders: [],
+    };
+  }
   return {
     id: `${project.id}`,
     spaceId,

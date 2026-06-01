@@ -8,74 +8,19 @@ import {
   Tooltip,
   UnstyledButton,
 } from '@mantine/core';
-import { IconCheck, IconFolder, IconList, IconPlus, IconSettings } from '@tabler/icons-react';
-import { type CurrentUser, type Folder, type Space, type Workspace } from '@/lib';
+import { IconCheck, IconList, IconPlus, IconSettings } from '@tabler/icons-react';
 import { AvatarStack } from '../../common/AvatarStack';
 import { SpaceTreeItem } from './SpaceTreeItem';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 import classes from './WorkspaceShell.module.css';
 
-interface WorkspaceSidebarProps {
-  workspace: Workspace;
-  currentUser: CurrentUser;
-  currentMembership: { role?: string } | undefined;
-  canManageSpaces: boolean;
-  activeSpace: Space | undefined;
-  activeFolder: Folder | undefined;
-  expandedSpaceIds: Set<string>;
-  expandedFolderIds: Set<string>;
-  workspaceWideScope: string | null;
-  taskView: string | null;
-  docsAvailable: boolean;
-  selectedTask: { id: string } | null;
-  selectedDoc: { id: string } | null;
-  currentOpenProjectUser: { id: string } | undefined;
-  onToggleSpace: (id: string) => void;
-  onToggleFolder: (id: string) => void;
-  onOpenFolder: (spaceId: string, folder: Folder) => void;
-  onSelectAllTasks: () => void;
-  onSelectMyTasks: () => void;
-  onSelectDocs: () => void;
-  onOpenProfile: () => void;
-  onOpenSettings: () => void;
-  onOpenProjectAccess: () => void;
-  onCreateSpace: () => void;
-  onCreateSubProject: (parentSpaceId: string) => void;
-  onLogout: () => void;
-}
-
-export function WorkspaceSidebar({
-  workspace,
-  currentUser,
-  currentMembership,
-  canManageSpaces,
-  activeSpace,
-  activeFolder,
-  expandedSpaceIds,
-  expandedFolderIds,
-  workspaceWideScope,
-  taskView,
-  docsAvailable,
-  selectedTask,
-  selectedDoc,
-  currentOpenProjectUser,
-  onToggleSpace,
-  onToggleFolder,
-  onOpenFolder,
-  onSelectAllTasks,
-  onSelectMyTasks,
-  onSelectDocs,
-  onOpenProfile,
-  onOpenSettings,
-  onOpenProjectAccess,
-  onCreateSpace,
-  onCreateSubProject,
-  onLogout,
-}: WorkspaceSidebarProps) {
+export function WorkspaceSidebar() {
+  const state = useWorkspaceShellContext();
   const profileUser = {
-    id: currentUser.id,
-    email: currentUser.email,
-    name: currentUser.name,
-    avatarUrl: currentUser.avatarUrl || undefined,
+    id: state.currentUser.id,
+    email: state.currentUser.email,
+    name: state.currentUser.name,
+    avatarUrl: state.currentUser.avatarUrl || undefined,
   };
 
   return (
@@ -98,14 +43,21 @@ export function WorkspaceSidebar({
             </span>
           </Tooltip>
           <div>
-            <Text fw={800}>{workspace.name}</Text>
+            <Text fw={800}>{state.workspace.name}</Text>
             <Text size="xs" c="dimmed">
               OpenProject-backed tracker workspace
             </Text>
           </div>
-          {canManageSpaces && (
+          {state.canManageSpaces && (
             <Tooltip label="Workspace settings">
-              <ActionIcon variant="light" aria-label="Workspace settings" onClick={onOpenSettings}>
+              <ActionIcon
+                variant="light"
+                aria-label="Workspace settings"
+                onClick={() => {
+                  state.setWorkspaceSettingsTab('general');
+                  state.setWorkspaceSettingsOpen(true);
+                }}
+              >
                 <IconSettings size="1.25rem" />
               </ActionIcon>
             </Tooltip>
@@ -116,21 +68,31 @@ export function WorkspaceSidebar({
       <UnstyledButton
         data-testid="profile-button"
         className={classes.profileButton}
-        onClick={onOpenProfile}
+        onClick={() => state.setProfileOpen(true)}
       >
         <AvatarStack users={[profileUser]} size="1.75rem" />
         <span>
           <Text size="sm" fw={700}>
-            {currentUser.name || currentUser.email}
+            {state.currentUser.name || state.currentUser.email}
           </Text>
           <Text size="xs" c="dimmed">
-            {currentMembership?.role || 'No role'} •{' '}
-            {currentUser.openProjectUserId ? 'linked to OpenProject' : 'not linked to OpenProject'}
+            {state.currentMembership?.role || 'No role'} •{' '}
+            {state.currentUser.openProjectUserId
+              ? 'linked to OpenProject'
+              : 'not linked to OpenProject'}
           </Text>
         </span>
       </UnstyledButton>
 
-      <Button variant="subtle" size="compact-sm" mb="md" onClick={onLogout}>
+      <Button
+        variant="subtle"
+        size="compact-sm"
+        mb="md"
+        onClick={async () => {
+          await state.logoutCurrentUser();
+          state.onCurrentUserChange(null);
+        }}
+      >
         Logout
       </Button>
 
@@ -141,64 +103,44 @@ export function WorkspaceSidebar({
         <Button
           data-testid="all-tasks-link"
           variant={
-            workspaceWideScope === 'all' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
+            state.workspaceWideScope === 'all' && !state.selectedTask && !state.selectedDoc
+              ? 'light'
+              : 'subtle'
           }
           justify="flex-start"
           leftSection={<IconList size="1rem" />}
-          onClick={onSelectAllTasks}
+          onClick={state.openAllTasks}
         >
           All Tasks
         </Button>
         <Button
           data-testid="my-tasks-link"
           variant={
-            workspaceWideScope === 'mine' && !selectedTask && !selectedDoc ? 'light' : 'subtle'
+            state.workspaceWideScope === 'mine' && !state.selectedTask && !state.selectedDoc
+              ? 'light'
+              : 'subtle'
           }
           justify="flex-start"
           leftSection={<IconCheck size="1rem" />}
-          disabled={!currentOpenProjectUser}
-          onClick={onSelectMyTasks}
+          disabled={!state.currentOpenProjectUser}
+          onClick={state.openMyTasks}
         >
           My Tasks
         </Button>
-        {docsAvailable && (
-          <Button
-            data-testid="local-docs-link"
-            variant={taskView === 'docs' ? 'light' : 'subtle'}
-            justify="flex-start"
-            leftSection={<IconFolder size="1rem" />}
-            onClick={onSelectDocs}
-          >
-            Local Docs
-          </Button>
-        )}
       </Stack>
 
       <Text size="lg" fw={700} mb="md">
         Spaces
       </Text>
       <ScrollArea className={classes.spacesTree}>
-        {workspace.spaces.map((space) => (
-          <SpaceTreeItem
-            key={space.id}
-            space={space}
-            activeSpace={activeSpace}
-            activeFolder={activeFolder}
-            expandedSpaceIds={expandedSpaceIds}
-            expandedFolderIds={expandedFolderIds}
-            canManageSpaces={canManageSpaces}
-            onToggleSpace={onToggleSpace}
-            onOpenFolder={onOpenFolder}
-            onToggleFolder={onToggleFolder}
-            onOpenProjectAccess={onOpenProjectAccess}
-            onCreateSubProject={onCreateSubProject}
-          />
+        {state.workspace.spaces.map((space) => (
+          <SpaceTreeItem key={space.id} space={space} />
         ))}
-        {canManageSpaces && (
+        {state.canManageSpaces && (
           <UnstyledButton
             data-testid="new-space-button"
             className={classes.newSpaceRow}
-            onClick={onCreateSpace}
+            onClick={() => state.setSpaceCreateOpen(true)}
           >
             <IconPlus size="1.125rem" />
             New Space

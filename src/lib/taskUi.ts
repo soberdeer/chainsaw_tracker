@@ -152,34 +152,14 @@ export function taskPath(spaceId: string, folderId: string, taskId: string) {
   return `${folderPath(spaceId, folderId)}/task/${taskId}`;
 }
 
-export function docPath(spaceId: string, docId: string) {
-  return `/space/${spaceId}/doc/${docId}`;
+/** /space/:spaceId/docs */
+export function docsPath(spaceId: string) {
+  return `/space/${spaceId}/docs`;
 }
 
-export function parseAppPath(pathname: string) {
-  if (pathname === '/tasks') {
-    return { scope: 'all' as const };
-  }
-  if (pathname === '/my-tasks') {
-    return { scope: 'mine' as const };
-  }
-  const taskMatch = pathname.match(/^\/space\/([^/]+)\/folder\/([^/]+)\/task\/([^/]+)/);
-  if (taskMatch) {
-    return { spaceId: taskMatch[1], folderId: taskMatch[2], taskId: taskMatch[3] };
-  }
-  const docMatch = pathname.match(/^\/space\/([^/]+)\/doc\/([^/]+)/);
-  if (docMatch) {
-    return { spaceId: docMatch[1], docId: docMatch[2] };
-  }
-  const folderMatch = pathname.match(/^\/space\/([^/]+)\/folder\/([^/]+)/);
-  if (folderMatch) {
-    return { spaceId: folderMatch[1], folderId: folderMatch[2] };
-  }
-  const spaceMatch = pathname.match(/^\/space\/([^/]+)/);
-  if (spaceMatch) {
-    return { spaceId: spaceMatch[1] };
-  }
-  return {};
+/** /space/:spaceId/docs/:docId */
+export function docPath(spaceId: string, docId: string) {
+  return `/space/${spaceId}/docs/${docId}`;
 }
 
 export function allTasksPath() {

@@ -133,28 +133,33 @@ export function buildWorkspaceBreadcrumbs(input: {
   if (input.activeFolder) {
     items.push({ label: input.activeFolder.name });
   }
+
+  // Helper: only add task list label when it differs from the folder name
+  // (they're often the same in seeded projects — no point repeating)
+  const addListIfDifferent = () => {
+    if (input.activeTaskList && input.activeTaskList.name !== input.activeFolder?.name) {
+      items.push({ label: input.activeTaskList.name });
+    }
+  };
+
   if (input.selectedDocTitle) {
-    items.push({ label: 'Local Docs' });
+    // No "Local Docs" intermediary — folder name (DOC) already contextualises it
     items.push({ label: input.selectedDocTitle });
     return items;
   }
 
   if (input.selectedTaskTitle) {
-    if (input.activeTaskList) {
-      items.push({ label: input.activeTaskList.name });
-    }
+    addListIfDifferent();
     items.push({ label: input.selectedTaskTitle });
     return items;
   }
 
+  // Docs panel — folder name alone is enough
   if (input.currentView === 'docs') {
-    items.push({ label: 'Local Docs' });
     return items;
   }
 
-  if (input.activeTaskList) {
-    items.push({ label: input.activeTaskList.name });
-  }
+  addListIfDifferent();
 
   if (input.currentView === 'board') {
     items.push({ label: 'Board' });

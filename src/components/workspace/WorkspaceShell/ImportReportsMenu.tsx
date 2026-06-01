@@ -1,13 +1,10 @@
 import { ActionIcon, Menu, Stack, Text, Tooltip } from '@mantine/core';
 import { IconReport } from '@tabler/icons-react';
-import type { MigrationRun } from '@/lib';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 
-interface ImportReportsMenuProps {
-  reports: MigrationRun[];
-  onOpenReport: (report: MigrationRun) => void;
-}
+export function ImportReportsMenu() {
+  const state = useWorkspaceShellContext();
 
-export function ImportReportsMenu({ reports, onOpenReport }: ImportReportsMenuProps) {
   return (
     <Menu width="24rem" position="bottom-end">
       <Menu.Target>
@@ -19,8 +16,8 @@ export function ImportReportsMenu({ reports, onOpenReport }: ImportReportsMenuPr
       </Menu.Target>
       <Menu.Dropdown>
         <Menu.Label>Latest import reports</Menu.Label>
-        {reports.slice(0, 8).map((report) => (
-          <Menu.Item key={report.id} onClick={() => onOpenReport(report)}>
+        {state.importReports.slice(0, 8).map((report) => (
+          <Menu.Item key={report.id} onClick={() => state.openImportReport(report)}>
             <Stack gap={2}>
               <Text size="sm" fw={700}>
                 {report.source} • {report.status}
@@ -31,7 +28,7 @@ export function ImportReportsMenu({ reports, onOpenReport }: ImportReportsMenuPr
             </Stack>
           </Menu.Item>
         ))}
-        {!reports.length && <Menu.Item disabled>No import reports yet</Menu.Item>}
+        {!state.importReports.length && <Menu.Item disabled>No import reports yet</Menu.Item>}
       </Menu.Dropdown>
     </Menu>
   );

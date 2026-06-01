@@ -11,82 +11,15 @@ import {
   Tooltip,
 } from '@mantine/core';
 import { IconFilter } from '@tabler/icons-react';
-import type { OpenProjectTaskTypeOption, Tag, TaskStatus, User } from '@/lib';
+import { useWorkspaceShellContext } from './WorkspaceShellContext';
 
-interface TaskFilterPanelProps {
-  opened: boolean;
-  onOpenChange: (opened: boolean) => void;
-  // values
-  statusFilter: string | null;
-  priorityFilter: string | null;
-  assigneeFilter: string[];
-  responsibleFilter: string[];
-  typeFilter: string[];
-  tagFilter: string[];
-  dueBeforeFilter: string;
-  updatedSinceFilter: string;
-  overdueFilter: boolean;
-  hasGitHubPrFilter: boolean;
-  filtersActive: boolean;
-  activeFilterChipsCount: number;
-  // setters
-  onStatusChange: (value: string | null) => void;
-  onPriorityChange: (value: string | null) => void;
-  onAssigneesChange: (value: string[]) => void;
-  onResponsibleChange: (value: string[]) => void;
-  onTypeChange: (value: string[]) => void;
-  onTagsChange: (value: string[]) => void;
-  onDueBeforeChange: (value: string) => void;
-  onUpdatedSinceChange: (value: string) => void;
-  onOverdueChange: (value: boolean) => void;
-  onHasGitHubPrChange: (value: boolean) => void;
-  onClear: () => void;
-  // data
-  statuses: TaskStatus[];
-  assignees: User[];
-  taskTypes: OpenProjectTaskTypeOption[];
-  tags: Tag[];
-  currentOpenProjectUser: { id: string } | undefined;
-  assignedToMeActive: boolean;
-}
+export function TaskFilterPanel() {
+  const state = useWorkspaceShellContext();
 
-export function TaskFilterPanel({
-  opened,
-  onOpenChange,
-  statusFilter,
-  priorityFilter,
-  assigneeFilter,
-  responsibleFilter,
-  typeFilter,
-  tagFilter,
-  dueBeforeFilter,
-  updatedSinceFilter,
-  overdueFilter,
-  hasGitHubPrFilter,
-  filtersActive,
-  activeFilterChipsCount,
-  onStatusChange,
-  onPriorityChange,
-  onAssigneesChange,
-  onResponsibleChange,
-  onTypeChange,
-  onTagsChange,
-  onDueBeforeChange,
-  onUpdatedSinceChange,
-  onOverdueChange,
-  onHasGitHubPrChange,
-  onClear,
-  statuses,
-  assignees,
-  taskTypes,
-  tags,
-  currentOpenProjectUser,
-  assignedToMeActive,
-}: TaskFilterPanelProps) {
   return (
     <Popover
-      opened={opened}
-      onChange={onOpenChange}
+      opened={state.filterMenuOpen}
+      onChange={state.setFilterMenuOpen}
       position="bottom-start"
       width={340}
       withArrow
@@ -95,16 +28,16 @@ export function TaskFilterPanel({
     >
       <Popover.Target>
         <Button
-          variant={filtersActive ? 'filled' : 'light'}
+          variant={state.filtersActive ? 'filled' : 'light'}
           leftSection={<IconFilter size="1rem" />}
           rightSection={
-            activeFilterChipsCount > 0 ? (
+            state.activeFilterChips.length > 0 ? (
               <Badge size="xs" color="red" circle>
-                {activeFilterChipsCount}
+                {state.activeFilterChips.length}
               </Badge>
             ) : undefined
           }
-          onClick={() => onOpenChange(!opened)}
+          onClick={() => state.setFilterMenuOpen(!state.filterMenuOpen)}
           data-testid="filters-dropdown-button"
         >
           Filters
@@ -115,17 +48,17 @@ export function TaskFilterPanel({
           <Select
             data-testid="filter-status"
             label="Status"
-            value={statusFilter}
-            onChange={onStatusChange}
+            value={state.statusFilter}
+            onChange={state.setStatusFilter}
             clearable
             placeholder="Any status"
-            data={statuses.map((item) => ({ value: item.id, label: item.name }))}
+            data={state.statuses.map((item) => ({ value: item.id, label: item.name }))}
           />
           <Select
             data-testid="filter-priority"
             label="Priority"
-            value={priorityFilter}
-            onChange={onPriorityChange}
+            value={state.priorityFilter}
+            onChange={state.setPriorityFilter}
             clearable
             placeholder="Any priority"
             data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
@@ -133,28 +66,30 @@ export function TaskFilterPanel({
           <MultiSelect
             data-testid="filter-assignees"
             label="Assignees"
-            value={assigneeFilter}
-            onChange={onAssigneesChange}
+            value={state.assigneeFilter}
+            onChange={state.setAssigneeFilter}
             clearable
             placeholder="Anyone"
-            data={assignees.map((user) => ({ value: user.id, label: user.name }))}
+            data={state.availableAssignees.map((user) => ({ value: user.id, label: user.name }))}
             searchable
           />
           <Tooltip
             label={
-              currentOpenProjectUser
+              state.currentOpenProjectUser
                 ? 'Filter tasks assigned to you'
                 : 'Your account is not linked to an OpenProject user'
             }
           >
             <Button
               data-testid="filter-assigned-to-me"
-              variant={assignedToMeActive ? 'filled' : 'light'}
+              variant={state.assignedToMeActive ? 'filled' : 'light'}
               size="xs"
-              disabled={!currentOpenProjectUser}
+              disabled={!state.currentOpenProjectUser}
               onClick={() => {
-                if (!currentOpenProjectUser) return;
-                onAssigneesChange(assignedToMeActive ? [] : [currentOpenProjectUser.id]);
+                if (!state.currentOpenProjectUser) return;
+                state.setAssigneeFilter(
+                  state.assignedToMeActive ? [] : [state.currentOpenProjectUser.id]
+                );
               }}
             >
               Assigned to me
@@ -163,70 +98,70 @@ export function TaskFilterPanel({
           <MultiSelect
             data-testid="filter-responsible"
             label="Responsible"
-            value={responsibleFilter}
-            onChange={onResponsibleChange}
+            value={state.responsibleFilter}
+            onChange={state.setResponsibleFilter}
             clearable
             placeholder="Anyone"
-            data={assignees.map((user) => ({ value: user.id, label: user.name }))}
+            data={state.availableAssignees.map((user) => ({ value: user.id, label: user.name }))}
             searchable
             maxValues={1}
           />
           <MultiSelect
             data-testid="filter-type"
             label="Type"
-            value={typeFilter}
-            onChange={onTypeChange}
+            value={state.typeFilter}
+            onChange={state.setTypeFilter}
             clearable
             placeholder="Any type"
-            data={taskTypes.map((type) => ({ value: type.id, label: type.name }))}
+            data={state.taskTypes.map((type) => ({ value: type.id, label: type.name }))}
             searchable
           />
           <MultiSelect
             data-testid="filter-tags"
             label="Tags"
-            value={tagFilter}
-            onChange={onTagsChange}
+            value={state.tagFilter}
+            onChange={state.setTagFilter}
             clearable
             placeholder="Any tag"
-            data={tags.map((tag) => ({ value: tag.id, label: tag.name }))}
+            data={state.openProjectTags.map((tag) => ({ value: tag.id, label: tag.name }))}
             searchable
           />
           <TextInput
             data-testid="filter-due-before"
             label="Due before"
             type="date"
-            value={dueBeforeFilter}
-            onChange={(event) => onDueBeforeChange(event.currentTarget.value)}
+            value={state.dueBeforeFilter}
+            onChange={(event) => state.setDueBeforeFilter(event.currentTarget.value)}
           />
           <TextInput
             data-testid="filter-updated-since"
             label="Updated since"
             type="date"
-            value={updatedSinceFilter}
-            onChange={(event) => onUpdatedSinceChange(event.currentTarget.value)}
+            value={state.updatedSinceFilter}
+            onChange={(event) => state.setUpdatedSinceFilter(event.currentTarget.value)}
           />
           <Group gap="lg">
             <Checkbox
               data-testid="filter-overdue"
               label="Overdue only"
-              checked={overdueFilter}
-              onChange={(event) => onOverdueChange(event.currentTarget.checked)}
+              checked={state.overdueFilter}
+              onChange={(event) => state.setOverdueFilter(event.currentTarget.checked)}
             />
             <Checkbox
               data-testid="filter-has-pr"
               label="Has GitHub PR"
-              checked={hasGitHubPrFilter}
-              onChange={(event) => onHasGitHubPrChange(event.currentTarget.checked)}
+              checked={state.hasGitHubPrFilter}
+              onChange={(event) => state.setHasGitHubPrFilter(event.currentTarget.checked)}
             />
           </Group>
-          {filtersActive && (
+          {state.filtersActive && (
             <Button
               variant="subtle"
               color="red"
               size="xs"
               onClick={() => {
-                onClear();
-                onOpenChange(false);
+                state.clearFilters();
+                state.setFilterMenuOpen(false);
               }}
               data-testid="clear-filters-button"
             >

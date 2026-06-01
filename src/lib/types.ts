@@ -286,6 +286,7 @@ export type TaskList = {
 export type DocumentItem = {
   id: string;
   spaceId: string;
+  folderId: string;
   title: string;
   kind: DocumentKind;
   markdown?: string;

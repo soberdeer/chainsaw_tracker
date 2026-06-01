@@ -27,6 +27,8 @@ type CategoryCache = Map<string, string>;
 import type { PermissionSet, WorkspaceRole } from '../src/lib/types.js';
 import { clickUpRequest } from './migration/clickup/client.js';
 import type {
+  ClickUpDoc,
+  ClickUpDocPage,
   ClickUpFolder,
   ClickUpGroup,
   ClickUpList,
@@ -159,6 +161,8 @@ type Summary = {
   openProjectGroupErrors: string[];
   categoriesCreated: number;
   categoriesReused: number;
+  docsImported: number;
+  docsSkipped: number;
   errors: string[];
   warnings: string[];
 };
@@ -2876,6 +2880,162 @@ puts "CF_SYNC_DONE:synced=#{synced},errors=#{errors}"
   }
 }
 
+// ── ClickUp docs import ───────────────────────────────────────────────────────
+
+async function getClickUpSpaceDocs(teamId: string, spaceId: string): Promise<ClickUpDoc[]> {
+  try {
+    const result = await clickUpRequest<{ docs?: ClickUpDoc[] }>(`/team/${teamId}/doc`, {
+      query: { parent_id: spaceId, parent_type: 4 },
+    });
+    return result.docs || [];
+  } catch {
+    return [];
+  }
+}
+
+async function getClickUpDocPages(docId: string, teamId: string): Promise<ClickUpDocPage[]> {
+  try {
+    // Use v3 API with content_format=text/md to get proper markdown content
+    const url = `https://api.clickup.com/api/v3/workspaces/${teamId}/docs/${docId}/pages?content_format=text%2Fmd`;
+    const token = process.env.CLICKUP_TOKEN;
+    const res = await fetch(url, { headers: { Authorization: token! } });
+    if (!res.ok) return [];
+    const data = (await res.json()) as ClickUpDocPage[] | { pages?: ClickUpDocPage[] };
+    return Array.isArray(data) ? data : data.pages || [];
+  } catch {
+    return [];
+  }
+}
+
+function flattenDocPages(pages: ClickUpDocPage[]): ClickUpDocPage[] {
+  const result: ClickUpDocPage[] = [];
+  for (const page of pages) {
+    result.push(page);
+    const children = page.pages || page.sub_pages || [];
+    if (children.length) result.push(...flattenDocPages(children));
+  }
+  return result;
+}
+
+function buildDocMarkdown(_docName: string, pages: ClickUpDocPage[]): string {
+  const flat = flattenDocPages(pages);
+  const lines: string[] = [];
+  for (const page of flat) {
+    // Page name is the content heading (h1 for first, h2 for subsequent pages)
+    if (page.name) {
+      const level = lines.length === 0 ? '#' : '##';
+      lines.push(`${level} ${page.name}`, '');
+    }
+    // v3 API returns content in `content` field (proper markdown)
+    const body = (page.content || page.text_content || '').trim();
+    if (body) {
+      lines.push(body, '');
+    }
+  }
+  return lines.join('\n').trim();
+}
+
+async function importSpaceDocs(
+  teamId: string,
+  spaceId: string,
+  opSpaceProjectId: string,
+  opDocTypeId: string | null,
+  summary: Summary
+): Promise<void> {
+  const clickUpDocs = await getClickUpSpaceDocs(teamId, spaceId);
+  if (clickUpDocs.length === 0) return;
+
+  // Find or create the "Docs" child project under the space
+  const allProjects = await openProjectRequest<{
+    _embedded?: {
+      elements?: { id: number; name: string; _links: Record<string, { href?: string }> }[];
+    };
+  }>('/api/v3/projects', { query: { pageSize: 500 } });
+  const linkTailFn = (href?: string | null) => href?.split('/').filter(Boolean).at(-1);
+  const existing = (allProjects._embedded?.elements || []).find(
+    (p) =>
+      linkTailFn(p._links.parent?.href) === String(opSpaceProjectId) &&
+      p.name.toLowerCase() === 'docs'
+  );
+
+  let docsProjectId: string;
+  if (existing) {
+    docsProjectId = String(existing.id);
+  } else {
+    let parentIdentifier = `p${opSpaceProjectId}`;
+    try {
+      const parent = await openProjectRequest<{ identifier?: string }>(
+        `/api/v3/projects/${opSpaceProjectId}`
+      );
+      parentIdentifier = parent.identifier || parentIdentifier;
+    } catch {
+      /* ignore */
+    }
+
+    const baseId = parentIdentifier
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/^[^a-z]+/, 'p')
+      .slice(0, 93);
+
+    try {
+      const created = await openProjectRequest<{ id: number }>('/api/v3/projects', {
+        method: 'POST',
+        body: {
+          name: 'Docs',
+          identifier: `${baseId}-docs`,
+          _links: { parent: { href: `/api/v3/projects/${opSpaceProjectId}` } },
+        },
+      });
+      docsProjectId = String(created.id);
+    } catch (error) {
+      summary.errors.push(
+        `Could not create Docs project for space ${opSpaceProjectId}: ${(error as Error).message}`
+      );
+      return;
+    }
+  }
+
+  for (const doc of clickUpDocs) {
+    const title = doc.name || doc.title || 'Untitled';
+    const pages = await getClickUpDocPages(doc.id, teamId);
+    const markdown = buildDocMarkdown(title, pages);
+
+    const body: Record<string, unknown> = {
+      subject: title,
+      description: { format: 'markdown', raw: markdown },
+      _links: {
+        project: { href: `/api/v3/projects/${docsProjectId}` },
+        ...(opDocTypeId ? { type: { href: `/api/v3/types/${opDocTypeId}` } } : {}),
+      },
+    };
+
+    try {
+      await openProjectRequest('/api/v3/work_packages', { method: 'POST', body });
+      summary.docsImported += 1;
+    } catch (error) {
+      summary.docsSkipped += 1;
+      summary.errors.push(`doc "${title}": ${(error as Error).message}`);
+    }
+  }
+
+  console.log(`  → Docs: imported ${summary.docsImported} into space ${opSpaceProjectId}`);
+}
+
+async function getOpDocumentationTypeId(): Promise<string | null> {
+  try {
+    const page = await openProjectRequest<{
+      _embedded?: { elements?: { id: number; name: string }[] };
+    }>('/api/v3/types', { query: { pageSize: 200 } });
+    const found = (page._embedded?.elements || []).find(
+      (t) => t.name.toLowerCase() === 'documentation'
+    );
+    return found ? String(found.id) : null;
+  } catch {
+    return null;
+  }
+}
+
 async function main() {
   const summary: Summary = {
     teams: 0,
@@ -2932,6 +3092,8 @@ async function main() {
     openProjectGroupErrors: [],
     categoriesCreated: 0,
     categoriesReused: 0,
+    docsImported: 0,
+    docsSkipped: 0,
     errors: [],
     warnings: [],
   };
@@ -3065,6 +3227,8 @@ async function main() {
   const spaces = await getClickUpSpaces(team.id);
   summary.spaces = spaces.length;
 
+  const opDocTypeId = await getOpDocumentationTypeId();
+
   const workspace: SeededWorkspace = {
     id: 'openproject',
     name: team.name,
@@ -3167,6 +3331,16 @@ async function main() {
       workspaceId: localWorkspace.id,
       categoryCache,
     });
+
+    // Import ClickUp docs for this space into an OP "Docs" sub-project
+    if (spaceProject) {
+      console.log(`\n→ Importing docs for space "${space.name}"…`);
+      await importSpaceDocs(team.id, space.id, String(spaceProject.id), opDocTypeId, summary).catch(
+        (error) => {
+          summary.warnings.push(`docs import for space ${space.name}: ${(error as Error).message}`);
+        }
+      );
+    }
 
     workspace.spaces.push(seededSpace);
   }
