@@ -18,7 +18,7 @@ React task tracker that uses OpenProject as the source of truth for all task dat
 | Parent link | Subtask |
 | Activity / comment | Timeline |
 
-**PostgreSQL/Prisma** holds the local extension layer only: auth sessions, workspace roles, saved views, notifications, board order, docs, GitHub bindings, tag metadata, and import reports.
+The tracker has no local database. All task data lives in OpenProject. The Express API proxies OpenProject's REST API and handles auth sessions in memory.
 
 ## Prerequisites
 
@@ -43,7 +43,6 @@ cp .env.example .env
 Minimum required values:
 
 ```env
-DATABASE_URL="postgresql://postgres:postgres@localhost:5432/compact_tracker?schema=public"
 PORT=4000
 CLIENT_URL="http://localhost:5173"
 
@@ -54,24 +53,7 @@ OPENPROJECT_TIMEOUT_MS=15000
 
 `OPENPROJECT_API_TOKEN` is a server-side token for the admin OpenProject account. It is never sent to the frontend. See [Authentication](#authentication) for how to get one.
 
-### 3. Start the local database
-
-```bash
-npm run db:up       # starts the bundled Docker Postgres
-npm run db:sync     # runs Prisma migrations + generates client
-```
-
-If you have Postgres running locally already, skip `db:up` and just run `db:sync`.
-
-On Colima:
-
-```bash
-colima start
-npm run db:up
-npm run db:sync
-```
-
-### 4. Set up OpenProject (fresh install only)
+### 3. Set up OpenProject (fresh install only)
 
 If OpenProject is a new install, run:
 
@@ -87,7 +69,7 @@ This script:
 
 Run it again after seeding to clean up demo projects if they were skipped on first run.
 
-### 5. Start the app
+### 4. Start the app
 
 ```bash
 npm run dev
@@ -96,7 +78,7 @@ npm run dev
 - Frontend: `http://localhost:5173`
 - API: `http://localhost:4000`
 
-### 6. Sign in
+### 5. Sign in
 
 Open `http://localhost:5173`. Sign in with your **OpenProject email** and **OpenProject API token** (not your OpenProject web password).
 
@@ -111,7 +93,7 @@ Users authenticate with their OpenProject credentials. There are no local passwo
 - `email` — your OpenProject account email
 - `password` field — your personal OpenProject API token (`opapi-...`)
 
-On first login the app creates a local account linked to your OpenProject user. The first person to log in becomes the workspace Owner automatically.
+On first login the app creates a local session linked to your OpenProject user. The first person to log in becomes the workspace Owner automatically.
 
 The server-side `OPENPROJECT_API_TOKEN` in `.env` is a separate admin token used for background API calls (importing, membership sync, etc.). It does not grant UI access on its own.
 
@@ -133,24 +115,30 @@ The first user to log in is assigned `OWNER`. Additional users get `MEMBER` by d
 
 ```bash
 npm run dev                       # start frontend + API in watch mode
+npm run dev:web                   # frontend only
+npm run dev:api                   # API only
 npm run build                     # production build
 npm run test                      # format check + lint + typecheck + unit tests
 npm run e2e                       # Playwright end-to-end suite
 npm run e2e:ui                    # Playwright with interactive UI
+npm run e2e:headed                # Playwright in headed browser
+npm run e2e:debug                 # Playwright debug mode
 
 npm run setup:openproject         # configure fresh OpenProject: token + statuses + demo cleanup
 npm run seed:openproject:clickup  # one-time ClickUp → OpenProject migration
 npm run reset:openproject         # wipe OpenProject projects and work packages (guarded)
+npm run reset:full                # full environment reset (setup + seed + password reset + verify)
+npm run reset:clear               # clear data only, skip setup and seed
+npm run reset:passwords           # reset OpenProject user passwords
+npm run snapshot:openproject      # snapshot current OpenProject state
+npm run verify:openproject        # verify OpenProject connectivity and state
 
-npm run db:up                     # start Docker Postgres
-npm run db:down                   # stop Docker Postgres
-npm run db:sync                   # prisma migrate dev + generate
-npm run db:logs                   # tail Postgres logs
 npm run docker:check              # verify Docker daemon is reachable
 
 npm run format                    # auto-format all source files
 npm run format:check              # check formatting without writing
 npm run lint                      # oxlint
+npm run lint:fix                  # oxlint with auto-fix
 npm run typecheck                 # tsc --noEmit for all tsconfigs
 ```
 
@@ -198,22 +186,9 @@ npm run reset:openproject -- --yes --confirm DELETE_ALL_OPENPROJECT_PROJECTS_AND
 
 In production, add `--allow-production`.
 
-The reset removes work packages and projects only. It does not touch users, roles, statuses, priorities, custom fields, or local Prisma data. After reset, run the seed again.
-
-## After Pulling Changes
-
-Always sync Prisma after pulling:
-
-```bash
-npm run db:sync
-```
-
-This applies any new migrations and regenerates the Prisma client. Missing it causes runtime errors like `table X does not exist`.
+The reset removes work packages and projects only. It does not touch users, roles, statuses, priorities, custom fields, or local session data. After reset, run the seed again.
 
 ## Troubleshooting
-
-**`The table public.X does not exist`**
-Run `npm run db:sync`.
 
 **`401 Unauthorized` on API calls**
 The `OPENPROJECT_API_TOKEN` in `.env` is invalid or expired. Run `npm run setup:openproject` to auto-generate a fresh one (requires `openproject-web-1` container to be running).
@@ -243,13 +218,23 @@ Then set `OPENPROJECT_API_TOKEN=<value>` in `.env`.
 
 | Variable | Required | Description |
 |---|---|---|
-| `DATABASE_URL` | Yes | Postgres connection string |
 | `PORT` | Yes | API server port (default `4000`) |
 | `CLIENT_URL` | Yes | Frontend origin for CORS |
 | `OPENPROJECT_BASE_URL` | Yes | OpenProject instance URL |
 | `OPENPROJECT_API_TOKEN` | Yes | Admin API token (`opapi-...`) |
-| `OPENPROJECT_TIMEOUT_MS` | No | API request timeout (default `15000`) |
+| `OPENPROJECT_TIMEOUT_MS` | No | API request timeout in ms (default `15000`) |
+| `OPENPROJECT_WORKSPACE_NAME` | No | Display name for the workspace |
+| `OPENPROJECT_TAGS_CF_ID` | No | OpenProject custom field ID used for tags |
+| `OPENPROJECT_AUTH_MODE` | No | Auth mode for API calls (`basic` or `token`, default `token`) |
 | `SESSION_SECRET` | No | HMAC secret for session cookies |
-| `CLICKUP_TOKEN` | No | ClickUp API token (migration only) |
+| `GITHUB_INTEGRATION_ENABLED` | No | Enable GitHub integration (`true`/`false`, default `false`) |
 | `GITHUB_TOKEN` | No | GitHub token (GitHub integration) |
 | `GITHUB_WEBHOOK_SECRET` | No | Webhook HMAC secret |
+| `GITHUB_APP_ID` | No | GitHub App ID |
+| `GITHUB_PRIVATE_KEY` | No | GitHub App private key |
+| `GITHUB_CLIENT_ID` | No | GitHub OAuth client ID |
+| `GITHUB_CLIENT_SECRET` | No | GitHub OAuth client secret |
+| `CLICKUP_TOKEN` | No | ClickUp API token (migration only) |
+| `OPENPROJECT_ADMIN_PASSWORD` | No | Admin password for fresh OpenProject installs (migration only) |
+| `OPENPROJECT_IMPORTED_USER_PASSWORD` | No | Default password assigned to imported users (migration only) |
+| `OP_IMPORTED_ADMIN_EMAILS` | No | Comma-separated emails to promote to admin after import (migration only) |
