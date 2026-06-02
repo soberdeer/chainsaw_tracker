@@ -2,6 +2,8 @@ import {
   Badge,
   Button,
   Group,
+  Loader,
+  Select,
   Stack,
   Table,
   Text,
@@ -12,7 +14,7 @@ import {
 import type { UseFormReturnType } from '@mantine/form';
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
-import type { WorkspaceMemberItem } from '@/lib';
+import type { WorkspaceMemberItem, WorkspaceRole } from '@/lib';
 
 interface InviteFormValues {
   email: string;
@@ -24,6 +26,7 @@ interface MembersTabProps {
   canManageWorkspace: boolean;
   inviteForm: UseFormReturnType<InviteFormValues>;
   onInviteSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onRoleChange?: (userId: string, role: WorkspaceRole) => Promise<void>;
 }
 
 type SortCol = 'name' | 'email' | 'role' | 'teams';
@@ -33,9 +36,11 @@ export function MembersTab({
   canManageWorkspace,
   inviteForm,
   onInviteSubmit,
+  onRoleChange,
 }: MembersTabProps) {
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
+  const [changingRole, setChangingRole] = useState<string | null>(null);
 
   const handleSort = (col: SortCol) => {
     if (col === sortCol) {
@@ -137,9 +142,38 @@ export function MembersTab({
               <Table.Td>{member.user.name}</Table.Td>
               <Table.Td>{member.user.email}</Table.Td>
               <Table.Td>
-                <Badge size="sm" variant="outline" color={member.role === 'ADMIN' ? 'red' : 'blue'}>
-                  {member.role === 'ADMIN' ? 'Administrator' : 'Member'}
-                </Badge>
+                {canManageWorkspace && onRoleChange ? (
+                  <Group gap={6} wrap="nowrap">
+                    <Select
+                      size="xs"
+                      value={member.role}
+                      data={[
+                        { value: 'ADMIN', label: 'Administrator' },
+                        { value: 'MEMBER', label: 'Member' },
+                      ]}
+                      disabled={changingRole === member.user.id}
+                      onChange={async (value) => {
+                        if (!value || value === member.role) return;
+                        setChangingRole(member.user.id);
+                        try {
+                          await onRoleChange(member.user.id, value as WorkspaceRole);
+                        } finally {
+                          setChangingRole(null);
+                        }
+                      }}
+                      styles={{ input: { minWidth: 130 } }}
+                    />
+                    {changingRole === member.user.id && <Loader size="xs" />}
+                  </Group>
+                ) : (
+                  <Badge
+                    size="sm"
+                    variant="outline"
+                    color={member.role === 'ADMIN' ? 'red' : 'blue'}
+                  >
+                    {member.role === 'ADMIN' ? 'Administrator' : 'Member'}
+                  </Badge>
+                )}
               </Table.Td>
               <Table.Td>
                 {(() => {

@@ -11,6 +11,7 @@ import {
   statusThemeColor,
   statusThemeType,
 } from '../server/openproject/mappers.js';
+import { isProjectMembershipRole } from '../server/openproject/service.js';
 import type { User } from '../src/lib/types.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
@@ -471,4 +472,33 @@ test('mapWorkspace always sets workspaceId and slug to "openproject"', () => {
   const workspace = mapWorkspace([], [], []);
   assert.equal(workspace.id, 'openproject');
   assert.equal(workspace.slug, 'openproject');
+});
+
+// ─── isProjectMembershipRole ───────────────────────────────────────────────
+
+test('isProjectMembershipRole accepts the three standard membership roles', () => {
+  assert.equal(isProjectMembershipRole('Project admin'), true);
+  assert.equal(isProjectMembershipRole('Member'), true);
+  assert.equal(isProjectMembershipRole('Reader'), true);
+});
+
+test('isProjectMembershipRole is case-insensitive', () => {
+  assert.equal(isProjectMembershipRole('project admin'), true);
+  assert.equal(isProjectMembershipRole('MEMBER'), true);
+  assert.equal(isProjectMembershipRole('reader'), true);
+});
+
+test('isProjectMembershipRole rejects global and system roles', () => {
+  assert.equal(isProjectMembershipRole('Anonymous'), false);
+  assert.equal(isProjectMembershipRole('Non member'), false);
+  assert.equal(isProjectMembershipRole('Standard global role'), false);
+  assert.equal(isProjectMembershipRole('View all users (migration)'), false);
+});
+
+test('isProjectMembershipRole rejects work-package-specific roles', () => {
+  assert.equal(isProjectMembershipRole('Work package viewer'), false);
+  assert.equal(isProjectMembershipRole('Work package editor'), false);
+  assert.equal(isProjectMembershipRole('Work package commenter'), false);
+  assert.equal(isProjectMembershipRole('Project query editor'), false);
+  assert.equal(isProjectMembershipRole('Project query viewer'), false);
 });

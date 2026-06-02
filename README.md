@@ -99,17 +99,28 @@ The server-side `OPENPROJECT_API_TOKEN` in `.env` is a separate admin token used
 
 ## Roles & Permissions
 
-Local workspace roles control access to tracker features. OpenProject project memberships control access to work packages.
+### Workspace roles
+
+Local workspace roles control access to tracker features.
 
 | Role | Can do |
 |---|---|
-| `OWNER` | Everything, including workspace settings and member management |
-| `ADMIN` | Same as Owner |
-| `LEAD` | Create/edit tasks, change statuses, comment, manage saved views |
-| `MEMBER` | Create/edit accessible tasks, change statuses, comment, log time |
-| `VIEWER` | Read-only |
+| `ADMIN` | Everything: workspace settings, member management, all task/doc operations |
+| `MEMBER` | Create/edit tasks, manage docs, view reports |
+| `READER` | Read-only |
 
-The first user to log in is assigned `OWNER`. Additional users get `MEMBER` by default and can be promoted from Workspace Settings → Members.
+The role of each user is determined by their `admin` flag in OpenProject. Change it from **Workspace Settings → Members** — each row has an Administrator / Member dropdown that writes back to OpenProject immediately.
+
+### OpenProject project roles
+
+Project-level access (which work packages a user can see/edit inside a specific project) is managed per-project. Open a space in the sidebar and click the **people icon (👥)** to see and edit project memberships.
+
+Supported project roles shown in the UI: **Project admin**, **Member**, **Reader**.
+
+From the Project access modal you can:
+- Change a member's project roles (MultiSelect)
+- Remove a member from the project (trash icon)
+- Add a new member to the project (Add member button)
 
 ## Scripts Reference
 

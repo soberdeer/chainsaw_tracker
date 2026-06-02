@@ -7,6 +7,7 @@ import {
   getOpenProjectConnectionStatus,
   getUserTeams,
   getWorkspaceTree,
+  updateOpenProjectUserAdmin,
 } from '../openproject/service.js';
 import { requireCurrentUser } from '../services/auth.js';
 
@@ -118,8 +119,32 @@ workspacesRouter.delete('/:id/members/:userId', async (_req, res) => {
   res.status(405).json({ error: 'Remove members directly in OpenProject' });
 });
 
-workspacesRouter.patch('/:id/members/:userId', async (_req, res) => {
-  res.status(405).json({ error: 'Change roles directly in OpenProject' });
+workspacesRouter.patch('/:id/members/:userId', async (req, res) => {
+  const { role } = req.body as { role: string };
+  const admin = role === 'ADMIN';
+  const opUser = await updateOpenProjectUserAdmin(req.params.userId, admin);
+  const [workspaces, userTeams] = await Promise.all([getWorkspaceTree(), getUserTeams()]);
+  const ws = workspaces.find((w) => w.id === req.params.id) ?? workspaces[0];
+  const now = new Date().toISOString();
+  const membership = (ws?.memberships ?? [])
+    .map((m) => ({ ...m, createdAt: now, teams: userTeams.get(m.user.id) ?? [] }))
+    .find((m) => m.user.id === req.params.userId);
+  if (!membership) {
+    res.json({
+      id: String(opUser.id),
+      role: admin ? 'ADMIN' : 'MEMBER',
+      createdAt: now,
+      user: {
+        id: String(opUser.id),
+        email: opUser.email || opUser.login || `${opUser.id}@openproject.local`,
+        name: opUser.name,
+        avatarUrl: opUser.avatar,
+      },
+      teams: [],
+    });
+    return;
+  }
+  res.json({ ...membership, role: admin ? 'ADMIN' : 'MEMBER' });
 });
 
 // ── Permissions ───────────────────────────────────────────────────────────────

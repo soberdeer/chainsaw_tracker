@@ -1,5 +1,5 @@
 import { ActionIcon, Box, Group, Tooltip, UnstyledButton } from '@mantine/core';
-import { IconChevronDown, IconChevronRight, IconPlus } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronRight, IconPlus, IconUsers } from '@tabler/icons-react';
 import { firstTaskFolder, type Space } from '@/lib';
 import { FolderTreeItem } from './FolderTreeItem';
 import { useWorkspaceShellContext } from './WorkspaceShellContext';
@@ -46,6 +46,21 @@ export function SpaceTreeItem({ space }: SpaceTreeItemProps) {
           </span>
           <span className={classes.spaceName}>{space.name}</span>
         </UnstyledButton>
+        {isActiveSpace && (
+          <Tooltip label="Project access">
+            <ActionIcon
+              variant="subtle"
+              aria-label="Project access"
+              className={classes.rowAction}
+              onClick={(e) => {
+                e.stopPropagation();
+                state.setProjectAccessOpen(true);
+              }}
+            >
+              <IconUsers size="1.125rem" />
+            </ActionIcon>
+          </Tooltip>
+        )}
         {isActiveSpace && state.canManageSpaces && (
           <Tooltip label="Create sub-project">
             <ActionIcon

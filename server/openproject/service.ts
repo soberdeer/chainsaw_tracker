@@ -1357,6 +1357,62 @@ export async function getOpenProjectProjectMembers(projectId: string) {
   };
 }
 
+/** Roles shown in the project-access UI. Only the three standard membership roles are relevant. */
+const PROJECT_MEMBERSHIP_ROLE_NAMES = new Set(['project admin', 'member', 'reader']);
+
+export function isProjectMembershipRole(name: string): boolean {
+  return PROJECT_MEMBERSHIP_ROLE_NAMES.has(name.toLowerCase());
+}
+
+export async function getOpenProjectRoles() {
+  const page = await openProjectRequest<HalCollection<{ id: number; name: string }>>(
+    '/api/v3/roles',
+    { query: { pageSize: 200 } }
+  );
+  return (page._embedded?.elements || [])
+    .filter((role) => isProjectMembershipRole(role.name))
+    .map((role) => ({ id: String(role.id), name: role.name }));
+}
+
+export async function updateOpenProjectUserAdmin(userId: string, admin: boolean) {
+  return openProjectRequest<OpenProjectUser>(`/api/v3/users/${userId}`, {
+    method: 'PATCH',
+    body: { admin },
+  });
+}
+
+export async function addOpenProjectProjectMember(
+  projectId: string,
+  userId: string,
+  roleIds: string[]
+) {
+  return openProjectRequest<{ id: number }>('/api/v3/memberships', {
+    method: 'POST',
+    body: {
+      _links: {
+        project: { href: `/api/v3/projects/${projectId}` },
+        principal: { href: `/api/v3/users/${userId}` },
+        roles: roleIds.map((id) => ({ href: `/api/v3/roles/${id}` })),
+      },
+    },
+  });
+}
+
+export async function updateOpenProjectMembershipRoles(membershipId: string, roleIds: string[]) {
+  return openProjectRequest<{ id: number }>(`/api/v3/memberships/${membershipId}`, {
+    method: 'PATCH',
+    body: {
+      _links: {
+        roles: roleIds.map((id) => ({ href: `/api/v3/roles/${id}` })),
+      },
+    },
+  });
+}
+
+export async function removeOpenProjectProjectMember(membershipId: string) {
+  await openProjectRequest<void>(`/api/v3/memberships/${membershipId}`, { method: 'DELETE' });
+}
+
 export async function getOpenProjectUserMemberships(openProjectUserId: string) {
   const [membershipsPage, projects] = await Promise.all([
     openProjectRequest<HalCollection<{ id: number; _links: Record<string, unknown> }>>(

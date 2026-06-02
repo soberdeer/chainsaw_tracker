@@ -73,8 +73,29 @@ openProjectRouter.get('/connection-status', async (_req, res) => {
   res.json(await service.getOpenProjectConnectionStatus());
 });
 
+openProjectRouter.get('/roles', async (_req, res) => {
+  res.json(await service.getOpenProjectRoles());
+});
+
 openProjectRouter.get('/projects/:projectId/members', async (req, res) => {
   res.json(await service.getOpenProjectProjectMembers(req.params.projectId));
+});
+
+openProjectRouter.post('/projects/:projectId/members', async (req, res) => {
+  const { userId, roleIds } = req.body as { userId: string; roleIds: string[] };
+  await service.addOpenProjectProjectMember(req.params.projectId, userId, roleIds);
+  res.json(await service.getOpenProjectProjectMembers(req.params.projectId));
+});
+
+openProjectRouter.patch('/memberships/:membershipId', async (req, res) => {
+  const { roleIds } = req.body as { roleIds: string[] };
+  await service.updateOpenProjectMembershipRoles(req.params.membershipId, roleIds);
+  res.json({ ok: true });
+});
+
+openProjectRouter.delete('/memberships/:membershipId', async (req, res) => {
+  await service.removeOpenProjectProjectMember(req.params.membershipId);
+  res.status(204).end();
 });
 
 openProjectRouter.get('/spaces', async (_req, res) => {

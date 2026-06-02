@@ -11,6 +11,7 @@ import {
   inviteWorkspaceMember,
   showToast,
   updateWorkspaceSettings,
+  updateWorkspaceMemberRole,
   type MigrationRun,
   type OpenProjectConnectionStatus,
   type PermissionSet,
@@ -193,6 +194,18 @@ export function WorkspaceSettingsModal({
     }
   });
 
+  const handleRoleChange = async (userId: string, role: WorkspaceRole) => {
+    try {
+      const updated = await updateWorkspaceMemberRole(workspaceId, userId, role);
+      setMembers((current) => current.map((m) => (m.user.id === userId ? updated : m)));
+      showToast({ tone: 'success', title: 'Role updated', message: `Role changed to ${role}.` });
+    } catch (caughtError) {
+      const message = getErrorMessage(caughtError);
+      setError(message);
+      showToast({ tone: 'error', title: 'Could not update role', message });
+    }
+  };
+
   const handleRefreshConnection = async () => {
     try {
       setError(null);
@@ -264,6 +277,7 @@ export function WorkspaceSettingsModal({
                 canManageWorkspace={canManageWorkspace}
                 inviteForm={inviteForm}
                 onInviteSubmit={submitInvite}
+                onRoleChange={handleRoleChange}
               />
             </Tabs.Panel>
 

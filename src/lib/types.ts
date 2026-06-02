@@ -369,6 +369,11 @@ export type OpenProjectProjectMember = {
   roles: string[];
 };
 
+export type OpenProjectRole = {
+  id: string;
+  name: string;
+};
+
 export type OpenProjectConnectionStatus = {
   ok: boolean;
   baseUrl: string;

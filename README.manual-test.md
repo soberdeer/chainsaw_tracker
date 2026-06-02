@@ -90,11 +90,23 @@ Important: if a user display name is empty, the tracker should keep it empty ins
 
 ## Space / Project Access
 
-1. Open a space menu in the sidebar.
-2. Click `OpenProject access`.
-3. Confirm the modal shows real OpenProject project memberships.
-4. Confirm linked local users are shown when `openProjectUserId` exists.
-5. Confirm the modal links to OpenProject settings instead of showing fake invite/edit controls.
+1. Open a space in the sidebar (make it the active space).
+2. Click the **people icon (👥)** that appears next to the space name.
+3. Confirm the modal title shows `Project access: <space name>`.
+4. Confirm the member list loads from OpenProject with each member's current project roles shown in a MultiSelect.
+5. Change a member's role by clicking their MultiSelect and adding or removing a role — the PATCH call to OpenProject should complete without error.
+6. Confirm that only **Project admin**, **Member**, and **Reader** appear as role options (not global or work-package-specific roles).
+7. Click the trash icon next to a member and confirm they are removed from the list after the DELETE call.
+8. Click **Add member**, enter an OpenProject user ID and select a role, then click **Add** — confirm the member appears in the list.
+9. Click **OpenProject settings** and confirm it opens the correct project settings page in OpenProject.
+
+## Workspace Settings — Members
+
+1. Open **Workspace Settings → Members**.
+2. Confirm every member row has a role dropdown (Administrator / Member).
+3. Change a member's role — a toast "Role updated" should appear and the dropdown should update immediately.
+4. Confirm the change is reflected in OpenProject (the user's `admin` flag is toggled).
+5. Confirm invite form is present and allows inviting a new member by email.
 
 ## Connection Check
 

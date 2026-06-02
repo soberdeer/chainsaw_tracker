@@ -14,6 +14,7 @@ import type {
   OpenProjectCustomFieldItem,
   OpenProjectProjectMember,
   OpenProjectRelationItem,
+  OpenProjectRole,
   OpenProjectTaskTypeOption,
   OpenProjectTimeEntryActivityOption,
   OpenProjectTimeEntryItem,
@@ -726,6 +727,31 @@ export function getOpenProjectProjectMembers(_workspaceId: string, projectId: st
   return request<{ items: OpenProjectProjectMember[]; settingsUrl: string }>(
     `/api/openproject/projects/${projectId}/members`
   );
+}
+
+export function getOpenProjectRoles() {
+  return request<OpenProjectRole[]>('/api/openproject/roles');
+}
+
+export function addOpenProjectProjectMember(
+  projectId: string,
+  input: { userId: string; roleIds: string[] }
+) {
+  return request<{ items: OpenProjectProjectMember[]; settingsUrl: string }>(
+    `/api/openproject/projects/${projectId}/members`,
+    { method: 'POST', body: JSON.stringify(input) }
+  );
+}
+
+export function updateOpenProjectMembershipRoles(membershipId: string, roleIds: string[]) {
+  return request<{ ok: boolean }>(`/api/openproject/memberships/${membershipId}`, {
+    method: 'PATCH',
+    body: JSON.stringify({ roleIds }),
+  });
+}
+
+export function removeOpenProjectProjectMember(membershipId: string) {
+  return request<void>(`/api/openproject/memberships/${membershipId}`, { method: 'DELETE' });
 }
 
 export function updateWorkspacePermissions(
