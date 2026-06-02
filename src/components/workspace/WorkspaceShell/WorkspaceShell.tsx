@@ -5,7 +5,6 @@ import type { CurrentUser } from '@/lib';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
 import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
 import { useWorkspaceShellState } from './hooks/useWorkspaceShellState';
-import { ImportReportModal } from './ImportReportModal';
 import { WorkspaceShellProvider } from './WorkspaceShellContext';
 import { WorkspaceShellHeader } from './WorkspaceShellHeader';
 import { WorkspaceShellModals } from './WorkspaceShellModals';
@@ -156,8 +155,6 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
             />
           )}
         </Drawer>
-
-        <ImportReportModal />
       </>
     </WorkspaceShellProvider>
   );

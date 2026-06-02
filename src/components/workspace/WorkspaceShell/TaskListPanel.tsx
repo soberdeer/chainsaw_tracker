@@ -76,11 +76,6 @@ export function TaskListPanel() {
           ))}
         </Group>
       )}
-      {/*{tasksError && (*/}
-      {/*  <Alert color="red" title="Could not load tasks">*/}
-      {/*    {state.tasksError}*/}
-      {/*  </Alert>*/}
-      {/*)}*/}
       {state.selectedTaskIds.size > 0 && state.canWriteTasks && <BulkUpdateBar />}
       {state.tasksLoading && !state.tasks.length ? (
         <Box className={classes.center} p="xl">

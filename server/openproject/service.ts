@@ -24,8 +24,10 @@ import {
 import { getTagsCustomFieldId, tagMetaFromName } from './tagsCustomField.js';
 import type {
   HalCollection,
+  HalLink,
   OpenProjectActivity,
   OpenProjectAttachment,
+  OpenProjectGroup,
   OpenProjectPriority,
   OpenProjectProject,
   OpenProjectRelation,
@@ -76,6 +78,8 @@ function applyRuntimeWorkspaceState(
         avatarUrl: user.avatarUrl,
         openProjectUserId: user.id,
         openProjectLogin: undefined as string | undefined,
+        opAdmin: user.opAdmin,
+        opStatus: user.opStatus,
       },
     })),
     permissionSets: Object.entries(ROLE_PERMISSIONS).map(([role, perms]) => ({
@@ -264,8 +268,10 @@ function toStatusHref(statusId?: string) {
   return id ? href(`/api/v3/statuses/${id}`) : undefined;
 }
 
-function toUserHref(userId?: string) {
-  return userId ? href(`/api/v3/users/${userId}`) : undefined;
+function toPrincipalHref(id?: string) {
+  if (!id) return undefined;
+  if (id.startsWith('group:')) return href(`/api/v3/groups/${id.slice(6)}`);
+  return href(`/api/v3/users/${id}`);
 }
 
 function toMillisDate(value?: string | null) {
@@ -377,16 +383,35 @@ export async function getOpenProjectConnectionStatus() {
   }
 }
 
+function mapGroup(group: OpenProjectGroup): ReturnType<typeof mapUser> {
+  return {
+    id: `group:${group.id}`,
+    email: '',
+    name: group.name,
+    avatarUrl: undefined,
+    opAdmin: false,
+    opStatus: undefined,
+  };
+}
+
 async function usersByHref() {
-  const page = await openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
-    query: { pageSize: 200 },
-  });
-  return new Map(
-    (page._embedded?.elements || []).map((user) => [
-      user._links.self.href || `/api/v3/users/${user.id}`,
-      mapUser(user),
-    ])
-  );
+  const [usersPage, groupsPage] = await Promise.all([
+    openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
+      query: { pageSize: 200 },
+    }),
+    openProjectRequest<HalCollection<OpenProjectGroup>>('/api/v3/groups', {
+      query: { pageSize: 100 },
+    }),
+  ]);
+  const map = new Map<string, ReturnType<typeof mapUser>>();
+  for (const user of usersPage._embedded?.elements || []) {
+    map.set(user._links.self.href || `/api/v3/users/${user.id}`, mapUser(user));
+  }
+  for (const group of groupsPage._embedded?.elements || []) {
+    const selfHref = (group._links.self as HalLink)?.href || `/api/v3/groups/${group.id}`;
+    map.set(selfHref, mapGroup(group));
+  }
+  return map;
 }
 
 export async function getWorkspaceTree() {
@@ -403,6 +428,31 @@ export async function getWorkspaceTree() {
   return [
     applyRuntimeWorkspaceState(mapWorkspace(projects, statuses, users), runtimeWorkspace, users),
   ];
+}
+
+export async function getUserTeams(): Promise<Map<string, string[]>> {
+  const groupsPage = await openProjectRequest<{
+    _embedded?: {
+      elements?: Array<{
+        id: number;
+        name: string;
+        _links: { members?: Array<{ href: string }> };
+      }>;
+    };
+  }>('/api/v3/groups', { query: { pageSize: 100 } });
+
+  const userTeams = new Map<string, string[]>();
+  for (const group of groupsPage._embedded?.elements ?? []) {
+    for (const member of group._links.members ?? []) {
+      const userId = member.href.split('/').at(-1);
+      if (!userId) continue;
+      const list = userTeams.get(userId) ?? [];
+      if (!list.includes(group.name)) list.push(group.name);
+      userTeams.set(userId, list);
+    }
+  }
+
+  return userTeams;
 }
 
 export async function getRuntimeWorkspaceSettings() {
@@ -1224,7 +1274,7 @@ function membershipRoles(membership: { _links: Record<string, unknown> }) {
 }
 
 export async function getOpenProjectProjectMembers(projectId: string) {
-  const [membershipsPage, usersPage, projects] = await Promise.all([
+  const [membershipsPage, usersPage, groupsPage, projects] = await Promise.all([
     openProjectRequest<HalCollection<{ id: number; _links: Record<string, unknown> }>>(
       '/api/v3/memberships',
       {
@@ -1237,14 +1287,23 @@ export async function getOpenProjectProjectMembers(projectId: string) {
     openProjectRequest<HalCollection<OpenProjectUser>>('/api/v3/users', {
       query: { pageSize: 1000 },
     }),
+    openProjectRequest<HalCollection<OpenProjectGroup>>('/api/v3/groups', {
+      query: { pageSize: 100 },
+    }),
     getProjects(),
   ]);
 
-  const usersByHref = new Map(
+  const usersMap = new Map(
     (usersPage._embedded?.elements || []).map((user) => [
       user._links.self.href || `/api/v3/users/${user.id}`,
       user,
     ])
+  );
+  const groupsMap = new Map(
+    (groupsPage._embedded?.elements || []).map((group) => {
+      const selfHref = (group._links.self as HalLink)?.href || `/api/v3/groups/${group.id}`;
+      return [selfHref, group] as const;
+    })
   );
   const project = projects.find((item) => String(item.id) === String(projectId));
 
@@ -1255,20 +1314,39 @@ export async function getOpenProjectProjectMembers(projectId: string) {
         ? null
         : (principal as { href?: string | null; title?: string | null });
     const principalHref = principalLink?.href || null;
-    const openProjectUser = principalHref ? usersByHref.get(principalHref) : undefined;
-    if (!openProjectUser) return [];
-    return [
-      {
-        membershipId: String(membership.id),
-        openProjectUserId: String(openProjectUser.id),
-        openProjectLogin: openProjectUser.login || undefined,
-        openProjectName:
-          openProjectUser.name || openProjectUser.login || String(openProjectUser.id),
-        openProjectEmail: openProjectUser.email || undefined,
-        avatarUrl: openProjectUser.avatar || undefined,
-        roles: membershipRoles(membership),
-      },
-    ];
+
+    const openProjectUser = principalHref ? usersMap.get(principalHref) : undefined;
+    if (openProjectUser) {
+      return [
+        {
+          membershipId: String(membership.id),
+          openProjectUserId: String(openProjectUser.id),
+          openProjectLogin: openProjectUser.login || undefined,
+          openProjectName:
+            openProjectUser.name || openProjectUser.login || String(openProjectUser.id),
+          openProjectEmail: openProjectUser.email || undefined,
+          avatarUrl: openProjectUser.avatar || undefined,
+          roles: membershipRoles(membership),
+        },
+      ];
+    }
+
+    const openProjectGroup = principalHref ? groupsMap.get(principalHref) : undefined;
+    if (openProjectGroup) {
+      return [
+        {
+          membershipId: String(membership.id),
+          openProjectUserId: `group:${openProjectGroup.id}`,
+          openProjectLogin: undefined,
+          openProjectName: openProjectGroup.name,
+          openProjectEmail: undefined,
+          avatarUrl: undefined,
+          roles: membershipRoles(membership),
+        },
+      ];
+    }
+
+    return [];
   });
 
   return {
@@ -1385,7 +1463,9 @@ export async function createTask(
       ...(priorityHref(priorityItems, input.priority)
         ? { priority: { href: priorityHref(priorityItems, input.priority) } }
         : {}),
-      ...(input.assigneeIds?.[0] ? { assignee: { href: toUserHref(input.assigneeIds[0]) } } : {}),
+      ...(input.assigneeIds?.[0]
+        ? { assignee: { href: toPrincipalHref(input.assigneeIds[0]) } }
+        : {}),
       ...(input.parentId ? { parent: { href: `/api/v3/work_packages/${input.parentId}` } } : {}),
     },
   };
@@ -1433,7 +1513,7 @@ export async function updateTask(
     links.priority = { href: input.priority ? priorityHref(priorityItems, input.priority) : null };
   }
   if (input.assigneeIds !== undefined) {
-    links.assignee = { href: toUserHref(input.assigneeIds[0]) || null };
+    links.assignee = { href: toPrincipalHref(input.assigneeIds[0]) || null };
   }
   const body: Record<string, unknown> = {
     lockVersion: existing.lockVersion,

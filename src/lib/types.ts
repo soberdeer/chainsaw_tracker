@@ -356,6 +356,7 @@ export type WorkspaceMemberItem = {
   createdAt: string;
   updatedAt?: string;
   user: User;
+  teams?: string[];
 };
 
 export type OpenProjectProjectMember = {

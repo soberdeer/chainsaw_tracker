@@ -1,4 +1,14 @@
-import { Badge, Button, Group, Stack, Table, Text, TextInput, UnstyledButton } from '@mantine/core';
+import {
+  Badge,
+  Button,
+  Group,
+  Stack,
+  Table,
+  Text,
+  TextInput,
+  UnstyledButton,
+  Tooltip,
+} from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
@@ -16,7 +26,7 @@ interface MembersTabProps {
   onInviteSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
 }
 
-type SortCol = 'name' | 'email' | 'role' | 'lastLogin';
+type SortCol = 'name' | 'email' | 'role' | 'teams';
 
 export function MembersTab({
   members,
@@ -45,15 +55,9 @@ export function MembersTab({
         case 'email':
           return factor * a.user.email.localeCompare(b.user.email);
         case 'role':
-          return factor * ((a.user.opAdmin ? 0 : 1) - (b.user.opAdmin ? 0 : 1));
-        case 'lastLogin': {
-          const la = a.user.lastLoginAt ?? '';
-          const lb = b.user.lastLoginAt ?? '';
-          if (!la && !lb) return 0;
-          if (!la) return factor;
-          if (!lb) return -factor;
-          return factor * la.localeCompare(lb);
-        }
+          return factor * ((a.role === 'ADMIN' ? 0 : 1) - (b.role === 'ADMIN' ? 0 : 1));
+        case 'teams':
+          return factor * ((a.teams?.length ?? 0) - (b.teams?.length ?? 0));
         default:
           return 0;
       }
@@ -64,7 +68,7 @@ export function MembersTab({
     { key: 'name', label: 'Name' },
     { key: 'email', label: 'Email' },
     { key: 'role', label: 'Role' },
-    { key: 'lastLogin', label: 'Last login' },
+    { key: 'teams', label: 'Teams' },
   ];
 
   return (
@@ -133,16 +137,43 @@ export function MembersTab({
               <Table.Td>{member.user.name}</Table.Td>
               <Table.Td>{member.user.email}</Table.Td>
               <Table.Td>
-                <Badge size="sm" variant="outline" color={member.user.opAdmin ? 'red' : 'blue'}>
-                  {member.user.opAdmin ? 'Administrator' : 'Member'}
+                <Badge size="sm" variant="outline" color={member.role === 'ADMIN' ? 'red' : 'blue'}>
+                  {member.role === 'ADMIN' ? 'Administrator' : 'Member'}
                 </Badge>
               </Table.Td>
               <Table.Td>
-                <Text size="sm" c="dimmed">
-                  {member.user.lastLoginAt
-                    ? new Date(member.user.lastLoginAt).toLocaleString()
-                    : 'Never'}
-                </Text>
+                {(() => {
+                  const teams = member.teams ?? [];
+                  if (!teams.length)
+                    return (
+                      <Text size="sm" c="dimmed">
+                        —
+                      </Text>
+                    );
+                  const visible = teams.slice(0, 3);
+                  const hidden = teams.slice(3);
+                  return (
+                    <Group gap={4} wrap="wrap">
+                      {visible.map((t) => (
+                        <Badge key={t} size="xs" variant="light" color="gray">
+                          {t}
+                        </Badge>
+                      ))}
+                      {hidden.length > 0 && (
+                        <Tooltip label={hidden.join(', ')} withArrow>
+                          <Badge
+                            size="xs"
+                            variant="light"
+                            color="gray"
+                            style={{ cursor: 'default' }}
+                          >
+                            +{hidden.length}
+                          </Badge>
+                        </Tooltip>
+                      )}
+                    </Group>
+                  );
+                })()}
               </Table.Td>
             </Table.Tr>
           ))}

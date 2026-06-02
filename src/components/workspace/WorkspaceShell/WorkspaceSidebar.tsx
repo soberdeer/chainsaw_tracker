@@ -45,7 +45,7 @@ export function WorkspaceSidebar() {
           <div>
             <Text fw={800}>{state.workspace.name}</Text>
             <Text size="xs" c="dimmed">
-              OpenProject-backed tracker workspace
+              Task tracker
             </Text>
           </div>
           {state.canManageSpaces && (

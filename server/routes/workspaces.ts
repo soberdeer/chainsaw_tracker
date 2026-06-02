@@ -1,5 +1,13 @@
 import { Router } from 'express';
-import { getWorkspaceTree } from '../openproject/service.js';
+import {
+  getOpenProjectRuntimeWorkspace,
+  updateOpenProjectRuntimeWorkspace,
+} from '../openproject/localPermissions.js';
+import {
+  getOpenProjectConnectionStatus,
+  getUserTeams,
+  getWorkspaceTree,
+} from '../openproject/service.js';
 import { requireCurrentUser } from '../services/auth.js';
 
 export const workspacesRouter = Router();
@@ -32,10 +40,74 @@ workspacesRouter.patch('/:id', async (_req, res) => {
   res.status(405).json({ error: 'Workspace settings are managed in OpenProject' });
 });
 
-workspacesRouter.get('/:id/members', async (req, res) => {
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+function workspaceToSettings(ws: {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  avatarUrl?: string;
+  color?: string;
+}) {
+  const now = new Date().toISOString();
+  return {
+    id: ws.id,
+    persistedId: ws.id,
+    name: ws.name,
+    slug: ws.slug,
+    description: ws.description ?? null,
+    avatarUrl: ws.avatarUrl ?? null,
+    color: ws.color ?? null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+workspacesRouter.get('/:id/settings', async (req, res) => {
   const workspaces = await getWorkspaceTree();
   const ws = workspaces.find((w) => w.id === req.params.id) ?? workspaces[0];
-  res.json((ws as any)?.memberships ?? []);
+  if (!ws) {
+    res.status(404).json({ error: 'Workspace not found' });
+    return;
+  }
+  res.json(workspaceToSettings(ws));
+});
+
+workspacesRouter.patch('/:id/settings', async (req, res) => {
+  const { name, slug, description, avatarUrl, color } = req.body as {
+    name?: string;
+    slug?: string;
+    description?: string | null;
+    avatarUrl?: string | null;
+    color?: string | null;
+  };
+  updateOpenProjectRuntimeWorkspace({ name, slug, description, avatarUrl, color });
+  const workspaces = await getWorkspaceTree();
+  const ws = workspaces.find((w) => w.id === req.params.id) ?? workspaces[0];
+  if (!ws) {
+    res.status(404).json({ error: 'Workspace not found' });
+    return;
+  }
+  res.json(workspaceToSettings(ws));
+});
+
+// ── Members ───────────────────────────────────────────────────────────────────
+
+workspacesRouter.get('/:id/members', async (req, res) => {
+  const [workspaces, userTeams] = await Promise.all([getWorkspaceTree(), getUserTeams()]);
+  const ws = workspaces.find((w) => w.id === req.params.id) ?? workspaces[0];
+  const now = new Date().toISOString();
+  const items = (ws?.memberships ?? []).map((m) => ({
+    ...m,
+    createdAt: now,
+    teams: userTeams.get(m.user.id) ?? [],
+  }));
+  res.json({ items });
+});
+
+workspacesRouter.post('/:id/members/invite', async (_req, res) => {
+  res.status(405).json({ error: 'Invite members directly in OpenProject' });
 });
 
 workspacesRouter.post('/:id/members', async (_req, res) => {
@@ -49,6 +121,36 @@ workspacesRouter.delete('/:id/members/:userId', async (_req, res) => {
 workspacesRouter.patch('/:id/members/:userId', async (_req, res) => {
   res.status(405).json({ error: 'Change roles directly in OpenProject' });
 });
+
+// ── Permissions ───────────────────────────────────────────────────────────────
+
+workspacesRouter.get('/:id/permissions', async (req, res) => {
+  const workspaces = await getWorkspaceTree();
+  const ws = workspaces.find((w) => w.id === req.params.id) ?? workspaces[0];
+  res.json({ items: ws?.permissionSets ?? [] });
+});
+
+// ── OpenProject connection status ─────────────────────────────────────────────
+
+workspacesRouter.get('/:id/openproject', async (_req, res) => {
+  const status = await getOpenProjectConnectionStatus();
+  res.json(status);
+});
+
+// ── Import reports ────────────────────────────────────────────────────────────
+
+workspacesRouter.get('/:id/imports', async (_req, res) => {
+  const runtimeWorkspace = await getOpenProjectRuntimeWorkspace();
+  const items = (runtimeWorkspace.migrationRuns ?? []).map((run) => ({
+    id: run.id,
+    source: 'openproject',
+    startedAt: new Date().toISOString(),
+    status: 'SUCCESS' as const,
+  }));
+  res.json({ items });
+});
+
+// ── Legacy invite/token routes ────────────────────────────────────────────────
 
 workspacesRouter.post('/:id/invites', async (_req, res) => {
   res.status(405).json({ error: 'Invite users directly in OpenProject' });

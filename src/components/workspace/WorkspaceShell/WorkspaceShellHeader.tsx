@@ -1,7 +1,6 @@
 import { Alert, Anchor, Breadcrumbs, Burger, Button, Group, Text } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
 import { Link } from 'react-router-dom';
-import { ImportReportsMenu } from './ImportReportsMenu';
 import { NotificationMenu } from './NotificationMenu';
 import { useWorkspaceShellContext } from './WorkspaceShellContext';
 import classes from './WorkspaceShell.module.css';
@@ -73,7 +72,6 @@ export function WorkspaceShellHeader() {
         </Group>
         <Group gap="md">
           <NotificationMenu />
-          {state.canManageWorkspace && <ImportReportsMenu />}
           <Button
             variant="light"
             leftSection={<IconSearch size="1rem" />}

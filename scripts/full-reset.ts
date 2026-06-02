@@ -101,6 +101,16 @@ async function nukeOpenProject(container: string) {
     ok(`Force-deleted ${archMatch[1]} remaining project rows`);
   }
 
+  // 4.5. Delete all memberships — Project.delete_all above bypasses callbacks, leaving orphaned
+  // Member rows. Admin user memberships also survive user deletion below, so we clear them here.
+  const membershipsOut = rails(
+    container,
+    'n=Member.count; Member.delete_all; puts "MEMBERSHIPS_DELETED:"+n.to_s',
+    'Deleting all project memberships'
+  );
+  const membershipsMatch = membershipsOut.match(/MEMBERSHIPS_DELETED:(\d+)/);
+  if (membershipsMatch) ok(`Deleted ${membershipsMatch[1]} project memberships`);
+
   // 5. Delete imported (non-admin, non-system) users
   const usersOut = rails(
     container,

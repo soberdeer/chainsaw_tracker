@@ -722,9 +722,9 @@ export function getWorkspaceImportReports(workspaceId: string) {
   return request<{ items: MigrationRun[] }>(`/api/workspaces/${workspaceId}/imports`);
 }
 
-export function getOpenProjectProjectMembers(workspaceId: string, projectId: string) {
+export function getOpenProjectProjectMembers(_workspaceId: string, projectId: string) {
   return request<{ items: OpenProjectProjectMember[]; settingsUrl: string }>(
-    `/api/workspaces/${workspaceId}/projects/${projectId}/members`
+    `/api/openproject/projects/${projectId}/members`
   );
 }
 

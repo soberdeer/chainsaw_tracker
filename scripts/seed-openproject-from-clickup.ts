@@ -1203,6 +1203,61 @@ async function syncGroupsToOpenProject(
   }
 }
 
+/**
+ * Adds every OP group as a member of every active OP project (Reader role).
+ * This makes groups available in the work-package assignee dropdown for all projects.
+ * Groups with Reader role can still be set as assignees — OP only restricts individual users.
+ */
+async function syncGroupProjectMemberships(
+  memberships: OpenProjectMembership[],
+  roles: OpenProjectRole[],
+  summary: Summary
+): Promise<void> {
+  const [groups, projectsPage] = await Promise.all([
+    getOpenProjectGroups(),
+    openProjectRequest<HalCollection<OpenProjectProject>>('/api/v3/projects', {
+      query: { pageSize: 500 },
+    }).catch(() => null),
+  ]);
+
+  const allProjects = (projectsPage?._embedded?.elements || []).filter((p) => p.active !== false);
+  if (groups.length === 0 || allProjects.length === 0) return;
+
+  const readerRole = pickOpenProjectRoleForClickUpPermission(roles, 'reader') || roles[0];
+  if (!readerRole) return;
+
+  for (const group of groups) {
+    const groupHref = `/api/v3/groups/${group.id}`;
+    for (const project of allProjects) {
+      const alreadyMember = memberships.some(
+        (m) =>
+          linkValue(m._links.project) === projectHref(project.id) &&
+          linkValue(m._links.principal) === groupHref
+      );
+      if (alreadyMember) continue;
+
+      try {
+        const created = await openProjectRequest<OpenProjectMembership>('/api/v3/memberships', {
+          method: 'POST',
+          body: {
+            _links: {
+              project: { href: projectHref(project.id) },
+              principal: { href: groupHref },
+              roles: [{ href: roleHref(readerRole) }],
+            },
+          },
+        });
+        memberships.push(created);
+        summary.openProjectMembershipsCreated += 1;
+      } catch (error) {
+        summary.openProjectMembershipErrors.push(
+          `group "${group.name}" → project "${project.name}": ${(error as Error).message}`
+        );
+      }
+    }
+  }
+}
+
 async function getClickUpSpaces(teamId: string) {
   const payload = await clickUpRequest<{ spaces: ClickUpSpace[] }>(`/team/${teamId}/space`, {
     query: { archived: false },
@@ -3352,6 +3407,12 @@ async function main() {
     adminEmails,
     openProjectUserSync.users,
     openProjectUserSync.clickUpUserToOpenProjectUser,
+    summary
+  );
+  // Add every group as a project member on all active projects so they appear in assignee dropdowns
+  await syncGroupProjectMemberships(
+    openProjectUserSync.memberships,
+    openProjectUserSync.roles,
     summary
   );
 

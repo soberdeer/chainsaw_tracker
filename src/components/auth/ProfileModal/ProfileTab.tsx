@@ -1,5 +1,6 @@
-import { Avatar, Badge, Button, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Badge, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import type { CurrentUser, UserProfile } from '@/lib';
 import classes from './ProfileModal.module.css';
 
@@ -31,11 +32,7 @@ export function ProfileTab({
     <form onSubmit={onSave}>
       <Stack>
         <Group align="flex-start">
-          <Avatar
-            src={form.values.avatarUrl || undefined}
-            name={form.values.name || undefined}
-            size="lg"
-          />
+          {profile && <UserAvatar user={profile} size="lg" />}
           <div>
             <Text fw={700}>{profile?.email || user.email}</Text>
             <Group gap="xs" mt={4}>

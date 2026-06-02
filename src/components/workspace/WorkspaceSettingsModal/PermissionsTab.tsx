@@ -1,4 +1,4 @@
-import { Alert, Stack, Table } from '@mantine/core';
+import { Stack, Table } from '@mantine/core';
 import type { PermissionSet } from '@/lib';
 
 interface PermissionsTabProps {
@@ -8,10 +8,6 @@ interface PermissionsTabProps {
 export function PermissionsTab({ permissionSets }: PermissionsTabProps) {
   return (
     <Stack>
-      <Alert color="blue" title="Roles and permissions">
-        This controls access to the custom tracker UI. OpenProject project memberships still control
-        OpenProject tasks, comments, files, and workflow actions.
-      </Alert>
       <Table withTableBorder striped>
         <Table.Thead>
           <Table.Tr>

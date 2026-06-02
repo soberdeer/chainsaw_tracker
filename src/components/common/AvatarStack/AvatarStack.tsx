@@ -1,4 +1,5 @@
 import { Avatar, Tooltip } from '@mantine/core';
+import { UserAvatar } from '@/components/common/UserAvatar';
 import type { User } from '@/lib';
 
 export interface AvatarStackProps {
@@ -7,7 +8,7 @@ export interface AvatarStackProps {
   max?: number;
 }
 
-export function AvatarStack({ users, size = 'md', max = 4 }: AvatarStackProps) {
+export function AvatarStack({ users, size = 'sm', max = 4 }: AvatarStackProps) {
   const visible = users.slice(0, max);
   const rest = users.length - visible.length;
 
@@ -18,14 +19,7 @@ export function AvatarStack({ users, size = 'md', max = 4 }: AvatarStackProps) {
   return (
     <Avatar.Group>
       {visible.map((a, i) => (
-        <Avatar
-          key={i}
-          src={a.avatarUrl}
-          size={size}
-          radius="xl"
-          color="initials"
-          name={a.name.replace('ㅤ', '')}
-        />
+        <UserAvatar key={i} user={a} size={size} />
       ))}
       {rest > 0 && (
         <Tooltip label={`${rest} more assignees`}>
