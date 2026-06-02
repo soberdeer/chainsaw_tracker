@@ -121,7 +121,7 @@ test('buildWorkspaceBreadcrumbs keeps docs and task paths distinct', () => {
   });
   assert.deepEqual(
     taskBreadcrumbs.map((item) => item.label),
-    ['Workspace', 'Product', 'Core Dev', 'Work packages', 'Fix tracker shell']
+    ['Workspace', 'Product', 'Core Dev', 'Work packages']
   );
 
   const workspaceWide = buildWorkspaceBreadcrumbs({

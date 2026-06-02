@@ -32,8 +32,10 @@ export function FolderTreeItem({ spaceId, folder, depth = 0 }: FolderTreeItemPro
         className={isActive ? `${classes.folderTreeRow} ${classes.active}` : classes.folderTreeRow}
         style={{ paddingLeft: `${0.5 + depth * 1.1}rem` }}
         onClick={() => {
-          if (isDocsFolder || list) state.openFolder(spaceId, folder);
-          else state.toggleFolder(folder.id);
+          if (isDocsFolder || list) {
+            state.openFolder(spaceId, folder);
+            state.closeMobileNav();
+          } else state.toggleFolder(folder.id);
         }}
       >
         <span className={classes.treeCaret}>

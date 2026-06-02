@@ -481,6 +481,7 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
     selectedDocTitle: selectedDoc?.title || null,
     currentView: selectedDoc ? 'docs' : (taskView as 'tasks' | 'board' | 'docs') || 'tasks',
     workspaceWideLabel,
+    workspaceWideScope: route.workspaceWideScope,
   });
 
   const loadTasks = useCallback(

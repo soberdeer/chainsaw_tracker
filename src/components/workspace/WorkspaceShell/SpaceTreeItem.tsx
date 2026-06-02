@@ -27,7 +27,10 @@ export function SpaceTreeItem({ space }: SpaceTreeItemProps) {
             state.toggleSpace(space.id);
             if (!isActiveSpace) {
               const folder = firstTaskFolder(space) ?? space.folders[0];
-              if (folder) state.openFolder(space.id, folder);
+              if (folder) {
+                state.openFolder(space.id, folder);
+                state.closeMobileNav();
+              }
             }
           }}
         >

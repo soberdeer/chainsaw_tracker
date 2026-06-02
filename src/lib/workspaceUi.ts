@@ -1,3 +1,4 @@
+import { docsPath, folderPath } from './taskUi.js';
 import type {
   Folder,
   MigrationRun,
@@ -115,30 +116,40 @@ export function buildWorkspaceBreadcrumbs(input: {
   selectedDocTitle?: string | null;
   currentView?: 'tasks' | 'board' | 'docs';
   workspaceWideLabel?: string | null;
+  workspaceWideScope?: 'mine' | 'all' | null;
 }) {
+  const spaceId = input.activeSpace?.id;
+  const folderId = input.activeFolder?.id;
+  const folderHref =
+    spaceId && folderId
+      ? input.activeFolder?.kind === 'DOCS'
+        ? docsPath(spaceId)
+        : folderPath(spaceId, folderId)
+      : undefined;
+
   const items: BreadcrumbItem[] = [];
+
   if (input.workspace) {
     items.push({ label: input.workspace.name });
   }
+
   if (input.workspaceWideLabel) {
     items.push({ label: input.workspaceWideLabel });
-    if (input.selectedTaskTitle) {
-      items.push({ label: input.selectedTaskTitle });
-    }
     return items;
   }
+
   if (input.activeSpace) {
     items.push({ label: input.activeSpace.name });
   }
   if (input.activeFolder) {
-    items.push({ label: input.activeFolder.name });
+    items.push({ label: input.activeFolder.name, href: folderHref });
   }
 
   // Helper: only add task list label when it differs from the folder name
   // (they're often the same in seeded projects — no point repeating)
   const addListIfDifferent = () => {
     if (input.activeTaskList && input.activeTaskList.name !== input.activeFolder?.name) {
-      items.push({ label: input.activeTaskList.name });
+      items.push({ label: input.activeTaskList.name, href: folderHref });
     }
   };
 
@@ -148,14 +159,12 @@ export function buildWorkspaceBreadcrumbs(input: {
     return items;
   }
 
-  if (input.selectedTaskTitle) {
-    addListIfDifferent();
-    items.push({ label: input.selectedTaskTitle });
-    return items;
-  }
-
-  // Docs panel — folder name alone is enough
+  // Docs panel — folder name alone is enough (it's the last item, strip href)
   if (input.currentView === 'docs') {
+    if (items.length > 0) {
+      const last = items[items.length - 1];
+      items[items.length - 1] = { label: last.label };
+    }
     return items;
   }
 
@@ -163,6 +172,10 @@ export function buildWorkspaceBreadcrumbs(input: {
 
   if (input.currentView === 'board') {
     items.push({ label: 'Board' });
+  } else if (items.length > 0) {
+    // tasks view: last item is the task list or folder — strip its href
+    const last = items[items.length - 1];
+    items[items.length - 1] = { label: last.label };
   }
 
   return items;

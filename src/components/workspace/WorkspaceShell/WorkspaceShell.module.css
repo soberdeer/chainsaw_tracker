@@ -14,8 +14,8 @@
   color: var(--app-text);
 }
 
-.spacesTree {
-  height: calc(100vh - 13.5rem);
+.scrollbar[data-orientation='vertical'] div {
+  display: none;
 }
 
 .profileButton {
@@ -138,8 +138,28 @@
   color: var(--app-muted);
 }
 
-.mainShell {
+.shellLayout {
+  display: flex;
   min-height: 100vh;
+}
+
+.desktopNav {
+  width: 21.75rem;
+  flex-shrink: 0;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.desktopNavInner {
+  height: 100%;
+  overflow-y: auto;
+}
+
+.mainShell {
+  flex: 1;
+  min-width: 0;
   background: var(--app-bg);
   color: var(--app-text);
 }

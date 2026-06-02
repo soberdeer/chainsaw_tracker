@@ -19,7 +19,11 @@ export function useWorkspaceRouteState() {
   const isDocsRoute = Boolean(useMatch('/space/:spaceId/docs'));
   const isDocRoute = Boolean(useMatch('/space/:spaceId/docs/:docId'));
   const isFolderRoute = Boolean(routeSpaceId && routeFolderId);
-  const workspaceWideScope = isAllTasksRoute ? 'all' : isMyTasksRoute ? 'mine' : null;
+  const workspaceWideScope: 'all' | 'mine' | null = isAllTasksRoute
+    ? 'all'
+    : isMyTasksRoute
+      ? 'mine'
+      : null;
 
   return {
     location,

@@ -5,6 +5,9 @@ import type { useWorkspaceShellState } from './hooks/useWorkspaceShellState';
 export type WorkspaceShellContextValue = ReturnType<typeof useWorkspaceShellState> & {
   currentUser: CurrentUser;
   onCurrentUserChange: (user: CurrentUser | null) => void;
+  mobileNavOpened: boolean;
+  toggleMobileNav: () => void;
+  closeMobileNav: () => void;
 };
 
 const WorkspaceShellContext = createContext<WorkspaceShellContextValue | null>(null);

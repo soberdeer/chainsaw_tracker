@@ -1,5 +1,6 @@
-import { Alert, Breadcrumbs, Button, Group, Text } from '@mantine/core';
+import { Alert, Anchor, Breadcrumbs, Burger, Button, Group, Text } from '@mantine/core';
 import { IconSearch } from '@tabler/icons-react';
+import { Link } from 'react-router-dom';
 import { ImportReportsMenu } from './ImportReportsMenu';
 import { NotificationMenu } from './NotificationMenu';
 import { useWorkspaceShellContext } from './WorkspaceShellContext';
@@ -32,26 +33,44 @@ export function WorkspaceShellHeader() {
         </Alert>
       )}
       <Group className={classes.topBar} justify="space-between">
-        <Breadcrumbs separator="/" separatorMargin="xs" data-testid="breadcrumbs">
-          {state.breadcrumbItems.map((item, index) => (
-            <Group gap="xs" wrap="nowrap" key={`${item.label}:${index}`}>
-              {index === 0 && state.activeSpace ? (
-                <span
-                  className={classes.breadcrumbChip}
-                  style={{ background: state.activeSpace.color }}
-                >
-                  {state.activeSpace.initials || state.activeSpace.name.slice(0, 1)}
-                </span>
-              ) : null}
-              <Text
-                fw={index === state.breadcrumbItems.length - 1 ? 800 : 600}
-                c={index === state.breadcrumbItems.length - 1 ? undefined : 'dimmed'}
-              >
-                {item.label}
-              </Text>
-            </Group>
-          ))}
-        </Breadcrumbs>
+        <Group gap="xs" wrap="nowrap">
+          <Burger
+            opened={state.mobileNavOpened}
+            onClick={state.toggleMobileNav}
+            hiddenFrom="sm"
+            size="sm"
+            aria-label="Toggle navigation"
+          />
+          <Breadcrumbs separator="/" separatorMargin="xs" data-testid="breadcrumbs">
+            {state.breadcrumbItems.map((item, index) => {
+              const isLast = index === state.breadcrumbItems.length - 1;
+              const label = (
+                <Text fw={isLast ? 800 : 600} c={isLast ? undefined : 'dimmed'}>
+                  {item.label}
+                </Text>
+              );
+              return (
+                <Group gap="xs" wrap="nowrap" key={`${item.label}:${index}`}>
+                  {index === 0 && state.activeSpace ? (
+                    <span
+                      className={classes.breadcrumbChip}
+                      style={{ background: state.activeSpace.color }}
+                    >
+                      {state.activeSpace.initials || state.activeSpace.name.slice(0, 1)}
+                    </span>
+                  ) : null}
+                  {item.href ? (
+                    <Anchor component={Link} to={item.href} underline="never">
+                      {label}
+                    </Anchor>
+                  ) : (
+                    label
+                  )}
+                </Group>
+              );
+            })}
+          </Breadcrumbs>
+        </Group>
         <Group gap="md">
           <NotificationMenu />
           {state.canManageWorkspace && <ImportReportsMenu />}

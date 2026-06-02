@@ -24,7 +24,7 @@ export function WorkspaceSidebar() {
   };
 
   return (
-    <>
+    <ScrollArea.Autosize scrollbars="y" classNames={{ scrollbar: classes.scrollbar }}>
       <Group mb="lg" gap="sm" justify="space-between">
         <Group gap="sm" wrap="nowrap">
           <Tooltip label="Workspace">
@@ -109,7 +109,10 @@ export function WorkspaceSidebar() {
           }
           justify="flex-start"
           leftSection={<IconList size="1rem" />}
-          onClick={state.openAllTasks}
+          onClick={() => {
+            state.openAllTasks();
+            state.closeMobileNav();
+          }}
         >
           All Tasks
         </Button>
@@ -123,7 +126,10 @@ export function WorkspaceSidebar() {
           justify="flex-start"
           leftSection={<IconCheck size="1rem" />}
           disabled={!state.currentOpenProjectUser}
-          onClick={state.openMyTasks}
+          onClick={() => {
+            state.openMyTasks();
+            state.closeMobileNav();
+          }}
         >
           My Tasks
         </Button>
@@ -132,21 +138,20 @@ export function WorkspaceSidebar() {
       <Text size="lg" fw={700} mb="md">
         Spaces
       </Text>
-      <ScrollArea className={classes.spacesTree}>
-        {state.workspace.spaces.map((space) => (
-          <SpaceTreeItem key={space.id} space={space} />
-        ))}
-        {state.canManageSpaces && (
-          <UnstyledButton
-            data-testid="new-space-button"
-            className={classes.newSpaceRow}
-            onClick={() => state.setSpaceCreateOpen(true)}
-          >
-            <IconPlus size="1.125rem" />
-            New Space
-          </UnstyledButton>
-        )}
-      </ScrollArea>
-    </>
+
+      {state.workspace.spaces.map((space) => (
+        <SpaceTreeItem key={space.id} space={space} />
+      ))}
+      {state.canManageSpaces && (
+        <UnstyledButton
+          data-testid="new-space-button"
+          className={classes.newSpaceRow}
+          onClick={() => state.setSpaceCreateOpen(true)}
+        >
+          <IconPlus size="1.125rem" />
+          New Space
+        </UnstyledButton>
+      )}
+    </ScrollArea.Autosize>
   );
 }

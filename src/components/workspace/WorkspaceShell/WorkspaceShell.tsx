@@ -1,4 +1,5 @@
-import { Alert, AppShell, Box, Button, Drawer, Loader, Stack, Text, Title } from '@mantine/core';
+import { Alert, Box, Button, Drawer, Loader, Stack, Text, Title } from '@mantine/core';
+import { useDisclosure } from '@mantine/hooks';
 import { Outlet } from 'react-router-dom';
 import type { CurrentUser } from '@/lib';
 import { TaskDetailPage } from '../../tasks/TaskDetailPage/TaskDetailPage';
@@ -18,10 +19,15 @@ export interface WorkspaceShellProps {
 
 export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceShellProps) {
   const state = useWorkspaceShellState(currentUser);
+  const [mobileNavOpened, { toggle: toggleMobileNav, close: closeMobileNav }] =
+    useDisclosure(false);
   const contextValue = {
     ...state,
     currentUser,
     onCurrentUserChange,
+    mobileNavOpened,
+    toggleMobileNav,
+    closeMobileNav,
   };
 
   if (state.loading) {
@@ -85,20 +91,45 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
   return (
     <WorkspaceShellProvider value={contextValue}>
       <>
-        <AppShell navbar={{ width: '21.75rem', breakpoint: 'sm' }} padding={0}>
+        <Box className={classes.shellLayout}>
           <WorkspaceShellModals />
 
-          <AppShell.Navbar p="md" className={classes.workspaceSidebar} data-testid="sidebar">
-            <WorkspaceSidebar />
-          </AppShell.Navbar>
+          <Box
+            visibleFrom="sm"
+            component="nav"
+            className={`${classes.workspaceSidebar} ${classes.desktopNav}`}
+            data-testid="sidebar"
+          >
+            <Box p="md" className={classes.desktopNavInner}>
+              <WorkspaceSidebar />
+            </Box>
+          </Box>
 
-          <AppShell.Main className={classes.mainShell} data-testid="workspace-shell">
+          <Box component="main" className={classes.mainShell} data-testid="workspace-shell">
             <Stack gap={0}>
               <WorkspaceShellHeader />
               <Outlet />
             </Stack>
-          </AppShell.Main>
-        </AppShell>
+          </Box>
+        </Box>
+
+        <Drawer
+          opened={mobileNavOpened}
+          onClose={closeMobileNav}
+          position="left"
+          size="21.75rem"
+          withCloseButton={false}
+          styles={{
+            content: {
+              background: 'var(--app-panel)',
+              borderRight: '1px solid var(--app-border)',
+            },
+            body: { padding: 'var(--mantine-spacing-md)', height: '100%' },
+          }}
+          data-testid="mobile-nav-drawer"
+        >
+          <WorkspaceSidebar />
+        </Drawer>
 
         <Drawer
           opened={Boolean(state.selectedTask)}
