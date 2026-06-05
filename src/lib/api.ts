@@ -688,6 +688,7 @@ export function inviteWorkspaceMember(
     membership: WorkspaceMemberItem;
     temporaryPassword?: string | null;
     openProjectTemporaryPassword?: string | null;
+    projectMembershipWarning?: string | null;
   }>(`/api/workspaces/${workspaceId}/members/invite`, {
     method: 'POST',
     body: JSON.stringify(input),

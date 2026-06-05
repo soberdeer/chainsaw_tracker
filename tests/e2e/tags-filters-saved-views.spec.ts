@@ -6,7 +6,7 @@ test.describe('tags, filters, local-filter pagination, and saved views', () => {
     page,
     mockApi,
   }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha/task/wp-101');
     await page.getByLabel('Create tag').fill('telemetry');
@@ -63,7 +63,7 @@ test.describe('tags, filters, local-filter pagination, and saved views', () => {
   });
 
   test('saves and restores filters through a saved view', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
 
     await openApp(page, '/tasks');
     await chooseMultiOption(page, 'filter-type', 'Bug');

@@ -2,11 +2,11 @@ import { expect, openApp, test } from './fixtures.js';
 import { chooseOption } from './support/ui.js';
 
 test.describe('roles, permissions, and workspace member management', () => {
-  test('owner can manage workspace members from workspace settings', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('OWNER');
+  test('admin can manage workspace members from workspace settings', async ({ page, mockApi }) => {
+    mockApi.setCurrentUser('ADMIN');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha');
-    await page.getByRole('button', { name: 'Open Workspace Settings' }).click();
+    await page.getByRole('button', { name: 'Workspace settings' }).click();
     await expect(page.getByRole('dialog', { name: 'Workspace settings' })).toBeVisible();
     await page.getByRole('tab', { name: 'Members' }).click();
 
@@ -21,21 +21,19 @@ test.describe('roles, permissions, and workspace member management', () => {
       .locator('[data-testid="workspace-member-row"]')
       .filter({ hasText: 'friend@example.com' });
     await row.locator('[data-testid^="workspace-member-role-"]').click();
-    await page.getByRole('option', { name: 'LEAD', exact: true }).click();
-    await expect(page.getByText('Workspace role updated.')).toBeVisible();
-    await expect(page.getByText('friend@example.com is now LEAD.')).toBeVisible();
+    // READER is not offered — backend maps it to MEMBER; only ADMIN and MEMBER are valid.
+    await page.getByRole('option', { name: 'ADMIN', exact: true }).click();
+    await expect(page.getByText('Role updated')).toBeVisible();
 
-    await row.locator('[data-testid^="workspace-member-remove-"]').click();
-    await page.getByRole('button', { name: 'Remove member' }).click();
-    await expect(page.getByText('Workspace member removed.')).toBeVisible();
-    await expect(page.getByText('friend@example.com')).toHaveCount(0);
+    // Member removal is managed directly in OpenProject; the remove button is not rendered.
+    await expect(row.locator('[data-testid^="workspace-member-remove-"]')).toHaveCount(0);
   });
 
-  test('viewers stay read-only in the UI and receive forbidden on direct write requests', async ({
+  test('readers stay read-only in the UI and receive forbidden on direct write requests', async ({
     page,
     mockApi,
   }) => {
-    mockApi.setCurrentUser('VIEWER');
+    mockApi.setCurrentUser('READER');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha/task/wp-101');
     const taskDetail = page.getByTestId('task-detail-page');

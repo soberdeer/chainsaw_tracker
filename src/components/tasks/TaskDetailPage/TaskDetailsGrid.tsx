@@ -8,9 +8,9 @@ import {
   SimpleGrid,
   Stack,
   Text,
+  TextInput,
   Tooltip,
 } from '@mantine/core';
-import { DatePickerInput } from '@mantine/dates';
 import type { UseFormReturnType } from '@mantine/form';
 import { IconCalendarDue, IconFlag } from '@tabler/icons-react';
 import { useState } from 'react';
@@ -173,19 +173,21 @@ export function TaskDetailsGrid({
           )}
         </Group>
       </Stack>
-      <DatePickerInput
+      <TextInput
         label="Start date"
+        type="date"
         value={form.values.startDate}
-        onChange={(str) => form.setFieldValue('startDate', str as string)}
+        onChange={(e) => form.setFieldValue('startDate', e.currentTarget.value)}
         onBlur={() => void onUpdateAndRefresh({ startDate: form.values.startDate || undefined })}
         placeholder={start || 'No start'}
         readOnly={!canWriteTasks}
       />
-      <DatePickerInput
+      <TextInput
         label="Due date"
+        type="date"
         leftSection={<IconCalendarDue size="1rem" />}
         value={form.values.dueDate}
-        onChange={(str) => form.setFieldValue('dueDate', str as string)}
+        onChange={(e) => form.setFieldValue('dueDate', e.currentTarget.value)}
         onBlur={() => void onUpdateAndRefresh({ dueDate: form.values.dueDate || undefined })}
         placeholder={due || 'No due'}
         readOnly={!canWriteTasks}
@@ -204,19 +206,49 @@ export function TaskDetailsGrid({
         data={['LOW', 'NORMAL', 'HIGH', 'URGENT']}
         disabled={!canWriteTasks}
       />
-      <MultiSelect
-        data-testid="task-tag-picker"
-        label="Tags"
-        data={tagData}
-        value={taskTagIds}
-        onChange={(value) => void handleTagChange(value)}
-        searchable
-        clearable
-        searchValue={tagSearch}
-        onSearchChange={setTagSearch}
-        disabled={!canWriteTasks || tagSaving || tagCreating}
-        placeholder="Search or create a tag…"
-      />
+      <Stack gap="xs">
+        <MultiSelect
+          data-testid="task-tag-picker"
+          label="Tags"
+          data={tagData}
+          value={taskTagIds}
+          onChange={(value) => void handleTagChange(value)}
+          searchable
+          clearable
+          searchValue={tagSearch}
+          onSearchChange={setTagSearch}
+          disabled={!canWriteTasks || tagSaving || tagCreating}
+          placeholder="Search or create a tag…"
+        />
+        {canWriteTasks && (
+          <Group gap="xs">
+            <TextInput
+              label="Create tag"
+              value={tagSearch}
+              onChange={(e) => setTagSearch(e.currentTarget.value)}
+              placeholder="Tag name…"
+              disabled={tagSaving || tagCreating}
+              style={{ flex: 1 }}
+            />
+            <Button
+              mt="lg"
+              size="xs"
+              variant="light"
+              disabled={
+                !tagSearch.trim() ||
+                tagOptions.some((t) => t.label.toLowerCase() === tagSearch.trim().toLowerCase()) ||
+                tagSaving ||
+                tagCreating
+              }
+              onClick={() =>
+                void handleTagChange([...taskTagIds, `__create__:${tagSearch.trim()}`])
+              }
+            >
+              Create and add
+            </Button>
+          </Group>
+        )}
+      </Stack>
       <Stack gap="xs">
         <Group gap="xs">
           {task.externalUrl && (

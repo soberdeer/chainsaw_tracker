@@ -216,7 +216,7 @@ test.describe('grouped list view', () => {
     page,
     mockApi,
   }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
 
     await openBoardView(page);
 
@@ -250,7 +250,7 @@ test.describe('grouped list view', () => {
     page,
     mockApi,
   }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
     mockApi.setFailure('boardOrder');
 
     await openBoardView(page);
@@ -270,11 +270,11 @@ test.describe('grouped list view', () => {
     await expect(page.getByText('Read-only')).toBeVisible();
   });
 
-  test('bulk updates from the grouped list apply partial results and stay hidden from viewers', async ({
+  test('bulk updates from the grouped list apply partial results and stay hidden from readers', async ({
     page,
     mockApi,
   }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha');
     await page.getByLabel('Select Hero controller').check();
@@ -292,7 +292,7 @@ test.describe('grouped list view', () => {
     await page.reload();
     await expect(page.getByTestId('task-list')).toContainText('Hero controller');
 
-    mockApi.setCurrentUser('VIEWER');
+    mockApi.setCurrentUser('READER');
     await page.goto('/space/space-alpha/folder/folder-alpha');
     await expect(page.getByTestId('bulk-status-select')).toHaveCount(0);
   });
@@ -357,14 +357,14 @@ test.describe('board view', () => {
   });
 
   test('read-only viewer cannot see add-task buttons on board', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('VIEWER');
+    mockApi.setCurrentUser('READER');
     await openBoardView(page);
 
     await expect(page.locator('[data-testid="board-add-task"]')).toHaveCount(0);
   });
 
   test('writer sees add-task button per column', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
     await openBoardView(page);
 
     const addBtns = page.locator('[data-testid="board-add-task"]');

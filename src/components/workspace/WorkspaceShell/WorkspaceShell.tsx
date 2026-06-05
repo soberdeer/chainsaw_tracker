@@ -147,6 +147,7 @@ export function WorkspaceShell({ currentUser, onCurrentUserChange }: WorkspaceSh
               task={state.selectedTask}
               workspace={state.workspace}
               statuses={state.statuses}
+              fallbackUsers={state.availableAssignees}
               onBack={state.backToFolder}
               onSaved={state.handleTaskSaved}
               onOpenSubtask={state.openSubtask}

@@ -32,7 +32,6 @@ export function TaskListPanel() {
             leftSection={<IconSearch size="1rem" />}
             w="14rem"
           />
-          <TaskFilterPanel />
         </Group>
         <Group gap="xs">
           <Tooltip
@@ -67,6 +66,7 @@ export function TaskListPanel() {
           )}
         </Group>
       </Group>
+      <TaskFilterPanel />
       {state.activeFilterChips.length > 0 && (
         <Group gap="xs">
           {state.activeFilterChips.map((chip) => (
@@ -77,7 +77,18 @@ export function TaskListPanel() {
         </Group>
       )}
       {state.selectedTaskIds.size > 0 && state.canWriteTasks && <BulkUpdateBar />}
-      {state.tasksLoading && !state.tasks.length ? (
+      {state.tasksError ? (
+        <Box p="xl">
+          <Stack gap="xs">
+            <Text fw={700} c="red">
+              Could not load tasks
+            </Text>
+            <Text c="dimmed" size="sm">
+              {state.tasksError}
+            </Text>
+          </Stack>
+        </Box>
+      ) : state.tasksLoading && !state.tasks.length ? (
         <Box className={classes.center} p="xl">
           <Loader />
         </Box>

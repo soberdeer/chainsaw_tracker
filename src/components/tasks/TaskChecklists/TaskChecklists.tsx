@@ -1,4 +1,4 @@
-import { Button, Group, Stack, Text, TextInput } from '@mantine/core';
+import { Alert, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { IconChecklist, IconPlus } from '@tabler/icons-react';
 import { useCallback, useEffect, useState } from 'react';
@@ -98,6 +98,10 @@ export function TaskChecklists({ taskId, canWriteTasks, onError, onChanged }: Ta
           </form>
         )}
       </Group>
+
+      <Alert color="yellow" variant="light" p="xs">
+        Checklist data is stored in server memory and will be lost on restart.
+      </Alert>
 
       {loading && <Text c="dimmed">Loading checklists...</Text>}
 

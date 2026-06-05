@@ -1381,6 +1381,28 @@ export async function updateOpenProjectUserAdmin(userId: string, admin: boolean)
   });
 }
 
+export async function createOpenProjectUser(input: {
+  email: string;
+  login: string;
+  firstName: string;
+  lastName: string;
+  password: string;
+  admin?: boolean;
+}) {
+  return openProjectRequest<OpenProjectUser>('/api/v3/users', {
+    method: 'POST',
+    body: {
+      login: input.login,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      email: input.email,
+      password: input.password,
+      admin: input.admin ?? false,
+      status: 'active',
+    },
+  });
+}
+
 export async function addOpenProjectProjectMember(
   projectId: string,
   userId: string,

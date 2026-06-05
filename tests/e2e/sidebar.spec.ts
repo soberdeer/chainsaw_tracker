@@ -96,13 +96,6 @@ test.describe('sidebar — navigation links', () => {
     await openSidebar(page);
     await expect(page.getByTestId('my-tasks-link')).not.toBeDisabled();
   });
-
-  test('Local Docs link is visible when docs exist in workspace', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('MEMBER');
-    // space-alpha has doc-1 in mock state
-    await openSidebar(page);
-    await expect(page.getByRole('button', { name: 'Local Docs' })).toBeVisible();
-  });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -336,21 +329,10 @@ test.describe('sidebar — workspace settings button', () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Local Docs link
+// My Tasks link highlight
 // ─────────────────────────────────────────────────────────────────────────────
 
-test.describe('sidebar — Local Docs link', () => {
-  test('clicking Local Docs switches to docs tab and highlights the link', async ({
-    page,
-    mockApi,
-  }) => {
-    mockApi.setCurrentUser('MEMBER');
-    await openSidebar(page);
-    await page.getByTestId('local-docs-link').click();
-    // Link becomes active ("light" variant)
-    await expect(page.getByTestId('local-docs-link')).toHaveAttribute('data-variant', 'light');
-  });
-
+test.describe('sidebar — My Tasks link', () => {
   test('My Tasks link is highlighted when on /my-tasks', async ({ page, mockApi }) => {
     mockApi.setCurrentUser('LEAD');
     await openApp(page, '/my-tasks');

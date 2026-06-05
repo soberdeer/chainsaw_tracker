@@ -78,7 +78,7 @@ export function WorkspaceSettingsModal({
   generalFormRef.current = generalForm;
 
   const inviteForm = useForm({
-    initialValues: { email: '', name: '' },
+    initialValues: { email: '', name: '', role: 'MEMBER' as WorkspaceRole },
     validate: {
       email: (value) => (/^\S+@\S+$/.test(value) ? null : 'Enter a valid email address'),
     },
@@ -156,7 +156,7 @@ export function WorkspaceSettingsModal({
       const result = await inviteWorkspaceMember(workspaceId, {
         email: values.email,
         name: values.name || undefined,
-        role: 'MEMBER',
+        role: values.role,
         createOpenProjectUser: true,
       });
       setMembers((current) =>
@@ -174,19 +174,28 @@ export function WorkspaceSettingsModal({
           result.openProjectTemporaryPassword
             ? `OpenProject temporary password: ${result.openProjectTemporaryPassword}`
             : null,
+          result.projectMembershipWarning ?? null,
         ]
           .filter(Boolean)
           .join(' ')
       );
-      setSuccess('Workspace member access updated.');
-      showToast({
-        tone: 'success',
-        title: 'Member invited',
-        message:
-          result.temporaryPassword || result.openProjectTemporaryPassword
-            ? 'The workspace member was invited and temporary credentials were generated.'
-            : 'The workspace member already existed and access was updated.',
-      });
+      if (result.projectMembershipWarning) {
+        showToast({
+          tone: 'warning',
+          title: 'Member invited with warnings',
+          message: result.projectMembershipWarning,
+        });
+      } else {
+        setSuccess('Workspace member access updated.');
+        showToast({
+          tone: 'success',
+          title: 'Member invited',
+          message:
+            result.temporaryPassword || result.openProjectTemporaryPassword
+              ? 'The workspace member was invited and temporary credentials were generated.'
+              : 'The workspace member already existed and access was updated.',
+        });
+      }
     } catch (caughtError) {
       const message = getErrorMessage(caughtError);
       setError(message);

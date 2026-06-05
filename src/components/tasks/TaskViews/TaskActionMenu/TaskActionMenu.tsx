@@ -6,6 +6,7 @@ import {
   duplicateTask,
   updateTask,
   getErrorMessage,
+  taskPath,
   type Task,
 } from '@/lib';
 import { confirmAction, promptForText } from '@/lib/modals';
@@ -21,7 +22,9 @@ export interface TaskActionMenuProps {
 export function TaskActionsMenu({ task, onChanged, onError, canWriteTasks }: TaskActionMenuProps) {
   const copyLink = async () =>
     navigator.clipboard
-      ?.writeText(`${window.location.origin}/space/${task.folderId}/task/${task.id}`)
+      ?.writeText(
+        `${window.location.origin}${taskPath(task.departmentId || task.folderId, task.folderId, task.id)}`
+      )
       .catch(() => undefined);
   const run = async (action: () => Promise<unknown>) => {
     try {

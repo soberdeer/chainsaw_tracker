@@ -16,11 +16,13 @@ import {
   getDocumentById,
   getDocuments,
   getErrorMessage,
+  createSavedView,
   getImportReport,
   getImportReports,
   getNotifications,
   getOpenProjectTags,
   getOpenProjectTaskTypes,
+  getSavedViews,
   getTask,
   getTasks,
   getWorkspaces,
@@ -39,6 +41,7 @@ import {
   type MigrationRun,
   type NotificationItem,
   type OpenProjectTaskTypeOption,
+  type SavedView,
   type Tag,
   type Task,
   type User,
@@ -48,6 +51,7 @@ import {
   EXPANDED_FOLDER_KEY,
   EXPANDED_SPACE_KEY,
   findFolderById,
+  findFolderForList,
   findSpaceForFolder,
   readInitialQuery,
   readLastFolder,
@@ -158,6 +162,7 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
   const [taskTypes, setTaskTypes] = useState<OpenProjectTaskTypeOption[]>([]);
   const [openProjectTags, setOpenProjectTags] = useState<Tag[]>([]);
   const [activeImportReport, setActiveImportReport] = useState<MigrationRun | null>(null);
+  const [savedViews, setSavedViews] = useState<SavedView[]>([]);
 
   const reload = useCallback(() => setRefreshKey((key) => key + 1), []);
   const clearTaskSelection = useCallback(() => setSelectedTaskIds(new Set()), []);
@@ -234,12 +239,6 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
 
   useEffect(() => {
     const location = locationRef.current;
-    if (!route.isFolderRoute) {
-      if (location.search) {
-        navigate({ pathname: location.pathname, search: '' }, { replace: true });
-      }
-      return;
-    }
 
     const params = new URLSearchParams(location.search);
     taskView ? params.set('view', taskView) : params.delete('view');
@@ -590,6 +589,9 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
     getOpenProjectTags(workspace.id)
       .then(setOpenProjectTags)
       .catch(() => setOpenProjectTags([]));
+    getSavedViews(workspace.id)
+      .then(setSavedViews)
+      .catch(() => setSavedViews([]));
     getNotifications()
       .then((page) => {
         setNotifications(page.items);
@@ -925,6 +927,96 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
 
   const activeFilterChips = buildActiveChips(statuses, taskTypes, openProjectTags);
 
+  const saveCurrentView = useCallback(
+    async (name: string, visibility: 'PRIVATE' | 'WORKSPACE') => {
+      if (!workspace?.id) return;
+      const filters: Record<string, unknown> = {
+        scope: isWorkspaceWide ? 'workspace' : 'list',
+        viewType: 'tasks',
+      };
+      if (statusFilter) filters.statusId = statusFilter;
+      if (typeFilter.length) filters.typeIds = typeFilter;
+      if (tagFilter.length) filters.tagIds = tagFilter;
+      if (assigneeFilter.length) filters.assigneeIds = assigneeFilter;
+      if (priorityFilter) filters.priority = priorityFilter;
+      if (taskSearch) filters.search = taskSearch;
+      if (dueBeforeFilter) filters.dueBefore = dueBeforeFilter;
+      if (updatedSinceFilter) filters.updatedSince = updatedSinceFilter;
+      if (overdueFilter) filters.overdue = true;
+      if (hasGitHubPrFilter) filters.hasGitHubPr = true;
+      const created = await createSavedView({
+        workspaceId: workspace.id,
+        listId: activeTaskList?.id || null,
+        name,
+        filters,
+        visibility,
+      });
+      setSavedViews((views) => [...views, created]);
+      return created;
+    },
+    [
+      workspace?.id,
+      isWorkspaceWide,
+      statusFilter,
+      typeFilter,
+      tagFilter,
+      assigneeFilter,
+      priorityFilter,
+      taskSearch,
+      dueBeforeFilter,
+      updatedSinceFilter,
+      overdueFilter,
+      hasGitHubPrFilter,
+      activeTaskList?.id,
+    ]
+  );
+
+  const applyView = useCallback(
+    (view: SavedView) => {
+      const f = view.filters as Record<string, unknown>;
+
+      // Restore navigation context
+      if (view.listId && workspace) {
+        for (const space of workspace.spaces) {
+          const folder = findFolderForList(space.folders, view.listId);
+          if (folder) {
+            navigate(folderPath(space.id, folder.id));
+            setTaskListId(view.listId);
+            break;
+          }
+        }
+      } else if ((f.scope as string) === 'workspace') {
+        navigate('/tasks');
+      }
+
+      setStatusFilter((f.statusId as string) || null);
+      setTypeFilter(Array.isArray(f.typeIds) ? (f.typeIds as string[]) : []);
+      setTagFilter(Array.isArray(f.tagIds) ? (f.tagIds as string[]) : []);
+      setAssigneeFilter(Array.isArray(f.assigneeIds) ? (f.assigneeIds as string[]) : []);
+      setPriorityFilter((f.priority as string) || null);
+      setTaskSearch((f.search as string) || '');
+      setDueBeforeFilter((f.dueBefore as string) || '');
+      setUpdatedSinceFilter((f.updatedSince as string) || '');
+      setOverdueFilter(f.overdue === true);
+      setHasGitHubPrFilter(f.hasGitHubPr === true);
+    },
+    [
+      workspace,
+      navigate,
+      setTaskListId,
+      setStatusFilter,
+      setTypeFilter,
+      setTagFilter,
+      setAssigneeFilter,
+      setPriorityFilter,
+      setTaskSearch,
+      setDueBeforeFilter,
+      setUpdatedSinceFilter,
+      setOverdueFilter,
+      setHasGitHubPrFilter,
+    ]
+  );
+
   return {
     colorScheme,
     toggleColorScheme,
@@ -1051,5 +1143,8 @@ export function useWorkspaceShellState(currentUser: CurrentUser) {
     toggleSortDirection,
     navigateTo,
     openImportReport,
+    savedViews,
+    saveCurrentView,
+    applyView,
   };
 }

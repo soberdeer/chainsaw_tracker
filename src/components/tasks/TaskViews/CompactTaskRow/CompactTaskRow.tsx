@@ -1,4 +1,4 @@
-import { ActionIcon, Badge, Box, Group, Text, Tooltip } from '@mantine/core';
+import { ActionIcon, Badge, Box, Checkbox, Group, Text, Tooltip } from '@mantine/core';
 import {
   IconChevronRight,
   IconGitPullRequest,
@@ -42,8 +42,8 @@ export function CompactTaskRow({
   onChanged,
   onError,
   canWriteTasks,
-  selected: _selected,
-  onSelectedChange: _onSelectedChange,
+  selected,
+  onSelectedChange,
   isDraggable,
   onDragStart,
   onDragEnd,
@@ -63,11 +63,12 @@ export function CompactTaskRow({
   };
 
   return (
-    <div data-task-id={task.id} data-testid="task-row-wrapper">
+    <div data-testid="task-row-wrapper">
       {/* ── Main row ─────────────────────────────────────────────────────── */}
       <div
         className={classes.taskRow}
         data-testid="task-row"
+        data-task-id={task.id}
         data-depth={depth}
         style={
           depth > 0
@@ -84,14 +85,14 @@ export function CompactTaskRow({
               <IconGripVertical size="1rem" className={classes.dragHandle} />
             )}
             <Box style={{ width: 20 }} />
-            {/*{onSelectedChange && (*/}
-            {/*  <Checkbox*/}
-            {/*    aria-label={`Select ${task.title}`}*/}
-            {/*    checked={Boolean(selected)}*/}
-            {/*    className={classes.checkbox}*/}
-            {/*    onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}*/}
-            {/*  />*/}
-            {/*)}*/}
+            {onSelectedChange && (
+              <Checkbox
+                aria-label={`Select ${task.title}`}
+                checked={Boolean(selected)}
+                className={classes.checkbox}
+                onChange={(event) => onSelectedChange(task.id, event.currentTarget.checked)}
+              />
+            )}
           </Group>
 
           {hasSubtasks ? (

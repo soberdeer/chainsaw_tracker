@@ -15,7 +15,7 @@ export const statusMeta: Record<
 > = {
   backlog: { label: 'Backlog', color: '#adb5bd', tone: 'gray', type: 'open' }, // gray-5
   scoping: { label: 'Scoping', color: '#339af0', tone: 'blue', type: 'prep' }, // blue-5
-  'in progress': { label: 'In Progress', color: '#cc5de8', tone: 'grape', type: 'progress' }, // grape-5
+  'in progress': { label: 'In progress', color: '#cc5de8', tone: 'grape', type: 'progress' }, // grape-5
   'in testing': { label: 'In Testing', color: '#22b8cf', tone: 'cyan', type: 'test' }, // cyan-5
   shipped: { label: 'Shipped', color: '#51cf66', tone: 'green', type: 'done' }, // green-5
   closed: { label: 'Closed', color: '#adb5bd', tone: 'gray', type: 'closed' }, // gray-5

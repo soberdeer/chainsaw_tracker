@@ -26,10 +26,11 @@ export async function openApp(page: Page, path = '/') {
 
 export async function loginAs(page: Page, role: MockRole) {
   const credentialsByRole: Record<MockRole, { email: string; password: string }> = {
-    OWNER: { email: 'owner@example.com', password: 'ownerpass123' },
     ADMIN: { email: 'admin@example.com', password: 'adminpass123' },
-    LEAD: { email: 'lead@example.com', password: 'leadpass123' },
     MEMBER: { email: 'member@example.com', password: 'memberpass123' },
+    READER: { email: 'reader@example.com', password: 'readerpass123' },
+    OWNER: { email: 'owner@example.com', password: 'ownerpass123' },
+    LEAD: { email: 'lead@example.com', password: 'leadpass123' },
     VIEWER: { email: 'viewer@example.com', password: 'viewerpass123' },
   };
   const credentials = credentialsByRole[role];

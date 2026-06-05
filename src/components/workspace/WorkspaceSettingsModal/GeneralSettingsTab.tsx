@@ -13,7 +13,7 @@ interface GeneralSettingsTabProps {
   form: UseFormReturnType<GeneralFormValues>;
   canManageWorkspace: boolean;
   saving: boolean;
-  onSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSave: (event: React.SubmitEvent<HTMLFormElement>) => void;
 }
 
 export function GeneralSettingsTab({

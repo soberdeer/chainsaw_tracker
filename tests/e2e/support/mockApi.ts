@@ -1,6 +1,6 @@
 import type { Page, Route } from '@playwright/test';
 
-export type MockRole = 'OWNER' | 'ADMIN' | 'LEAD' | 'MEMBER' | 'VIEWER';
+export type MockRole = 'ADMIN' | 'MEMBER' | 'READER' | 'OWNER' | 'LEAD' | 'VIEWER';
 
 type FailureKey =
   | 'taskCreate'
@@ -299,16 +299,18 @@ function currentUser(state: MockState) {
 }
 
 function rolePermissions(role: MockRole) {
+  const isAdmin = role === 'ADMIN' || role === 'OWNER';
+  const isReadOnly = role === 'READER' || role === 'VIEWER';
   return {
     role,
-    manageWorkspace: role === 'OWNER' || role === 'ADMIN',
-    manageSpaces: role === 'OWNER' || role === 'ADMIN',
-    manageDocs: role !== 'VIEWER',
-    manageTasks: role !== 'VIEWER',
-    inviteMembers: role === 'OWNER' || role === 'ADMIN',
-    manageIntegrations: role === 'OWNER' || role === 'ADMIN',
-    manageImports: role === 'OWNER' || role === 'ADMIN',
-    viewReports: true,
+    manageWorkspace: isAdmin,
+    manageSpaces: isAdmin,
+    manageDocs: !isReadOnly,
+    manageTasks: !isReadOnly,
+    inviteMembers: isAdmin,
+    manageIntegrations: isAdmin,
+    manageImports: isAdmin,
+    viewReports: !isReadOnly,
   };
 }
 
@@ -345,37 +347,15 @@ function createDefaultState(): MockState {
     devDefaultOwnerEnabled: false,
     users: [
       {
-        id: 'user-owner',
-        email: 'owner@example.com',
-        name: 'Owner One',
-        password: 'ownerpass123',
-        role: 'OWNER',
-        avatarUrl: null,
-        source: 'LOCAL',
-        openProjectUserId: 'user-owner',
-        openProjectLogin: 'owner.one',
-      },
-      {
         id: 'user-admin',
         email: 'admin@example.com',
         name: 'Admin One',
         password: 'adminpass123',
-        role: 'ADMIN',
+        role: 'ADMIN' as MockRole,
         avatarUrl: null,
         source: 'LOCAL',
         openProjectUserId: 'user-admin',
         openProjectLogin: 'admin.one',
-      },
-      {
-        id: 'user-lead',
-        email: 'lead@example.com',
-        name: 'Lead One',
-        password: 'leadpass123',
-        role: 'LEAD',
-        avatarUrl: null,
-        source: 'LOCAL',
-        openProjectUserId: 'user-lead',
-        openProjectLogin: 'lead.one',
       },
       {
         id: 'user-member',
@@ -383,10 +363,43 @@ function createDefaultState(): MockState {
         name: 'Member One',
         password: 'memberpass123',
         avatarUrl: null,
-        role: 'MEMBER',
+        role: 'MEMBER' as MockRole,
         source: 'LOCAL',
         openProjectUserId: 'user-member',
         openProjectLogin: 'member.one',
+      },
+      {
+        id: 'user-reader',
+        email: 'reader@example.com',
+        name: 'Reader One',
+        password: 'readerpass123',
+        avatarUrl: null,
+        role: 'READER' as MockRole,
+        source: 'LOCAL',
+        openProjectUserId: 'user-reader',
+        openProjectLogin: 'reader.one',
+      },
+      {
+        id: 'user-owner',
+        email: 'owner@example.com',
+        name: 'Owner One',
+        password: 'ownerpass123',
+        avatarUrl: null,
+        role: 'OWNER' as MockRole,
+        source: 'LOCAL',
+        openProjectUserId: 'user-owner',
+        openProjectLogin: 'owner.one',
+      },
+      {
+        id: 'user-lead',
+        email: 'lead@example.com',
+        name: 'Lead One',
+        password: 'leadpass123',
+        avatarUrl: null,
+        role: 'LEAD' as MockRole,
+        source: 'LOCAL',
+        openProjectUserId: 'user-lead',
+        openProjectLogin: 'lead.one',
       },
       {
         id: 'user-viewer',
@@ -394,10 +407,10 @@ function createDefaultState(): MockState {
         name: 'Viewer One',
         password: 'viewerpass123',
         avatarUrl: null,
-        role: 'VIEWER',
+        role: 'VIEWER' as MockRole,
         source: 'LOCAL',
-        openProjectUserId: 'user-viewer',
-        openProjectLogin: 'viewer.one',
+        openProjectUserId: null,
+        openProjectLogin: null,
       },
     ],
     spaces: [
@@ -1236,8 +1249,8 @@ function buildWorkspaceResponse(state: MockState): any[] {
         role: user.role,
         user: userView(state, user.id),
       })),
-      permissionSets: (['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'] as MockRole[]).map((role) =>
-        rolePermissions(role)
+      permissionSets: (['ADMIN', 'MEMBER', 'READER', 'OWNER', 'LEAD', 'VIEWER'] as MockRole[]).map(
+        (role) => rolePermissions(role)
       ),
       // Only expose users that are actually linked to an OpenProject account
       openProjectUsers: state.users
@@ -1504,7 +1517,7 @@ async function handleApiRoute(route: Route, state: MockState) {
   }
 
   if (pathname === '/api/auth/setup-status' && method === 'GET') {
-    const ownerCount = state.users.filter((user) => user.role === 'OWNER').length;
+    const ownerCount = state.users.filter((user) => user.role === 'ADMIN').length;
     return fulfillJson(route, 200, {
       setupRequired: state.setupRequired,
       ownerCount,
@@ -1528,7 +1541,7 @@ async function handleApiRoute(route: Route, state: MockState) {
       email: String(body.email),
       name: String(body.name),
       password: String(body.password),
-      role: 'OWNER',
+      role: 'ADMIN' as MockRole,
       avatarUrl: null,
       source: 'LOCAL',
       openProjectUserId: nextId(state, 'op-user'),
@@ -1568,6 +1581,20 @@ async function handleApiRoute(route: Route, state: MockState) {
       return;
     }
     return fulfillJson(route, 200, buildWorkspaceResponse(state));
+  }
+
+  if (pathname.match(/^\/api\/openproject\/projects\/[^/]+\/members$/) && method === 'GET') {
+    if (!requireUser(route, state)) return;
+    const items = state.users
+      .filter((u) => u.openProjectUserId)
+      .map((u) => ({
+        openProjectUserId: u.openProjectUserId,
+        openProjectEmail: u.email,
+        openProjectName: u.name,
+        openProjectLogin: u.openProjectLogin,
+        avatarUrl: u.avatarUrl || null,
+      }));
+    return fulfillJson(route, 200, { items, settingsUrl: '' });
   }
 
   if (pathname === '/api/openproject/spaces' && method === 'POST') {
@@ -2206,7 +2233,7 @@ async function handleApiRoute(route: Route, state: MockState) {
       return fulfillJson(route, 404, { error: 'Saved view not found' });
     }
     const body = parseJsonBody(route);
-    if (view.visibility === 'WORKSPACE' && user.role === 'VIEWER') {
+    if (view.visibility === 'WORKSPACE' && user.role === 'READER') {
       return fulfillJson(route, 403, { error: 'Forbidden' });
     }
     if (typeof body.name === 'string') {
@@ -2401,9 +2428,7 @@ async function handleApiRoute(route: Route, state: MockState) {
       return;
     }
     return fulfillJson(route, 200, {
-      items: (['OWNER', 'ADMIN', 'LEAD', 'MEMBER', 'VIEWER'] as MockRole[]).map((role) =>
-        rolePermissions(role)
-      ),
+      items: (['ADMIN', 'MEMBER', 'READER'] as MockRole[]).map((role) => rolePermissions(role)),
     });
   }
 

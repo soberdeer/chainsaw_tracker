@@ -2,6 +2,41 @@
   position: relative;
 }
 
+.markdownBody {
+  font-size: var(--mantine-font-size-sm);
+  line-height: 1.6;
+  color: var(--app-text);
+  padding: var(--mantine-spacing-sm);
+}
+
+.markdownBody p {
+  margin: 0 0 0.5em;
+}
+
+.markdownBody a {
+  color: var(--mantine-color-blue-6);
+}
+
+.markdownBody ul,
+.markdownBody ol {
+  padding-left: 1.5em;
+  margin: 0 0 0.5em;
+}
+
+.markdownBody code {
+  background: var(--app-hover);
+  border-radius: 3px;
+  padding: 0.1em 0.3em;
+  font-size: 0.9em;
+}
+
+.markdownBody pre {
+  background: var(--app-hover);
+  border-radius: var(--mantine-radius-sm);
+  padding: var(--mantine-spacing-sm);
+  overflow-x: auto;
+}
+
 .editButton {
   opacity: 0;
   transition: opacity 0.15s;

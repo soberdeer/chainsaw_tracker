@@ -17,7 +17,7 @@ test.describe('comments, files, subtasks, relations, and time', () => {
     await page.getByRole('tab', { name: 'Activity' }).click();
     await expect(page.getByText('Leaving a real OpenProject-backed comment.')).toBeVisible();
 
-    mockApi.setCurrentUser('VIEWER');
+    mockApi.setCurrentUser('READER');
     await openApp(page, '/space/space-alpha/folder/folder-alpha/task/wp-101');
     await expect(page.getByTestId('task-detail-page')).toBeVisible();
     await page.getByRole('tab', { name: 'Activity' }).click();
@@ -59,7 +59,7 @@ test.describe('comments, files, subtasks, relations, and time', () => {
   });
 
   test('creates subtasks and relations from the drawer', async ({ page, mockApi }) => {
-    mockApi.setCurrentUser('LEAD');
+    mockApi.setCurrentUser('MEMBER');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha/task/wp-101');
     await expect(page.getByTestId('task-detail-page')).toBeVisible();
@@ -101,7 +101,7 @@ test.describe('comments, files, subtasks, relations, and time', () => {
     await expect(page.getByText('Time logged')).toBeVisible();
     await expect(page.getByText('Focus pass')).toBeVisible();
 
-    mockApi.setCurrentUser('VIEWER');
+    mockApi.setCurrentUser('READER');
     await page.goto('/space/space-alpha/folder/folder-alpha/task/wp-101');
     await page.getByRole('tab', { name: 'Time' }).click();
     await expect(page.getByTestId('task-time-form')).toHaveCount(0);

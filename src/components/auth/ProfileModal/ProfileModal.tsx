@@ -2,9 +2,9 @@ import { Alert, Group, Loader, Modal, Stack, Tabs } from '@mantine/core';
 import { useForm } from '@mantine/form';
 import { useEffect, useRef, useState } from 'react';
 import {
-  changePassword,
   getErrorMessage,
   getMyWorkSummary,
+  getOpenProjectUrl,
   getUserProfile,
   showToast,
   updateUserProfile,
@@ -41,8 +41,7 @@ export function ProfileModal({
   const [myWorkError, setMyWorkError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [saving, setSaving] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
-  const [passwordMessage, setPasswordMessage] = useState<string | null>(null);
+  const [openProjectUrl, setOpenProjectUrl] = useState<string | null>(null);
 
   const profileForm = useForm({
     initialValues: {
@@ -50,24 +49,8 @@ export function ProfileModal({
       avatarUrl: user.avatarUrl || '',
     },
   });
-  const passwordForm = useForm({
-    initialValues: {
-      currentPassword: '',
-      newPassword: '',
-      confirmPassword: '',
-    },
-    validate: {
-      currentPassword: (value) => (value.trim().length ? null : 'Current password is required'),
-      newPassword: (value) =>
-        value.trim().length >= 8 ? null : 'New password must be at least 8 characters long',
-      confirmPassword: (value, values) =>
-        value === values.newPassword ? null : 'Password confirmation does not match',
-    },
-  });
   const profileFormRef = useRef(profileForm);
   profileFormRef.current = profileForm;
-  const passwordFormRef = useRef(passwordForm);
-  passwordFormRef.current = passwordForm;
 
   useEffect(() => {
     if (!opened) return;
@@ -75,8 +58,6 @@ export function ProfileModal({
       name: user.name || '',
       avatarUrl: user.avatarUrl || '',
     });
-    passwordFormRef.current.reset();
-    setPasswordMessage(null);
     setSuccess(null);
     setError(null);
     setMyWorkError(null);
@@ -90,6 +71,9 @@ export function ProfileModal({
           setMyWork(null);
           setMyWorkError(getErrorMessage(caughtError));
         }),
+      getOpenProjectUrl()
+        .then((data) => setOpenProjectUrl(data.url))
+        .catch(() => undefined),
     ])
       .catch((caughtError) => setError(getErrorMessage(caughtError)))
       .finally(() => setLoading(false));
@@ -114,7 +98,7 @@ export function ProfileModal({
       showToast({
         tone: 'success',
         title: 'Profile saved',
-        message: 'Your local tracker profile was updated.',
+        message: 'Your profile will reflect OpenProject data on next login.',
       });
     } catch (caughtError) {
       const message = getErrorMessage(caughtError);
@@ -122,29 +106,6 @@ export function ProfileModal({
       showToast({ tone: 'error', title: 'Could not save profile', message });
     } finally {
       setSaving(false);
-    }
-  });
-
-  const submitPassword = passwordForm.onSubmit(async (values) => {
-    try {
-      setChangingPassword(true);
-      setPasswordMessage(null);
-      setError(null);
-      setSuccess(null);
-      await changePassword(values);
-      setPasswordMessage('Password changed successfully.');
-      showToast({
-        tone: 'success',
-        title: 'Password changed',
-        message: 'Your local tracker password was updated.',
-      });
-      passwordForm.reset();
-    } catch (caughtError) {
-      const message = getErrorMessage(caughtError);
-      setError(message);
-      showToast({ tone: 'error', title: 'Could not change password', message });
-    } finally {
-      setChangingPassword(false);
     }
   });
 
@@ -187,12 +148,7 @@ export function ProfileModal({
             </Tabs.Panel>
 
             <Tabs.Panel value="security" pt="md">
-              <SecurityTab
-                form={passwordForm}
-                changingPassword={changingPassword}
-                passwordMessage={passwordMessage}
-                onSubmit={submitPassword}
-              />
+              <SecurityTab openProjectUrl={openProjectUrl} />
             </Tabs.Panel>
 
             <Tabs.Panel value="my-work" pt="md">

@@ -1,10 +1,15 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import {
   getOpenProjectRuntimeWorkspace,
   updateOpenProjectRuntimeWorkspace,
 } from '../openproject/localPermissions.js';
 import {
+  addOpenProjectProjectMember,
+  createOpenProjectUser,
+  findOpenProjectUserByEmail,
   getOpenProjectConnectionStatus,
+  getOpenProjectRoles,
   getUserTeams,
   getWorkspaceTree,
   updateOpenProjectUserAdmin,
@@ -107,8 +112,124 @@ workspacesRouter.get('/:id/members', async (req, res) => {
   res.json({ items });
 });
 
-workspacesRouter.post('/:id/members/invite', async (_req, res) => {
-  res.status(405).json({ error: 'Invite members directly in OpenProject' });
+async function addUserToWorkspaceProjects(
+  workspaceId: string,
+  userId: string,
+  role: 'ADMIN' | 'MEMBER',
+  userWasCreated: boolean
+): Promise<string | null> {
+  // Admins get global access via updateOpenProjectUserAdmin; project membership not required.
+  if (role === 'ADMIN') return null;
+  const [opRoles, workspaces] = await Promise.all([
+    getOpenProjectRoles().catch(() => [] as { id: string; name: string }[]),
+    getWorkspaceTree(),
+  ]);
+  const ws = workspaces.find((w) => w.id === workspaceId) ?? workspaces[0];
+  const memberRole = opRoles.find((r) => r.name.toLowerCase() === 'member') ?? opRoles[0];
+  if (!ws || !memberRole) {
+    return 'Could not resolve workspace projects or Member role — assign project access in OpenProject.';
+  }
+  const projectIds = ws.spaces.map((s) => s.id);
+  if (!projectIds.length) return null;
+  const results = await Promise.allSettled(
+    projectIds.map((pid) => addOpenProjectProjectMember(pid, userId, [memberRole.id]))
+  );
+  const failCount = results.filter((r) => r.status === 'rejected').length;
+  const subject = userWasCreated ? 'User was created' : 'User already exists';
+  if (failCount === results.length) {
+    return `${subject} but could not be added to any project — assign project access in OpenProject.`;
+  }
+  if (failCount > 0) {
+    return `${subject}. Added to ${results.length - failCount} of ${results.length} projects — check remaining access in OpenProject.`;
+  }
+  return null;
+}
+
+workspacesRouter.post('/:id/members/invite', async (req, res) => {
+  const input = z
+    .object({
+      email: z.string().email(),
+      name: z.string().optional(),
+      role: z.string().optional(),
+    })
+    .parse(req.body);
+
+  const now = new Date().toISOString();
+  const role = (input.role === 'ADMIN' ? 'ADMIN' : 'MEMBER') as 'ADMIN' | 'MEMBER';
+
+  // Check if user already exists in OpenProject
+  const existing = await findOpenProjectUserByEmail(input.email).catch(() => null);
+  if (existing) {
+    const userId = String(existing.id);
+    await updateOpenProjectUserAdmin(userId, role === 'ADMIN').catch(() => undefined);
+    const projectMembershipWarning = await addUserToWorkspaceProjects(
+      req.params.id,
+      userId,
+      role,
+      false
+    );
+    res.json({
+      membership: {
+        id: `membership-${existing.id}`,
+        role,
+        createdAt: now,
+        updatedAt: now,
+        user: {
+          id: userId,
+          email: existing.email || input.email,
+          name: (existing as { name?: string }).name || input.email,
+          avatarUrl: (existing as { avatar?: string }).avatar || null,
+        },
+        teams: [],
+      },
+      temporaryPassword: null,
+      openProjectTemporaryPassword: null,
+      projectMembershipWarning,
+    });
+    return;
+  }
+
+  // Create a new OpenProject user with a temporary password
+  const temporaryPassword = `Tmp${Math.random().toString(36).slice(2, 10)}!1`;
+  const nameParts = (input.name || input.email.split('@')[0]).split(' ');
+  const firstName = nameParts[0] || 'New';
+  const lastName = nameParts.slice(1).join(' ') || 'User';
+  const login = input.email.split('@')[0].replace(/[^a-z0-9_.-]/gi, '_');
+
+  const created = await createOpenProjectUser({
+    email: input.email,
+    login,
+    firstName,
+    lastName,
+    password: temporaryPassword,
+    admin: role === 'ADMIN',
+  });
+
+  const userId = String(created.id);
+  const projectMembershipWarning = await addUserToWorkspaceProjects(
+    req.params.id,
+    userId,
+    role,
+    true
+  );
+  res.json({
+    membership: {
+      id: `membership-${created.id}`,
+      role,
+      createdAt: now,
+      updatedAt: now,
+      user: {
+        id: userId,
+        email: created.email || input.email,
+        name: input.name || `${firstName} ${lastName}`.trim(),
+        avatarUrl: null,
+      },
+      teams: [],
+    },
+    temporaryPassword,
+    openProjectTemporaryPassword: temporaryPassword,
+    projectMembershipWarning,
+  });
 });
 
 workspacesRouter.post('/:id/members', async (_req, res) => {
@@ -178,13 +299,19 @@ workspacesRouter.get('/:id/imports', async (_req, res) => {
 // ── Legacy invite/token routes ────────────────────────────────────────────────
 
 workspacesRouter.post('/:id/invites', async (_req, res) => {
-  res.status(405).json({ error: 'Invite users directly in OpenProject' });
+  res.status(405).json({
+    error: 'Token-based invites are not supported. Use the Members tab to add users directly.',
+  });
 });
 
 workspacesRouter.get('/invites/:token', async (_req, res) => {
-  res.status(404).json({ error: 'Invites are not supported' });
+  res.status(404).json({
+    error: 'Token-based invites are not supported. Ask an admin to add you via Workspace Settings.',
+  });
 });
 
 workspacesRouter.post('/invites/:token/accept', async (_req, res) => {
-  res.status(405).json({ error: 'Invites are not supported' });
+  res.status(405).json({
+    error: 'Token-based invites are not supported. Ask an admin to add you via Workspace Settings.',
+  });
 });

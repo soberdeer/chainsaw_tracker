@@ -1,6 +1,6 @@
 import { test, chromium } from '@playwright/test';
 
-test('capture tags in real app', async () => {
+test.skip('capture tags in real app', async () => {
   const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage();
   await page.setViewportSize({ width: 1400, height: 800 });

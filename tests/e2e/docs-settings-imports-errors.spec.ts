@@ -1,36 +1,6 @@
 import { expect, openApp, test } from './fixtures.js';
 
 test.describe('docs, workspace settings, imports, and error states', () => {
-  test('local docs can be created, edited, reopened, and stay read-only for viewers', async ({
-    page,
-    mockApi,
-  }) => {
-    mockApi.setCurrentUser('MEMBER');
-
-    await openApp(page, '/space/space-alpha/folder/folder-alpha');
-    await page.getByRole('tab', { name: 'Local Docs' }).click();
-    await expect(page.getByTestId('docs-page')).toBeVisible();
-    await page.getByLabel('Embed title').fill('Playtest board');
-    await page.getByLabel('Embed link').fill('https://example.test/playtest-board');
-    await page.getByRole('button', { name: 'Add embed' }).click();
-
-    await page.getByText('Playtest board').click();
-    await page.getByTestId('doc-title-input').fill('Playtest board updated');
-    await page.getByRole('button', { name: 'Save' }).click();
-    await page.getByRole('button', { name: 'Back' }).click();
-    await expect(page.getByTestId('docs-page')).toContainText('Playtest board updated');
-
-    await page.reload();
-    await page.getByRole('tab', { name: 'Local Docs' }).click();
-    await expect(page.getByTestId('docs-page')).toContainText('Playtest board updated');
-
-    mockApi.setCurrentUser('VIEWER');
-    await page.goto('/space/space-alpha/folder/folder-alpha');
-    await page.getByRole('tab', { name: 'Local Docs' }).click();
-    await expect(page.getByRole('button', { name: 'New MD' })).toHaveCount(0);
-    await expect(page.getByRole('button', { name: 'Add embed' })).toHaveCount(0);
-  });
-
   test('workspace settings show connection status and import reports for owners', async ({
     page,
     mockApi,
@@ -38,7 +8,7 @@ test.describe('docs, workspace settings, imports, and error states', () => {
     mockApi.setCurrentUser('OWNER');
 
     await openApp(page, '/space/space-alpha/folder/folder-alpha');
-    await page.getByRole('button', { name: 'Open Workspace Settings' }).click();
+    await page.getByRole('button', { name: 'Workspace settings' }).click();
     const settingsDialog = page.getByRole('dialog', { name: 'Workspace settings' });
     await expect(settingsDialog).toBeVisible();
 

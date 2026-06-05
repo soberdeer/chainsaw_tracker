@@ -1,6 +1,7 @@
 import { ProfileModal } from '../../auth/ProfileModal/ProfileModal';
 import { GlobalSearchModal } from '../../search/GlobalSearchModal/GlobalSearchModal';
 import { TaskCreateModal } from '../../tasks/TaskCreateModal';
+import { ImportReportModal } from '../ImportReportModal/ImportReportModal';
 import { ProjectAccessModal } from '../ProjectAccessModal/ProjectAccessModal';
 import { SpaceCreateModal } from '../SpaceCreateModal/SpaceCreateModal';
 import { WorkspaceSettingsModal } from '../WorkspaceSettingsModal/WorkspaceSettingsModal';
@@ -86,6 +87,10 @@ export function WorkspaceShellModals() {
           onCreated={state.reload}
         />
       )}
+      <ImportReportModal
+        report={state.activeImportReport}
+        onClose={() => state.setActiveImportReport(null)}
+      />
     </>
   );
 }

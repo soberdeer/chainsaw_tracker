@@ -4,6 +4,11 @@ import express from 'express';
 import { toHttpError } from './errors.js';
 import { openProjectRouter } from './openproject/routes.js';
 import { authRouter } from './routes/auth.js';
+import { checklistsRouter } from './routes/checklists.js';
+import { githubRouter } from './routes/github.js';
+import { importReportsRouter } from './routes/importReports.js';
+import { notificationsRouter } from './routes/notifications.js';
+import { savedViewsRouter } from './routes/savedViews.js';
 import { usersRouter } from './routes/users.js';
 import { workspacesRouter } from './routes/workspaces.js';
 import path from 'node:path';
@@ -31,6 +36,11 @@ export function createApp() {
   app.use('/api/auth', authRouter);
   app.use('/api/users', usersRouter);
   app.use('/api/openproject', openProjectRouter);
+  app.use('/api', checklistsRouter);
+  app.use('/api/saved-views', savedViewsRouter);
+  app.use('/api/notifications', notificationsRouter);
+  app.use('/api/import-reports', importReportsRouter);
+  app.use('/api/integrations/github', githubRouter);
 
   app.use(
     (error: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

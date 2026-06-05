@@ -1,8 +1,10 @@
 import {
+  ActionIcon,
   Badge,
   Button,
   Group,
   Loader,
+  Modal,
   Select,
   Stack,
   Table,
@@ -12,21 +14,23 @@ import {
   Tooltip,
 } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
-import { IconChevronDown, IconChevronUp, IconSelector } from '@tabler/icons-react';
+import { IconChevronDown, IconChevronUp, IconSelector, IconTrash } from '@tabler/icons-react';
 import { useMemo, useState } from 'react';
 import type { WorkspaceMemberItem, WorkspaceRole } from '@/lib';
 
 interface InviteFormValues {
   email: string;
   name: string;
+  role: WorkspaceRole;
 }
 
 interface MembersTabProps {
   members: WorkspaceMemberItem[];
   canManageWorkspace: boolean;
   inviteForm: UseFormReturnType<InviteFormValues>;
-  onInviteSubmit: (event: React.FormEvent<HTMLFormElement>) => void;
+  onInviteSubmit: (event: React.SubmitEvent<HTMLFormElement>) => void;
   onRoleChange?: (userId: string, role: WorkspaceRole) => Promise<void>;
+  onMemberRemove?: (userId: string) => Promise<void>;
 }
 
 type SortCol = 'name' | 'email' | 'role' | 'teams';
@@ -37,10 +41,13 @@ export function MembersTab({
   inviteForm,
   onInviteSubmit,
   onRoleChange,
+  onMemberRemove,
 }: MembersTabProps) {
   const [sortCol, setSortCol] = useState<SortCol>('name');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('asc');
   const [changingRole, setChangingRole] = useState<string | null>(null);
+  const [removingUserId, setRemovingUserId] = useState<string | null>(null);
+  const [confirmRemoveUser, setConfirmRemoveUser] = useState<WorkspaceMemberItem | null>(null);
 
   const handleSort = (col: SortCol) => {
     if (col === sortCol) {
@@ -96,6 +103,15 @@ export function MembersTab({
               data-testid="workspace-invite-name"
               {...inviteForm.getInputProps('name')}
             />
+            <Select
+              label="Role"
+              data-testid="workspace-invite-role"
+              data={[
+                { value: 'ADMIN', label: 'ADMIN' },
+                { value: 'MEMBER', label: 'MEMBER' },
+              ]}
+              {...inviteForm.getInputProps('role')}
+            />
             <Button type="submit" data-testid="workspace-invite-submit">
               Invite user
             </Button>
@@ -130,6 +146,7 @@ export function MembersTab({
                 </Table.Th>
               );
             })}
+            {canManageWorkspace && onMemberRemove && <Table.Th />}
           </Table.Tr>
         </Table.Thead>
         <Table.Tbody>
@@ -148,10 +165,11 @@ export function MembersTab({
                       size="xs"
                       value={member.role}
                       data={[
-                        { value: 'ADMIN', label: 'Administrator' },
-                        { value: 'MEMBER', label: 'Member' },
+                        { value: 'ADMIN', label: 'ADMIN' },
+                        { value: 'MEMBER', label: 'MEMBER' },
                       ]}
                       disabled={changingRole === member.user.id}
+                      data-testid={`workspace-member-role-${member.user.id}`}
                       onChange={async (value) => {
                         if (!value || value === member.role) return;
                         setChangingRole(member.user.id);
@@ -209,10 +227,60 @@ export function MembersTab({
                   );
                 })()}
               </Table.Td>
+              {canManageWorkspace && onMemberRemove && (
+                <Table.Td>
+                  <ActionIcon
+                    color="red"
+                    variant="subtle"
+                    size="sm"
+                    data-testid={`workspace-member-remove-${member.user.id}`}
+                    disabled={removingUserId === member.user.id}
+                    onClick={() => setConfirmRemoveUser(member)}
+                  >
+                    <IconTrash size="0.9rem" />
+                  </ActionIcon>
+                </Table.Td>
+              )}
             </Table.Tr>
           ))}
         </Table.Tbody>
       </Table>
+
+      <Modal
+        opened={confirmRemoveUser !== null}
+        onClose={() => setConfirmRemoveUser(null)}
+        title="Remove member"
+        size="sm"
+        centered
+      >
+        <Stack>
+          <Text size="sm">
+            Remove <strong>{confirmRemoveUser?.user.name || confirmRemoveUser?.user.email}</strong>{' '}
+            from the workspace?
+          </Text>
+          <Group justify="flex-end">
+            <Button variant="default" onClick={() => setConfirmRemoveUser(null)}>
+              Cancel
+            </Button>
+            <Button
+              color="red"
+              loading={removingUserId === confirmRemoveUser?.user.id}
+              onClick={async () => {
+                if (!confirmRemoveUser || !onMemberRemove) return;
+                setRemovingUserId(confirmRemoveUser.user.id);
+                try {
+                  await onMemberRemove(confirmRemoveUser.user.id);
+                  setConfirmRemoveUser(null);
+                } finally {
+                  setRemovingUserId(null);
+                }
+              }}
+            >
+              Remove member
+            </Button>
+          </Group>
+        </Stack>
+      </Modal>
     </Stack>
   );
 }

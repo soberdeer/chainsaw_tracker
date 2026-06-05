@@ -1,5 +1,6 @@
 import { Badge, Button, Group, Stack, Text, TextInput } from '@mantine/core';
 import type { UseFormReturnType } from '@mantine/form';
+import { SubmitEvent } from 'react';
 import { UserAvatar } from '@/components/common/UserAvatar';
 import type { CurrentUser, UserProfile } from '@/lib';
 import classes from './ProfileModal.module.css';
@@ -15,7 +16,7 @@ interface ProfileTabProps {
   role?: string;
   form: UseFormReturnType<ProfileFormValues>;
   saving: boolean;
-  onSave: (event: React.FormEvent<HTMLFormElement>) => void;
+  onSave: (event: SubmitEvent<HTMLFormElement>) => void;
   onClose: () => void;
 }
 

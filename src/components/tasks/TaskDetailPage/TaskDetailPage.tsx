@@ -13,6 +13,7 @@ import {
   updateTask,
   type Task,
   type TaskStatus,
+  type User,
   type Workspace,
 } from '@/lib';
 import { TaskChecklists } from '../TaskChecklists/TaskChecklists';
@@ -31,6 +32,7 @@ export interface TaskDetailPageProps {
   task: Task;
   workspace: Workspace;
   statuses: TaskStatus[];
+  fallbackUsers?: User[];
   onBack: () => void;
   onSaved: (task: Task) => void;
   onOpenSubtask: (task: Task) => void;
@@ -42,6 +44,7 @@ export function TaskDetailPage({
   task,
   workspace,
   statuses,
+  fallbackUsers = [],
   onBack,
   onSaved,
   onOpenSubtask,
@@ -214,7 +217,7 @@ export function TaskDetailPage({
         taskTagIds={taskTagIds}
         tagSaving={tagSaving}
         statuses={statuses}
-        projectUsers={projectUsers}
+        projectUsers={projectUsers.length > 0 ? projectUsers : fallbackUsers}
         projectUsersLoading={projectUsersLoading}
         canWriteTasks={canWriteTasks}
         onUpdateAndRefresh={updateAndRefresh}
@@ -224,10 +227,7 @@ export function TaskDetailPage({
       <TaskDescription
         value={detailsForm.values.description}
         canWriteTasks={canWriteTasks}
-        onSave={async (description) => {
-          await updateAndRefresh({ description });
-          detailsForm.setFieldValue('description', description);
-        }}
+        onChange={(description) => detailsForm.setFieldValue('description', description)}
       />
 
       <TaskChecklists

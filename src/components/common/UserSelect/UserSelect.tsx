@@ -51,11 +51,16 @@ export function UserSelect({
     .map((id) => users.find((u) => u.id === id))
     .filter((u): u is User => Boolean(u));
 
-  const filteredUsers = users.filter(
-    (u) => !value.includes(u.id) && u.name.toLowerCase().includes(search.toLowerCase().trim())
+  const filteredUsers = users.filter((u) =>
+    u.name.toLowerCase().includes(search.toLowerCase().trim())
   );
 
   const handleSelect = (userId: string) => {
+    if (value.includes(userId)) {
+      onChange(value.filter((id) => id !== userId));
+      setSearch('');
+      return;
+    }
     if (isMaxReached) return;
     onChange([...value, userId]);
     setSearch('');
@@ -66,7 +71,7 @@ export function UserSelect({
   };
 
   const options = filteredUsers.map((user) => (
-    <Combobox.Option value={user.id} key={user.id}>
+    <Combobox.Option value={user.id} key={user.id} aria-label={user.name}>
       <Group gap="sm" wrap="nowrap">
         <UserAvatar
           user={user}
